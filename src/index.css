@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Fraunces', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius-pill: 9999px;
+    --radius-card: 28px;
+    --radius-card-lg: 32px;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #FAFAFA;
+    color: #111827;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.011em;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  h1, h2, .font-serif-display {
+    font-family: var(--font-display);
+    text-wrap: balance;
+    letter-spacing: -0.022em;
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Responsive smooth touch scrolling */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ==========================================================================
+   ORIGINAL DESIGN SYSTEM & CLEAN RESPONSIVE STYLING
+   ========================================================================== */
+
+/* Clean Frosted Glass Backdrops (Original Neutral Palette) */
+.apple-glass,
+.glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
+}
+
+.glass-panel-subtle {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+}
+
+/* Original Clean Card Styles with Subtle Hover Lift */
+.apple-card,
+.store-card {
+  background: #FFFFFF;
+  border-radius: 28px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04);
+  transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-card-interactive,
+.store-card-interactive {
+  background: #FFFFFF;
+  border-radius: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04);
+  transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 250ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms ease;
+  will-change: transform, box-shadow;
+}
+
+@media (hover: hover) {
+  .apple-card-interactive:hover,
+  .store-card-interactive:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px -8px rgba(15, 23, 42, 0.09), 0 2px 4px rgba(0, 0, 0, 0.02);
+    border-color: rgba(203, 213, 225, 1);
+  }
+}
+
+/* Original Tactile Pill Buttons */
+.apple-pill-btn {
+  border-radius: 9999px;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.apple-pill-btn:active {
+  transform: scale(0.97);
+}
+
+/* Mobile Floating Bottom Navigation Dock (Inspired by modern mobile reference, styled with original palette) */
+.mobile-bottom-dock {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
+  border-radius: 9999px;
+}
+
+/* Clean Category Pills */
+.category-pill {
+  border-radius: 9999px;
+  transition: all 180ms ease;
+}
+
+.category-pill.active {
+  background-color: #0F172A;
+  color: #FFFFFF;
+}
+
+/* Aliases for backwards compatibility */
+.apple-liquid-dock {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.12);
+  border-radius: 9999px;
+}
