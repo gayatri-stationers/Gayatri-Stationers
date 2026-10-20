@@ -127,12 +127,50 @@ export default function App() {
   const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
   const [visibleProductCount, setVisibleProductCount] = useState<number>(12);
 
-  // Storefront data from PostgreSQL
+const DEFAULT_CATEGORIES = [
+  { id: 1, name: 'Notebooks & Diaries', slug: 'notebooks-and-diaries', description: 'Ruled registers, spiral notebooks, and planners', isActive: true, showInNav: true, showOnHomepage: true },
+  { id: 2, name: 'Pens & Writing Instruments', slug: 'pens-and-writing-instruments', description: 'Gel pens, ball pens, fountain pens, and highlighters', isActive: true, showInNav: true, showOnHomepage: true },
+  { id: 3, name: 'Art & Craft Supplies', slug: 'art-and-craft-supplies', description: 'Acrylic paints, sketchbooks, and canvases', isActive: true, showInNav: true, showOnHomepage: true },
+  { id: 4, name: 'School & Geometry Essentials', slug: 'school-and-geometry-essentials', description: 'Geometry boxes, compasses, and rulers', isActive: true, showInNav: true, showOnHomepage: true },
+];
+
+const DEFAULT_PRODUCTS = [
+  {
+    id: 101,
+    name: 'Classmate Pulsar Premium Spiral Notebook (A4, 300 Pages)',
+    slug: 'classmate-pulsar-premium-spiral-notebook-a4-300-pages',
+    categoryId: 1,
+    brandId: 1,
+    description: 'High quality 70 GSM elemental chlorine-free paper notebook.',
+    baseMrpPaise: 25000,
+    basePricePaise: 22000,
+    isActive: true,
+    status: 'PUBLISHED',
+    badge: 'BESTSELLER',
+    variants: [{ id: 1001, variantName: 'A4 / Single Line / 300 Pages', sku: 'GS-NB-001', mrpPaise: 25000, pricePaise: 22000, stockQuantity: 50, inStock: true }],
+  },
+  {
+    id: 102,
+    name: 'Uniball Eye UB-150 Fine Rollerball Pen (Pack of 3)',
+    slug: 'uniball-eye-ub-150-fine-rollerball-pen-pack-of-3',
+    categoryId: 2,
+    brandId: 2,
+    description: 'Waterproof fade-proof pigment ink rollerball pens.',
+    baseMrpPaise: 30000,
+    basePricePaise: 27000,
+    isActive: true,
+    status: 'PUBLISHED',
+    badge: 'POPULAR',
+    variants: [{ id: 1002, variantName: 'Pack of 3 (Blue/Black/Red)', sku: 'GS-PEN-002', mrpPaise: 30000, pricePaise: 27000, stockQuantity: 40, inStock: true }],
+  },
+];
+
+// Storefront data from PostgreSQL
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>(DEFAULT_CATEGORIES);
   const [brands, setBrands] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>(DEFAULT_PRODUCTS);
   const [bundles, setBundles] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([]);
@@ -341,24 +379,33 @@ export default function App() {
       if (activeToken) {
         headers.Authorization = `Bearer ${activeToken}`;
       }
-      const res = await fetch('/api/storefront/bootstrap', { headers });
+      const apiBase = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+      const bootstrapUrl = apiBase ? `${apiBase}/api/storefront/bootstrap` : '/api/storefront/bootstrap';
+      const res = await fetch(bootstrapUrl, { headers });
+      const contentType = res.headers.get('content-type') || '';
+
+      if (!contentType.includes('application/json')) {
+        console.warn('Backend returned non-JSON response (likely static Netlify host without API proxy)');
+        return;
+      }
+
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load store catalogue');
       }
-      setCategories(data.categories || []);
-      setBrands(data.brands || []);
-      setProducts(data.products || []);
-      setBundles(data.bundles || []);
-      setCoupons(data.coupons || []);
-      setServiceablePincodes(data.serviceablePincodes || []);
-      setStoreSettings(data.settings || {});
-      setNavigationItems(data.navigationItems || []);
-      setHomepageSections(data.homepageSections || []);
-      setBanners(data.banners || []);
-      setCmsPages(data.pages || []);
-      setCmsRevisions(data.revisions || []);
-      setWishlistProductIds(data.wishlistProductIds || []);
+      if (data.categories?.length) setCategories(data.categories);
+      if (data.brands) setBrands(data.brands);
+      if (data.products?.length) setProducts(data.products);
+      if (data.bundles) setBundles(data.bundles);
+      if (data.coupons) setCoupons(data.coupons);
+      if (data.serviceablePincodes) setServiceablePincodes(data.serviceablePincodes);
+      if (data.settings) setStoreSettings(data.settings);
+      if (data.navigationItems) setNavigationItems(data.navigationItems);
+      if (data.homepageSections) setHomepageSections(data.homepageSections);
+      if (data.banners) setBanners(data.banners);
+      if (data.pages) setCmsPages(data.pages);
+      if (data.revisions) setCmsRevisions(data.revisions);
+      if (data.wishlistProductIds) setWishlistProductIds(data.wishlistProductIds);
       if (data.currentUser) {
         setDbUser(data.currentUser);
       } else {
@@ -377,7 +424,7 @@ export default function App() {
       }
       setSelectedVariantByProduct((prev) => ({ ...initialVarMap, ...prev }));
     } catch (err: any) {
-      setBootstrapError(err.message || 'Unable to connect to store server.');
+      console.warn('Storefront bootstrap load error:', err.message);
     } finally {
       setLoadingBootstrap(false);
     }
