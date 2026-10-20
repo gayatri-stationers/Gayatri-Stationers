@@ -58,6 +58,15 @@ import {
   verifyRazorpayWebhookSignature,
 } from './src/lib/domain-logic.ts';
 import {
+  getCashfreeConfig,
+  maskCashfreeAppId,
+  createCashfreeOrder,
+  getCashfreeOrder,
+  getCashfreeOrderPayments,
+  verifyCashfreeWebhookSignature,
+  testCashfreeConnection,
+} from './src/lib/cashfree.ts';
+import {
   uploadBase64ToSupabaseStorage,
   getSupabaseMigrationReadiness,
   testSupabaseServerConnection,
@@ -122,6 +131,19 @@ async function startServer() {
     })
   );
 
+  const getActiveCashfreeConfig = (storeSettingsMap?: Record<string, any>) => {
+    const fromEnv = getCashfreeConfig();
+    const stored = storeSettingsMap?.cashfree_config;
+    if (stored?.appId && stored?.secretKey) {
+      return getCashfreeConfig({
+        appId: stored.appId,
+        secretKey: stored.secretKey,
+        environment: stored.environment,
+      });
+    }
+    return fromEnv;
+  };
+
   const isRazorpayConfigured = Boolean(
     process.env.RAZORPAY_KEY_ID &&
       process.env.RAZORPAY_KEY_SECRET &&
@@ -138,11 +160,16 @@ async function startServer() {
       if (req.dbUser) {
         wishlistProductIds = await getUserWishlist(req.dbUser.id);
       }
+      const activeCashfree = getActiveCashfreeConfig(data.settings);
+
       res.json({
         ...data,
         wishlistProductIds,
         currentUser: req.dbUser || null,
         paymentGatewayStatus: {
+          cashfreeConfigured: activeCashfree.isConfigured,
+          cashfreeEnvironment: activeCashfree.environment,
+          cashfreeAppId: activeCashfree.isConfigured ? maskCashfreeAppId(activeCashfree.appId) : null,
           razorpayConfigured: isRazorpayConfigured,
           razorpayKeyId: isRazorpayConfigured ? process.env.RAZORPAY_KEY_ID : null,
         },
@@ -353,6 +380,16 @@ async function startServer() {
         });
       }
 
+      const bootstrapData = await getStoreBootstrapData();
+      const activeCashfree = getActiveCashfreeConfig(bootstrapData.settings);
+
+      if (paymentMethod === 'CASHFREE_ONLINE' && !activeCashfree.isConfigured) {
+        return res.status(400).json({
+          error:
+            'Cashfree Payment Gateway (CASHFREE_APP_ID / CASHFREE_SECRET_KEY) is not yet configured. Please select "Pay at Store" (for Store Pickup) or "Cash on Delivery" (for eligible PIN codes), or configure Cashfree in Admin Settings.',
+        });
+      }
+
       const created = await placeOrderTransactionally({
         userId: req.dbUser.id,
         guestSessionId,
@@ -369,7 +406,46 @@ async function startServer() {
         actorEmail: req.dbUser.email,
       });
 
-      res.status(201).json(created);
+      let cashfreeSession: any = null;
+      if (paymentMethod === 'CASHFREE_ONLINE' && activeCashfree.isConfigured) {
+        try {
+          const appBaseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+          const returnUrl = `${appBaseUrl}/?cf_order_id={order_id}`;
+          const notifyUrl = `${appBaseUrl}/api/webhooks/cashfree`;
+
+          const cfOrder = await createCashfreeOrder(
+            {
+              orderNumber: created.order.orderNumber,
+              orderAmountRupees: created.order.totalPaise / 100,
+              customerId: `user_${req.dbUser.id}`,
+              customerName: created.order.customerName,
+              customerEmail: created.order.customerEmail || req.dbUser.email,
+              customerPhone: created.order.customerPhone,
+              returnUrl,
+              notifyUrl,
+              orderNote: `Gayatri Stationers Order ${created.order.orderNumber}`,
+            },
+            activeCashfree
+          );
+
+          cashfreeSession = {
+            paymentSessionId: cfOrder.payment_session_id,
+            cfOrderId: cfOrder.cf_order_id || cfOrder.order_id,
+            orderId: cfOrder.order_id,
+            environment: activeCashfree.environment,
+          };
+        } catch (cfErr: any) {
+          console.error('Cashfree session creation error:', cfErr);
+          cashfreeSession = {
+            error: cfErr.message || 'Could not initiate Cashfree session.',
+          };
+        }
+      }
+
+      res.status(201).json({
+        ...created,
+        cashfree: cashfreeSession,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message || 'Order creation failed.' });
     }
@@ -506,6 +582,212 @@ async function startServer() {
       res.json({ status: 'ignored' });
     } catch (error: any) {
       res.status(400).json({ error: error.message || 'Webhook processing error.' });
+    }
+  });
+
+  // 7.5. Server-Side Cashfree Payment Session, Order Verification, Webhook & Admin Configuration
+  app.post('/api/payments/cashfree/create-session', optionalAuth, async (req: AuthRequest, res) => {
+    try {
+      const { orderNumber } = req.body;
+      if (!orderNumber) {
+        return res.status(400).json({ error: 'Order number is required.' });
+      }
+
+      const details = await getOrderDetailsByNumberOrId(orderNumber);
+      if (!details) {
+        return res.status(404).json({ error: `Order ${orderNumber} not found.` });
+      }
+
+      if (details.order.paymentStatus === 'PAID') {
+        return res.json({ alreadyPaid: true, order: details.order });
+      }
+
+      const bootstrapData = await getStoreBootstrapData();
+      const activeCashfree = getActiveCashfreeConfig(bootstrapData.settings);
+
+      if (!activeCashfree.isConfigured) {
+        return res.status(503).json({
+          error: 'Cashfree is not configured. Please enter App ID and Secret Key in Admin Settings.',
+        });
+      }
+
+      const appBaseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const returnUrl = `${appBaseUrl}/?cf_order_id={order_id}`;
+      const notifyUrl = `${appBaseUrl}/api/webhooks/cashfree`;
+
+      const cfOrder = await createCashfreeOrder(
+        {
+          orderNumber: details.order.orderNumber,
+          orderAmountRupees: details.order.totalPaise / 100,
+          customerId: `cust_${details.order.userId || 'guest'}`,
+          customerName: details.order.customerName,
+          customerEmail: details.order.customerEmail || 'customer@gayatristationers.com',
+          customerPhone: details.order.customerPhone,
+          returnUrl,
+          notifyUrl,
+          orderNote: `Gayatri Stationers Order ${details.order.orderNumber}`,
+        },
+        activeCashfree
+      );
+
+      res.json({
+        paymentSessionId: cfOrder.payment_session_id,
+        cfOrderId: cfOrder.cf_order_id || cfOrder.order_id,
+        orderId: cfOrder.order_id,
+        environment: activeCashfree.environment,
+      });
+    } catch (error: any) {
+      console.error('Cashfree create-session error:', error);
+      res.status(400).json({ error: error.message || 'Failed to create Cashfree payment session.' });
+    }
+  });
+
+  app.post('/api/payments/cashfree/verify', async (req, res) => {
+    try {
+      const { orderNumber, cfOrderId } = req.body;
+      const targetOrderId = (cfOrderId || orderNumber || '').trim();
+
+      if (!targetOrderId) {
+        return res.status(400).json({ error: 'Order number or Cashfree order ID is required.' });
+      }
+
+      const bootstrapData = await getStoreBootstrapData();
+      const activeCashfree = getActiveCashfreeConfig(bootstrapData.settings);
+
+      if (!activeCashfree.isConfigured) {
+        return res.status(503).json({ error: 'Cashfree credentials are not configured on server.' });
+      }
+
+      // Fetch order details directly from Cashfree PG
+      const cfOrder = await getCashfreeOrder(targetOrderId, activeCashfree);
+      const cfPayments = await getCashfreeOrderPayments(targetOrderId, activeCashfree);
+
+      const successfulPayment = cfPayments.find((p) => p.payment_status === 'SUCCESS');
+      const isOrderPaid = cfOrder.order_status === 'PAID' || Boolean(successfulPayment);
+
+      if (!isOrderPaid) {
+        return res.status(400).json({
+          error: `Payment is not confirmed yet on Cashfree (Order Status: ${cfOrder.order_status || 'PENDING'}).`,
+          cfOrder,
+        });
+      }
+
+      const resolvedOrderNumber = orderNumber || cfOrder.order_id;
+      const paymentRef = successfulPayment?.cf_payment_id
+        ? String(successfulPayment.cf_payment_id)
+        : `cf_paid_${Date.now()}`;
+
+      const paymentMethodInfo = successfulPayment?.payment_method
+        ? Object.keys(successfulPayment.payment_method).join(', ').toUpperCase()
+        : 'UPI / Cards / NetBanking';
+
+      const result = await recordVerifiedOnlinePayment({
+        orderNumber: resolvedOrderNumber,
+        provider: 'CASHFREE',
+        providerOrderId: String(cfOrder.cf_order_id || cfOrder.order_id),
+        providerPaymentId: paymentRef,
+        idempotencyKey: `cf_verify_${paymentRef}`,
+        rawPayload: { cfOrder, payments: cfPayments },
+        paymentMethodDetails: `Cashfree ${paymentMethodInfo}`,
+      });
+
+      res.json({
+        success: true,
+        alreadyProcessed: result.alreadyProcessed,
+        order: result.order,
+        paymentRef,
+      });
+    } catch (error: any) {
+      console.error('Cashfree payment verification error:', error);
+      res.status(400).json({ error: error.message || 'Payment verification failed.' });
+    }
+  });
+
+  app.post('/api/webhooks/cashfree', async (req: any, res) => {
+    try {
+      const timestamp = (req.headers['x-webhook-timestamp'] as string) || '';
+      const signature = (req.headers['x-webhook-signature'] as string) || '';
+
+      const bootstrapData = await getStoreBootstrapData();
+      const activeCashfree = getActiveCashfreeConfig(bootstrapData.settings);
+
+      if (signature && timestamp && activeCashfree.secretKey) {
+        const isValid = verifyCashfreeWebhookSignature({
+          rawBody: req.rawBody || JSON.stringify(req.body),
+          timestamp,
+          signature,
+          secretKey: activeCashfree.secretKey,
+        });
+
+        if (!isValid) {
+          console.warn('Cashfree webhook signature mismatch');
+          return res.status(400).json({ error: 'Webhook signature verification failed.' });
+        }
+      }
+
+      const payload = req.body || {};
+      const data = payload.data || {};
+      const orderData = data.order || payload.order || {};
+      const paymentData = data.payment || payload.payment || {};
+
+      const orderId = orderData.order_id || payload.order_id;
+      const paymentStatus = paymentData.payment_status || payload.payment_status;
+      const cfPaymentId = paymentData.cf_payment_id || payload.cf_payment_id || `cf_hook_${Date.now()}`;
+
+      if ((paymentStatus === 'SUCCESS' || orderData.order_status === 'PAID') && orderId) {
+        const result = await recordVerifiedOnlinePayment({
+          orderNumber: orderId,
+          provider: 'CASHFREE',
+          providerOrderId: String(orderData.cf_order_id || orderId),
+          providerPaymentId: String(cfPaymentId),
+          idempotencyKey: `cf_webhook_${cfPaymentId}`,
+          rawPayload: payload,
+          paymentMethodDetails: paymentData.payment_method ? JSON.stringify(paymentData.payment_method) : 'Cashfree Webhook',
+        });
+
+        return res.json({ status: 'ok', ...result });
+      }
+
+      res.json({ status: 'ignored', message: 'Event ignored or not payment success.' });
+    } catch (error: any) {
+      console.error('Cashfree webhook error:', error);
+      res.status(400).json({ error: error.message || 'Webhook processing failed.' });
+    }
+  });
+
+  app.post('/api/admin/cashfree/test-config', requireStaffOrOwner, async (req: AuthRequest, res) => {
+    try {
+      const result = await testCashfreeConnection(req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message || 'Test failed.' });
+    }
+  });
+
+  app.post('/api/admin/cashfree/save-config', requireOwner, async (req: AuthRequest, res) => {
+    try {
+      const { appId, secretKey, environment } = req.body;
+      if (!appId || !secretKey) {
+        return res.status(400).json({ error: 'App ID and Secret Key are required.' });
+      }
+
+      const cleanEnv = (environment || 'SANDBOX').toUpperCase() === 'PRODUCTION' ? 'PRODUCTION' : 'SANDBOX';
+
+      const updated = await updateStoreSettingByAdmin('cashfree_config', {
+        appId: appId.trim(),
+        secretKey: secretKey.trim(),
+        environment: cleanEnv,
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.dbUser?.email || 'admin',
+      });
+
+      res.json({
+        success: true,
+        setting: updated,
+        message: `Saved Cashfree Payment Gateway settings (${cleanEnv} mode).`,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to save Cashfree settings.' });
     }
   });
 

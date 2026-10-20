@@ -143,9 +143,12 @@ export default function App() {
   const [cmsPages, setCmsPages] = useState<any[]>([]);
   const [cmsRevisions, setCmsRevisions] = useState<any[]>([]);
   const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<{
+    cashfreeConfigured: boolean;
+    cashfreeEnvironment?: 'SANDBOX' | 'PRODUCTION';
+    cashfreeAppId?: string | null;
     razorpayConfigured: boolean;
     razorpayKeyId: string | null;
-  }>({ razorpayConfigured: false, razorpayKeyId: null });
+  }>({ cashfreeConfigured: false, razorpayConfigured: false, razorpayKeyId: null });
 
   // Catalogue search, filters, sorting, and budget filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -199,7 +202,7 @@ export default function App() {
 
   // Checkout state
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PAY_AT_STORE');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASHFREE_ONLINE');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -1070,6 +1073,45 @@ export default function App() {
       await loadStoreBootstrap();
       setActiveView('confirmation');
       window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Trigger Cashfree Drop-in Checkout modal if session token returned
+      if (data.cashfree?.paymentSessionId && (window as any).Cashfree) {
+        try {
+          const cashfree = (window as any).Cashfree({
+            mode: data.cashfree.environment === 'PRODUCTION' ? 'production' : 'sandbox',
+          });
+
+          cashfree.checkout({
+            paymentSessionId: data.cashfree.paymentSessionId,
+            redirectTarget: '_modal',
+          }).then(async (cfRes: any) => {
+            if (cfRes?.error) {
+              console.warn('Cashfree modal closed:', cfRes.error);
+            }
+            // Auto-verify payment status server side
+            try {
+              const vRes = await fetch('/api/payments/cashfree/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  orderNumber: data.order.orderNumber,
+                  cfOrderId: data.cashfree.cfOrderId,
+                }),
+              });
+              const vData = await vRes.json();
+              if (vRes.ok && vData.order) {
+                setConfirmedOrderData((prev: any) =>
+                  prev ? { ...prev, order: vData.order } : prev
+                );
+              }
+            } catch (vErr) {
+              console.error('Cashfree verification error:', vErr);
+            }
+          });
+        } catch (cfModalErr) {
+          console.error('Failed to trigger Cashfree checkout modal:', cfModalErr);
+        }
+      }
     } catch (err: any) {
       setCheckoutError(err.message || 'Could not complete order.');
     } finally {
@@ -3750,22 +3792,27 @@ export default function App() {
                             </label>
                           )}
 
-                          <label className="flex items-start gap-3 p-4 border border-stone-300 rounded-[24px] cursor-pointer hover:bg-stone-50">
+                          <label className="flex items-start gap-3 p-4 border border-emerald-300 bg-emerald-50/20 rounded-[24px] cursor-pointer hover:bg-emerald-50/40">
                             <input
                               type="radio"
                               name="paymentMethod"
-                              checked={paymentMethod === 'RAZORPAY_ONLINE'}
-                              onChange={() => setPaymentMethod('RAZORPAY_ONLINE')}
-                              className="mt-0.5"
+                              checked={paymentMethod === 'CASHFREE_ONLINE'}
+                              onChange={() => setPaymentMethod('CASHFREE_ONLINE')}
+                              className="mt-0.5 accent-emerald-700"
                             />
                             <div>
-                              <p className="font-bold text-stone-900">
-                                Online Payment via Razorpay (UPI / Cards / NetBanking)
-                              </p>
-                              <p className="text-stone-600 mt-0.5">
-                                {paymentGatewayStatus.razorpayConfigured
-                                  ? 'Verified server-side Razorpay order & HMAC-SHA256 signature verification.'
-                                  : 'Requires merchant RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET in environment. (Never simulated without real merchant credentials).'}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-bold text-stone-900">
+                                  Cashfree Payments (Google Pay, PhonePe, Paytm, UPI, Cards & NetBanking)
+                                </p>
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                                  INSTANT & SECURE
+                                </span>
+                              </div>
+                              <p className="text-stone-600 mt-1">
+                                {paymentGatewayStatus.cashfreeConfigured
+                                  ? `Verified Cashfree ${paymentGatewayStatus.cashfreeEnvironment === 'SANDBOX' ? 'Sandbox' : 'Production'} Payment Gateway. Opens drop-in modal checkout.`
+                                  : 'Requires CASHFREE_APP_ID & CASHFREE_SECRET_KEY in Admin Settings or .env file.'}
                               </p>
                             </div>
                           </label>

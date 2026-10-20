@@ -240,6 +240,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       storeSettings?.store_profile?.verificationStatus || 'UNVERIFIED_ADMIN_CONFIG_REQUIRED',
   });
 
+  // Cashfree Payment Gateway state
+  const [cashfreeAppId, setCashfreeAppId] = useState<string>(
+    storeSettings?.cashfree_config?.appId || 'TEST109386008d393f8344acfd7f332b00683901'
+  );
+  const [cashfreeSecretKey, setCashfreeSecretKey] = useState<string>(
+    storeSettings?.cashfree_config?.secretKey || 'cfsk_ma_test_95c8c9ca404d7f56cc76f146247fe886_e2ef4f0c'
+  );
+  const [cashfreeEnv, setCashfreeEnv] = useState<'SANDBOX' | 'PRODUCTION'>(
+    (storeSettings?.cashfree_config?.environment as 'SANDBOX' | 'PRODUCTION') || 'SANDBOX'
+  );
+  const [cashfreeTestResult, setCashfreeTestResult] = useState<any>(null);
+  const [cashfreeTesting, setCashfreeTesting] = useState(false);
+  const [cashfreeSaving, setCashfreeSaving] = useState(false);
+  const [cashfreeSaveStatus, setCashfreeSaveStatus] = useState<string | null>(null);
+
   const buildAdminHeaders = useCallback(
     (includeJson = true): Record<string, string> => {
       const headers: Record<string, string> = {};
@@ -827,9 +842,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (!res.ok) throw new Error('Failed to save store settings');
       setStatusBanner('Store pickup and profile settings updated.');
-      onRefreshStorefront();
     } catch (err: any) {
       setErrorMsg(err.message);
+    }
+  };
+
+  const handleTestCashfreeConfig = async () => {
+    setCashfreeTesting(true);
+    setCashfreeTestResult(null);
+    try {
+      const res = await fetch('/api/admin/cashfree/test-config', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          appId: cashfreeAppId,
+          secretKey: cashfreeSecretKey,
+          environment: cashfreeEnv,
+        }),
+      });
+      const data = await res.json();
+      setCashfreeTestResult(data);
+    } catch (err: any) {
+      setCashfreeTestResult({ success: false, message: err.message || 'Network error' });
+    } finally {
+      setCashfreeTesting(false);
+    }
+  };
+
+  const handleSaveCashfreeConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCashfreeSaving(true);
+    setCashfreeSaveStatus(null);
+    try {
+      const res = await fetch('/api/admin/cashfree/save-config', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          appId: cashfreeAppId,
+          secretKey: cashfreeSecretKey,
+          environment: cashfreeEnv,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save Cashfree credentials.');
+      setCashfreeSaveStatus('Saved Cashfree Payment Gateway settings successfully!');
+      await fetchAdminData();
+      onRefreshStorefront();
+    } catch (err: any) {
+      setCashfreeSaveStatus(`Error: ${err.message}`);
+    } finally {
+      setCashfreeSaving(false);
     }
   };
 
@@ -3422,9 +3484,132 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Store Pickup Configuration & Staff Permissions
                     </h1>
                     <p className="text-xs sm:text-sm text-slate-600">
-                      Configure verified physical counter address, operating hours, and staff roles.
+                      Configure verified physical counter address, operating hours, Cashfree payment gateway, and staff roles.
                     </p>
                   </div>
+
+                  {/* CASHFREE PAYMENT GATEWAY MANAGER */}
+                  <form
+                    onSubmit={handleSaveCashfreeConfig}
+                    className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-2xs"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-700 font-bold">
+                          INDIAN ONLINE PAYMENTS · CASHFREE PG
+                        </span>
+                        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          <span>Cashfree Payment Gateway Integration</span>
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              cashfreeAppId && cashfreeSecretKey
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {cashfreeAppId && cashfreeSecretKey ? 'Configured' : 'Needs Setup'}
+                          </span>
+                        </h2>
+                      </div>
+                      <div className="text-xs text-slate-500 font-mono">
+                        Webhook: <code className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">/api/webhooks/cashfree</code>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Environment Mode
+                        </label>
+                        <select
+                          value={cashfreeEnv}
+                          onChange={(e: any) => setCashfreeEnv(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded bg-white font-medium"
+                        >
+                          <option value="SANDBOX">SANDBOX (Test Mode)</option>
+                          <option value="PRODUCTION">PRODUCTION (Live Mode)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Cashfree App ID (Client ID)
+                        </label>
+                        <input
+                          type="text"
+                          value={cashfreeAppId}
+                          onChange={(e) => setCashfreeAppId(e.target.value)}
+                          placeholder="TEST... or PROD..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded font-mono text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Cashfree Secret Key
+                        </label>
+                        <input
+                          type="password"
+                          value={cashfreeSecretKey}
+                          onChange={(e) => setCashfreeSecretKey(e.target.value)}
+                          placeholder="cfsk_ma_..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {cashfreeTestResult && (
+                      <div
+                        className={`p-3 rounded text-xs border ${
+                          cashfreeTestResult.success
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-rose-50 border-rose-200 text-rose-900'
+                        }`}
+                      >
+                        <p className="font-bold">
+                          {cashfreeTestResult.success ? '✅ API Connection Successful' : '❌ API Connection Failed'}
+                        </p>
+                        <p className="mt-0.5">{cashfreeTestResult.message}</p>
+                      </div>
+                    )}
+
+                    {cashfreeSaveStatus && (
+                      <div className="p-2.5 bg-blue-50 border border-blue-200 text-blue-900 rounded text-xs font-medium">
+                        {cashfreeSaveStatus}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleTestCashfreeConfig}
+                        disabled={cashfreeTesting || !cashfreeAppId || !cashfreeSecretKey}
+                        className="px-3.5 py-2 bg-slate-100 text-slate-800 text-xs font-semibold rounded hover:bg-slate-200 disabled:opacity-50 cursor-pointer"
+                      >
+                        {cashfreeTesting ? 'Testing Credentials...' : 'Test API Credentials'}
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={cashfreeSaving}
+                        className="px-4 py-2 bg-emerald-700 text-white text-xs font-semibold rounded hover:bg-emerald-800 disabled:opacity-50 cursor-pointer"
+                      >
+                        {cashfreeSaving ? 'Saving...' : 'Save Cashfree Gateway Credentials'}
+                      </button>
+                    </div>
+
+                    {/* How to get Cashfree keys helper */}
+                    <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 space-y-2">
+                      <p className="font-bold text-slate-900">Where do I find my Cashfree App ID and Secret Key?</p>
+                      <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                        <li>Log in to your <a href="https://merchant.cashfree.com" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold">Cashfree Merchant Dashboard</a>.</li>
+                        <li>Switch the toggle at the top bar to <strong>Test/Sandbox</strong> or <strong>Production</strong>.</li>
+                        <li>In the left sidebar, navigate to <strong>Payment Gateway &gt; Developers &gt; API Keys</strong>.</li>
+                        <li>Click <strong>Generate API Keys</strong> to copy your <strong>App ID</strong> and <strong>Secret Key</strong>.</li>
+                        <li>In Cashfree Webhook settings, set URL to <code>https://{typeof window !== 'undefined' ? window.location.host : 'your-app-domain'}/api/webhooks/cashfree</code> with API Version <code>2023-08-01</code>.</li>
+                      </ol>
+                    </div>
+                  </form>
 
                   <form
                     onSubmit={handleSaveStoreSettings}
