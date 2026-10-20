@@ -452,8 +452,20 @@ const DEFAULT_PRODUCTS = [
         }),
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data) {
         setServerCartResult(data);
+        if (data.calculation?.items && Array.isArray(data.calculation.items)) {
+          const syncedItems: LocalCartItem[] = data.calculation.items.map((i: any) => ({
+            productId: Number(i.productId),
+            variantId: Number(i.variantId),
+            quantity: Number(i.quantity),
+          }));
+          const currentSig = cartItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
+          const syncedSig = syncedItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
+          if (syncedSig !== currentSig) {
+            setCartItems(syncedItems);
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to calculate cart:', err);

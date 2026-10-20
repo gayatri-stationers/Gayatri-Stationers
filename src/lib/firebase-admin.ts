@@ -1,11 +1,22 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import fs from 'fs';
+import path from 'path';
 
-if (!getApps().length) {
+let firebaseConfig: any = {};
+try {
+  const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+} catch {
+  // Optional fallback
+}
+
+if (!getApps().length && firebaseConfig.projectId) {
   initializeApp({
     projectId: firebaseConfig.projectId,
   });
 }
 
-export const adminAuth = getAuth();
+export const adminAuth = getApps().length ? getAuth() : null;

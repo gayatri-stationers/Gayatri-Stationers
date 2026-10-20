@@ -98,6 +98,8 @@ export async function syncUserWithDatabase(
 ): Promise<AuthenticatedUserRecord> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
+    const isOwnerEmail = DEFAULT_OWNER_EMAILS.includes(normalizedEmail);
+    const targetRole = forceRole || (isOwnerEmail ? 'owner' : 'customer');
 
     const existing = await db
       .select()
@@ -111,12 +113,14 @@ export async function syncUserWithDatabase(
         displayName && displayName.trim() && (!record.fullName || record.fullName === 'Gayatri Stationers User')
           ? displayName.trim()
           : record.fullName;
-      if ((forceRole && record.role !== forceRole) || nextName !== record.fullName || record.email !== normalizedEmail) {
+      const updatedRole = isOwnerEmail && record.role === 'customer' ? 'owner' : (forceRole || record.role);
+
+      if (updatedRole !== record.role || nextName !== record.fullName || record.email !== normalizedEmail) {
         const [updated] = await db
           .update(users)
           .set({
             email: normalizedEmail,
-            role: forceRole || record.role,
+            role: updatedRole,
             fullName: nextName,
             updatedAt: new Date(),
           })
@@ -127,15 +131,13 @@ export async function syncUserWithDatabase(
       return record;
     }
 
-    const initialRole = forceRole || 'owner';
-
     const result = await db
       .insert(users)
       .values({
         uid,
         email: normalizedEmail,
         fullName: displayName || normalizedEmail.split('@')[0],
-        role: initialRole,
+        role: targetRole,
       })
       .onConflictDoUpdate({
         target: users.uid,

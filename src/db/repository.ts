@@ -216,14 +216,87 @@ export async function getOrSyncCart(params: {
     let cartRecord: typeof carts.$inferSelect | undefined;
 
     if (userId) {
-      const existing = await db.select().from(carts).where(eq(carts.userId, userId)).limit(1);
-      cartRecord = existing[0];
-      if (!cartRecord) {
+      const existingUserCarts = await db.select().from(carts).where(eq(carts.userId, userId)).limit(1);
+      if (existingUserCarts.length > 0) {
+        cartRecord = existingUserCarts[0];
+      } else {
         const [created] = await db
           .insert(carts)
           .values({ userId, couponCode: couponCode || '' })
           .returning();
         cartRecord = created;
+      }
+
+      // Safe cart merge: Combine existing user cart items + guest session items + incoming itemsInput
+      const itemMap = new Map<string, { productId: number; variantId: number; quantity: number }>();
+
+      // 1. Add existing items in user's saved cart
+      const existingUserItems = await db.select().from(cartItems).where(eq(cartItems.cartId, cartRecord.id));
+      for (const item of existingUserItems) {
+        const key = `${item.productId}_${item.variantId}`;
+        itemMap.set(key, { productId: item.productId, variantId: item.variantId, quantity: item.quantity });
+      }
+
+      // 2. Add guest items stored under guestSessionId in database
+      if (guestSessionId) {
+        const existingGuestCarts = await db.select().from(carts).where(eq(carts.guestSessionId, guestSessionId)).limit(1);
+        if (existingGuestCarts.length > 0 && existingGuestCarts[0].id !== cartRecord.id) {
+          const guestCartId = existingGuestCarts[0].id;
+          const guestDbItems = await db.select().from(cartItems).where(eq(cartItems.cartId, guestCartId));
+          for (const gItem of guestDbItems) {
+            const key = `${gItem.productId}_${gItem.variantId}`;
+            const cur = itemMap.get(key);
+            if (cur) {
+              cur.quantity += gItem.quantity;
+            } else {
+              itemMap.set(key, { productId: gItem.productId, variantId: gItem.variantId, quantity: gItem.quantity });
+            }
+          }
+          // Consume guest cart in database
+          await db.delete(cartItems).where(eq(cartItems.cartId, guestCartId));
+          await db.delete(carts).where(eq(carts.id, guestCartId));
+        }
+      }
+
+      // 3. Add incoming itemsInput from client state (if provided and client has pending guest items)
+      if (itemsInput && Array.isArray(itemsInput)) {
+        for (const inputItem of itemsInput) {
+          if (inputItem.quantity <= 0) continue;
+          const key = `${inputItem.productId}_${inputItem.variantId}`;
+          const cur = itemMap.get(key);
+          if (cur) {
+            // If the item wasn't already combined from guest DB cart, add quantity
+            cur.quantity = Math.max(cur.quantity, Math.floor(inputItem.quantity));
+          } else {
+            itemMap.set(key, {
+              productId: inputItem.productId,
+              variantId: inputItem.variantId,
+              quantity: Math.floor(inputItem.quantity),
+            });
+          }
+        }
+      }
+
+      // 4. Save merged list into user cart
+      await db.delete(cartItems).where(eq(cartItems.cartId, cartRecord.id));
+      const mergedList = Array.from(itemMap.values()).filter((i) => i.quantity > 0);
+      if (mergedList.length > 0) {
+        await db.insert(cartItems).values(
+          mergedList.map((item) => ({
+            cartId: cartRecord!.id,
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+          }))
+        );
+      }
+
+      if (couponCode !== undefined) {
+        await db
+          .update(carts)
+          .set({ couponCode: couponCode.trim().toUpperCase(), updatedAt: new Date() })
+          .where(eq(carts.id, cartRecord.id));
+        cartRecord.couponCode = couponCode.trim().toUpperCase();
       }
     } else if (guestSessionId) {
       const existing = await db
@@ -239,21 +312,22 @@ export async function getOrSyncCart(params: {
           .returning();
         cartRecord = created;
       }
-    }
 
-    if (cartRecord && itemsInput !== undefined) {
-      await db.delete(cartItems).where(eq(cartItems.cartId, cartRecord.id));
-      const validItems = itemsInput.filter((i) => i.quantity > 0);
-      if (validItems.length > 0) {
-        await db.insert(cartItems).values(
-          validItems.map((item) => ({
-            cartId: cartRecord!.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            quantity: Math.floor(item.quantity),
-          }))
-        );
+      if (itemsInput !== undefined) {
+        await db.delete(cartItems).where(eq(cartItems.cartId, cartRecord.id));
+        const validItems = itemsInput.filter((i) => i.quantity > 0);
+        if (validItems.length > 0) {
+          await db.insert(cartItems).values(
+            validItems.map((item) => ({
+              cartId: cartRecord!.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              quantity: Math.floor(item.quantity),
+            }))
+          );
+        }
       }
+
       if (couponCode !== undefined) {
         await db
           .update(carts)
@@ -261,12 +335,6 @@ export async function getOrSyncCart(params: {
           .where(eq(carts.id, cartRecord.id));
         cartRecord.couponCode = couponCode.trim().toUpperCase();
       }
-    } else if (cartRecord && couponCode !== undefined) {
-      await db
-        .update(carts)
-        .set({ couponCode: couponCode.trim().toUpperCase(), updatedAt: new Date() })
-        .where(eq(carts.id, cartRecord.id));
-      cartRecord.couponCode = couponCode.trim().toUpperCase();
     }
 
     const activeCartItems = cartRecord

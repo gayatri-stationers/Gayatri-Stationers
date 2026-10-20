@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+// Isomorphic domain logic for Gayatri Stationers (Browser & Server)
 
 export type DiscountType = 'PERCENTAGE' | 'FLAT_PAISE';
 export type FulfilmentMethod = 'STORE_PICKUP' | 'HOME_DELIVERY';
@@ -286,6 +286,38 @@ export function getAllowedNextOrderStatuses(
   return map[currentStatus] || [];
 }
 
+function getRandomHexBytes(length: number): string {
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    const arr = new Uint8Array(length);
+    window.crypto.getRandomValues(arr);
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
+    const arr = new Uint8Array(length);
+    globalThis.crypto.getRandomValues(arr);
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+  }
+  return result;
+}
+
+function getRandomByteArray(length: number): Uint8Array {
+  const arr = new Uint8Array(length);
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(arr);
+  } else if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
+    globalThis.crypto.getRandomValues(arr);
+  } else {
+    for (let i = 0; i < length; i++) {
+      arr[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return arr;
+}
+
 /**
  * Verifies Razorpay payment signature using HMAC-SHA256.
  * Never trusts client flags; requires exact cryptographic match with server secret.
@@ -301,16 +333,13 @@ export function verifyRazorpayPaymentSignature(params: {
     return false;
   }
   const payload = `${razorpayOrderId}|${razorpayPaymentId}`;
-  const expectedSignature = crypto
-    .createHmac('sha256', keySecret)
-    .update(payload)
-    .digest('hex');
-
   try {
-    const a = Buffer.from(expectedSignature, 'utf8');
-    const b = Buffer.from(razorpaySignature, 'utf8');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
+    const nodeCrypto = require('crypto');
+    const expectedSignature = nodeCrypto
+      .createHmac('sha256', keySecret)
+      .update(payload)
+      .digest('hex');
+    return expectedSignature === razorpaySignature;
   } catch {
     return false;
   }
@@ -325,15 +354,13 @@ export function verifyRazorpayWebhookSignature(
   webhookSecret: string
 ): boolean {
   if (!rawBody || !signature || !webhookSecret) return false;
-  const expected = crypto
-    .createHmac('sha256', webhookSecret)
-    .update(rawBody)
-    .digest('hex');
   try {
-    const a = Buffer.from(expected, 'utf8');
-    const b = Buffer.from(signature, 'utf8');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
+    const nodeCrypto = require('crypto');
+    const expected = nodeCrypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+    return expected === signature;
   } catch {
     return false;
   }
@@ -344,14 +371,14 @@ export function verifyRazorpayWebhookSignature(
  */
 export function generateOrderNumber(): string {
   const datePart = new Date().toISOString().slice(2, 10).replace(/-/g, '');
-  const randomPart = crypto.randomBytes(2).toString('hex').toUpperCase();
+  const randomPart = getRandomHexBytes(2).toUpperCase();
   return `GS-${datePart}-${randomPart}`;
 }
 
 export function generatePickupCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let code = '';
-  const bytes = crypto.randomBytes(6);
+  const bytes = getRandomByteArray(6);
   for (let i = 0; i < 6; i++) {
     code += chars[bytes[i] % chars.length];
   }

@@ -1300,6 +1300,18 @@ async function startServer() {
     }
   });
 
+  // Unmatched API routes 404 handler (guarantees API requests return JSON, never HTML)
+  app.all('/api/*', (_req, res) => {
+    res.status(404).json({ error: 'API endpoint not found.' });
+  });
+
+  // Global Express Error Handler
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Express server error:', err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: err.message || 'An unexpected server error occurred.' });
+  });
+
   // Vite middleware for development or static serving in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
