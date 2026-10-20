@@ -1077,6 +1077,73 @@ const DEFAULT_PRODUCTS = [
   );
 
   // Place Order Submission
+  const loadCashfreeSdkScript = async (): Promise<any> => {
+    if ((window as any).Cashfree) return (window as any).Cashfree;
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[src*="cashfree.com"]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve((window as any).Cashfree));
+        existing.addEventListener('error', () => reject(new Error('Cashfree Payment SDK script failed to load')));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+      script.async = true;
+      script.onload = () => resolve((window as any).Cashfree);
+      script.onerror = () => reject(new Error('Cashfree Payment SDK script failed to load'));
+      document.head.appendChild(script);
+    });
+  };
+
+  const triggerCashfreePaymentModal = async (orderNumber: string) => {
+    try {
+      setCheckoutSubmitting(true);
+      const res = await fetch('/api/payments/cashfree/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.paymentSessionId) {
+        throw new Error(data.error || 'Failed to initialize Cashfree payment session.');
+      }
+
+      const CashfreeFactory = await loadCashfreeSdkScript();
+      if (!CashfreeFactory) {
+        throw new Error('Cashfree SDK is not available.');
+      }
+
+      const cashfree = CashfreeFactory({
+        mode: data.environment === 'PRODUCTION' ? 'production' : 'sandbox',
+      });
+
+      await cashfree.checkout({
+        paymentSessionId: data.paymentSessionId,
+        redirectTarget: '_modal',
+      });
+
+      // Auto-verify payment status server side after modal closes
+      const vRes = await fetch('/api/payments/cashfree/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderNumber,
+          cfOrderId: data.cfOrderId || orderNumber,
+        }),
+      });
+      const vData = await vRes.json();
+      if (vRes.ok && vData.order) {
+        setConfirmedOrderData((prev: any) =>
+          prev && prev.order?.orderNumber === orderNumber ? { ...prev, order: vData.order } : prev
+        );
+      }
+    } catch (err: any) {
+      console.error('Cashfree payment modal error:', err.message || err);
+    } finally {
+      setCheckoutSubmitting(false);
+    }
+  };
+
   const handlePlaceOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setCheckoutError(null);
@@ -1133,42 +1200,10 @@ const DEFAULT_PRODUCTS = [
       setActiveView('confirmation');
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Trigger Cashfree Drop-in Checkout modal if session token returned
-      if (data.cashfree?.paymentSessionId && (window as any).Cashfree) {
-        try {
-          const cashfree = (window as any).Cashfree({
-            mode: data.cashfree.environment === 'PRODUCTION' ? 'production' : 'sandbox',
-          });
-
-          cashfree.checkout({
-            paymentSessionId: data.cashfree.paymentSessionId,
-            redirectTarget: '_modal',
-          }).then(async (cfRes: any) => {
-            if (cfRes?.error) {
-              console.warn('Cashfree modal closed:', cfRes.error);
-            }
-            // Auto-verify payment status server side
-            try {
-              const vRes = await fetch('/api/payments/cashfree/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  orderNumber: data.order.orderNumber,
-                  cfOrderId: data.cashfree.cfOrderId,
-                }),
-              });
-              const vData = await vRes.json();
-              if (vRes.ok && vData.order) {
-                setConfirmedOrderData((prev: any) =>
-                  prev ? { ...prev, order: vData.order } : prev
-                );
-              }
-            } catch (vErr) {
-              console.error('Cashfree verification error:', vErr);
-            }
-          });
-        } catch (cfModalErr) {
-          console.error('Failed to trigger Cashfree checkout modal:', cfModalErr);
+      // Trigger Cashfree Drop-in Checkout modal if payment method is CASHFREE_ONLINE
+      if (paymentMethod === 'CASHFREE_ONLINE') {
+        if (data.cashfree?.paymentSessionId) {
+          triggerCashfreePaymentModal(data.order.orderNumber);
         }
       }
     } catch (err: any) {
@@ -4040,6 +4075,44 @@ const DEFAULT_PRODUCTS = [
                         {confirmedOrderData.shipmentDetails.state} -{' '}
                         {confirmedOrderData.shipmentDetails.pincode}
                       </p>
+                    </div>
+                  )}
+
+                  {confirmedOrderData.order.paymentMethod === 'CASHFREE_ONLINE' && (
+                    <div className={`p-5 rounded-[24px] border text-xs space-y-2.5 ${
+                      confirmedOrderData.order.paymentStatus === 'PAID'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                        : 'bg-amber-50 border-amber-300 text-amber-950'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-sm">
+                          {confirmedOrderData.order.paymentStatus === 'PAID'
+                            ? '✓ Online Payment Verified & Confirmed'
+                            : '⚡ Payment Pending — Complete via Cashfree Gateway'}
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-white/80 border border-current">
+                          {confirmedOrderData.order.paymentStatus}
+                        </span>
+                      </div>
+                      {confirmedOrderData.order.paymentStatus !== 'PAID' ? (
+                        <>
+                          <p className="text-amber-900 leading-relaxed">
+                            Your order is saved as <strong>Pending Payment</strong>. Click below to open the Cashfree Drop-in Payment Gateway to pay via <strong>UPI (GPay / PhonePe / Paytm / BHIM)</strong>, Credit/Debit Cards, or NetBanking.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => triggerCashfreePaymentModal(confirmedOrderData.order.orderNumber)}
+                            disabled={checkoutSubmitting}
+                            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-full shadow-md transition-all cursor-pointer flex items-center gap-2"
+                          >
+                            <span>Pay Now via UPI / Cards / NetBanking (Cashfree)</span>
+                          </button>
+                        </>
+                      ) : (
+                        <p className="text-emerald-800 text-[11px]">
+                          Payment was securely verified with Cashfree Payments PG. Thank you for your purchase!
+                        </p>
+                      )}
                     </div>
                   )}
 
