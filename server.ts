@@ -36,6 +36,7 @@ import {
   upsertCouponByAdmin,
   updateStoreSettingByAdmin,
   updateUserRoleById,
+  updateUserProfileById,
   upsertCategoryByAdmin,
   deleteOrArchiveCategoryByAdmin,
   upsertBrandByAdmin,
@@ -290,6 +291,51 @@ async function startServer() {
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Customer sign-in failed.' });
+    }
+  });
+
+  app.post('/api/auth/profile', optionalAuth, async (req: AuthRequest, res) => {
+    try {
+      const fullName = String(req.body?.fullName || '').trim();
+      const phone = String(req.body?.phone || '').trim();
+      const email = String(req.body?.email || req.dbUser?.email || '').trim().toLowerCase();
+
+      if (req.dbUser?.id) {
+        const updated = await updateUserProfileById({
+          userId: req.dbUser.id,
+          fullName: fullName || undefined,
+          phone,
+        });
+        return res.json({ user: updated || { ...req.dbUser, fullName, phone } });
+      }
+
+      if (email && email.includes('@')) {
+        const synced = await syncUserWithDatabase(
+          `cust-${email}`,
+          email,
+          fullName || email.split('@')[0],
+          'customer'
+        );
+        const updated = await updateUserProfileById({
+          userId: synced.id,
+          fullName: fullName || undefined,
+          phone,
+        });
+        return res.json({ user: updated || synced });
+      }
+
+      return res.json({
+        user: {
+          id: 2,
+          uid: 'cust-profile',
+          email: email || 'customer@gayatristationers.com',
+          fullName: fullName || 'Valued Customer',
+          phone,
+          role: 'customer',
+        },
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to update profile.' });
     }
   });
 

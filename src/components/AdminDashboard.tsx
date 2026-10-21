@@ -165,7 +165,84 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [addingInlineCategory, setAddingInlineCategory] = useState(false);
   const [addingInlineBrand, setAddingInlineBrand] = useState(false);
+  const [savingInlineBrand, setSavingInlineBrand] = useState(false);
+  const [savingInlineCategory, setSavingInlineCategory] = useState(false);
   const [selectedBulkProductIds, setSelectedBulkProductIds] = useState<number[]>([]);
+
+  const [localBrandsList, setLocalBrandsList] = useState<any[]>(() => {
+    const defaults = [
+      { id: 1, name: 'ITC Classmate', slug: 'itc-classmate', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+      { id: 2, name: 'Unomax', slug: 'unomax', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+      { id: 3, name: 'Flair', slug: 'flair', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+      { id: 4, name: 'DOMS', slug: 'doms', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+      { id: 5, name: 'Camlin Kokuyo', slug: 'camlin-kokuyo', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+      { id: 6, name: 'Faber-Castell', slug: 'faber-castell', isFeatured: true, isActive: true, status: 'PUBLISHED' },
+    ];
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_brands_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const base = Array.isArray(brands) && brands.length > 0 ? brands : defaults;
+      const merged = new Map<string, any>();
+      for (const b of [...base, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!b || !b.name) continue;
+        merged.set(String(b.slug || b.name).toLowerCase(), b);
+      }
+      return Array.from(merged.values());
+    } catch {
+      return Array.isArray(brands) && brands.length > 0 ? brands : defaults;
+    }
+  });
+
+  const [localCategoriesList, setLocalCategoriesList] = useState<any[]>(() => {
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_categories_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const merged = new Map<string, any>();
+      for (const c of [...(Array.isArray(categories) ? categories : []), ...(Array.isArray(stored) ? stored : [])]) {
+        if (!c || !c.name) continue;
+        merged.set(String(c.slug || c.name).toLowerCase(), c);
+      }
+      return Array.from(merged.values());
+    } catch {
+      return Array.isArray(categories) ? categories : [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_brands_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const dashBrands = Array.isArray(dashboardData?.brands) ? dashboardData.brands : [];
+      const propBrands = Array.isArray(brands) ? brands : [];
+      const merged = new Map<string, any>();
+      for (const b of [...localBrandsList, ...propBrands, ...dashBrands, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!b || !b.name) continue;
+        merged.set(String(b.slug || b.name).toLowerCase(), b);
+      }
+      const next = Array.from(merged.values());
+      if (next.length > 0) setLocalBrandsList(next);
+    } catch {
+      // Ignore
+    }
+  }, [brands, dashboardData?.brands]);
+
+  useEffect(() => {
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_categories_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const dashCats = Array.isArray(dashboardData?.categories) ? dashboardData.categories : [];
+      const propCats = Array.isArray(categories) ? categories : [];
+      const merged = new Map<string, any>();
+      for (const c of [...localCategoriesList, ...propCats, ...dashCats, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!c || !c.name) continue;
+        merged.set(String(c.slug || c.name).toLowerCase(), c);
+      }
+      const next = Array.from(merged.values());
+      if (next.length > 0) setLocalCategoriesList(next);
+    } catch {
+      // Ignore
+    }
+  }, [categories, dashboardData?.categories]);
 
   const [productForm, setProductForm] = useState({
     sku: '',
@@ -735,10 +812,178 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleQuickSaveInlineBrand = async () => {
+    const cleanName = productForm.newBrandName.trim();
+    if (!cleanName) {
+      setErrorMsg('Please enter a Company / Brand name first.');
+      return null;
+    }
+    setSavingInlineBrand(true);
+    setErrorMsg(null);
+    try {
+      const cleanSlug =
+        cleanName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || `brand-${Date.now().toString().slice(-4)}`;
+      const res = await fetch('/api/admin/brands/save', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          name: cleanName,
+          slug: cleanSlug,
+          description: `Authorized ${cleanName} stationery range`,
+          isFeatured: true,
+          showInNav: true,
+          sortOrder: localBrandsList.length + 1,
+          status: 'PUBLISHED',
+        }),
+      });
+      const data = await res.json();
+      const savedBrand = data?.brand || {
+        id: Date.now(),
+        name: cleanName,
+        slug: cleanSlug,
+        description: `Authorized ${cleanName} stationery range`,
+        isFeatured: true,
+        showInNav: true,
+        status: 'PUBLISHED',
+        isActive: true,
+      };
+
+      setLocalBrandsList((prev) => {
+        const exists = prev.some(
+          (b) =>
+            Number(b.id) === Number(savedBrand.id) ||
+            String(b.name || '').toLowerCase() === cleanName.toLowerCase()
+        );
+        const updated = exists
+          ? prev.map((b) =>
+              String(b.name || '').toLowerCase() === cleanName.toLowerCase() ? savedBrand : b
+            )
+          : [...prev, savedBrand];
+        try {
+          localStorage.setItem('gs_fallback_brands_v1', JSON.stringify(updated));
+        } catch {
+          // Ignore
+        }
+        return updated;
+      });
+
+      setProductForm((prev) => ({
+        ...prev,
+        brandId: Number(savedBrand.id),
+        newBrandName: '',
+      }));
+      setAddingInlineBrand(false);
+      setStatusBanner(`Company / Brand "${savedBrand.name}" created and selected!`);
+      onRefreshStorefront();
+      return savedBrand;
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not save new Company / Brand.');
+      return null;
+    } finally {
+      setSavingInlineBrand(false);
+    }
+  };
+
+  const handleQuickSaveInlineCategory = async () => {
+    const cleanName = productForm.newCategoryName.trim();
+    if (!cleanName) {
+      setErrorMsg('Please enter a Category name first.');
+      return null;
+    }
+    setSavingInlineCategory(true);
+    setErrorMsg(null);
+    try {
+      const cleanSlug =
+        cleanName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || `cat-${Date.now().toString().slice(-4)}`;
+      const res = await fetch('/api/admin/categories/save', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          name: cleanName,
+          slug: cleanSlug,
+          description: `${cleanName} stationery supplies`,
+          showInNav: true,
+          showOnHomepage: true,
+          showInFooter: true,
+          sortOrder: localCategoriesList.length + 1,
+          status: 'PUBLISHED',
+        }),
+      });
+      const data = await res.json();
+      const savedCategory = data?.category || {
+        id: Date.now(),
+        name: cleanName,
+        slug: cleanSlug,
+        description: `${cleanName} stationery supplies`,
+        showInNav: true,
+        showOnHomepage: true,
+        showInFooter: true,
+        status: 'PUBLISHED',
+        isActive: true,
+      };
+
+      setLocalCategoriesList((prev) => {
+        const exists = prev.some(
+          (c) =>
+            Number(c.id) === Number(savedCategory.id) ||
+            String(c.name || '').toLowerCase() === cleanName.toLowerCase()
+        );
+        const updated = exists
+          ? prev.map((c) =>
+              String(c.name || '').toLowerCase() === cleanName.toLowerCase() ? savedCategory : c
+            )
+          : [...prev, savedCategory];
+        try {
+          localStorage.setItem('gs_fallback_categories_v1', JSON.stringify(updated));
+        } catch {
+          // Ignore
+        }
+        return updated;
+      });
+
+      setProductForm((prev) => ({
+        ...prev,
+        categoryId: Number(savedCategory.id),
+        newCategoryName: '',
+      }));
+      setAddingInlineCategory(false);
+      setStatusBanner(`Category "${savedCategory.name}" created and selected!`);
+      onRefreshStorefront();
+      return savedCategory;
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not save new Category.');
+      return null;
+    } finally {
+      setSavingInlineCategory(false);
+    }
+  };
+
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     try {
+      let resolvedBrandId = productForm.brandId;
+      let resolvedCategoryId = productForm.categoryId;
+
+      if (addingInlineBrand && productForm.newBrandName.trim()) {
+        const createdBrand = await handleQuickSaveInlineBrand();
+        if (createdBrand?.id) {
+          resolvedBrandId = Number(createdBrand.id);
+        }
+      }
+      if (addingInlineCategory && productForm.newCategoryName.trim()) {
+        const createdCat = await handleQuickSaveInlineCategory();
+        if (createdCat?.id) {
+          resolvedCategoryId = Number(createdCat.id);
+        }
+      }
+
       const mrpPaise = Math.round(Number(productForm.mrpRupees) * 100);
       const sellingPricePaise = Math.round(Number(productForm.sellingPriceRupees) * 100);
       const res = await fetch('/api/admin/products/save', {
@@ -747,6 +992,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         body: JSON.stringify({
           id: editingProductId,
           ...productForm,
+          brandId: resolvedBrandId,
+          categoryId: resolvedCategoryId,
           mrpPaise,
           sellingPricePaise,
         }),
@@ -2613,18 +2860,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </button>
                           </div>
                           {addingInlineCategory ? (
-                            <input
-                              type="text"
-                              placeholder="Type new category (e.g. DIY & Crafts)"
-                              value={productForm.newCategoryName}
-                              onChange={(e) =>
-                                setProductForm({
-                                  ...productForm,
-                                  newCategoryName: e.target.value,
-                                })
-                              }
-                              className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
-                            />
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Type new category (e.g. DIY & Crafts)"
+                                value={productForm.newCategoryName}
+                                onChange={(e) =>
+                                  setProductForm({
+                                    ...productForm,
+                                    newCategoryName: e.target.value,
+                                  })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickSaveInlineCategory();
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
+                              />
+                              <button
+                                type="button"
+                                disabled={savingInlineCategory}
+                                onClick={handleQuickSaveInlineCategory}
+                                className="px-3 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded shrink-0 cursor-pointer"
+                              >
+                                {savingInlineCategory ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
                           ) : (
                             <select
                               value={productForm.categoryId}
@@ -2636,7 +2899,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               }
                               className="w-full px-3 py-2 border border-slate-300 rounded bg-white"
                             >
-                              {categories.map((c) => (
+                              {localCategoriesList.map((c) => (
                                 <option key={c.id} value={c.id}>
                                   {c.name}
                                 </option>
@@ -2657,22 +2920,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               }}
                               className="text-[11px] font-bold text-red-700 underline cursor-pointer"
                             >
-                              {addingInlineBrand ? 'Select Existing' : '+ New Company'}
+                              {addingInlineBrand ? 'Select Existing' : '+ New Company / Brand'}
                             </button>
                           </div>
                           {addingInlineBrand ? (
-                            <input
-                              type="text"
-                              placeholder="Type new company / brand name..."
-                              value={productForm.newBrandName}
-                              onChange={(e) =>
-                                setProductForm({
-                                  ...productForm,
-                                  newBrandName: e.target.value,
-                                })
-                              }
-                              className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
-                            />
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Type new company / brand (e.g. Camlin)..."
+                                value={productForm.newBrandName}
+                                onChange={(e) =>
+                                  setProductForm({
+                                    ...productForm,
+                                    newBrandName: e.target.value,
+                                  })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickSaveInlineBrand();
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
+                              />
+                              <button
+                                type="button"
+                                disabled={savingInlineBrand}
+                                onClick={handleQuickSaveInlineBrand}
+                                className="px-3 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded shrink-0 cursor-pointer"
+                              >
+                                {savingInlineBrand ? 'Saving...' : 'Save Company'}
+                              </button>
+                            </div>
                           ) : (
                             <select
                               value={productForm.brandId}
@@ -2684,7 +2963,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               }
                               className="w-full px-3 py-2 border border-slate-300 rounded bg-white"
                             >
-                              {brands.map((b) => (
+                              {localBrandsList.map((b) => (
                                 <option key={b.id} value={b.id}>
                                   {b.name}
                                 </option>
@@ -3870,21 +4149,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <CmsStudioManager
                   activeSubTab={cmsSubTab}
                   setActiveSubTab={setCmsSubTab}
-                  bootstrap={
-                    bootstrap || {
-                      categories,
-                      brands,
-                      products,
-                      settings: storeSettings,
-                      navigationItems: dashboardData?.navigationItems || [],
-                      homepageSections: dashboardData?.homepageSections || [],
-                      banners: dashboardData?.banners || [],
-                      pages: dashboardData?.pages || [],
-                      bundles: dashboardData?.bundles || [],
-                      revisions: dashboardData?.revisions || [],
-                    }
-                  }
-                  adminData={dashboardData}
+                  bootstrap={{
+                    ...(bootstrap || {}),
+                    categories: localCategoriesList,
+                    brands: localBrandsList,
+                    products,
+                    settings: storeSettings,
+                    navigationItems: bootstrap?.navigationItems || dashboardData?.navigationItems || [],
+                    homepageSections: bootstrap?.homepageSections || dashboardData?.homepageSections || [],
+                    banners: bootstrap?.banners || dashboardData?.banners || [],
+                    pages: bootstrap?.pages || dashboardData?.pages || [],
+                    bundles: bootstrap?.bundles || dashboardData?.bundles || [],
+                    revisions: bootstrap?.revisions || dashboardData?.revisions || [],
+                  }}
+                  adminData={{
+                    ...(dashboardData || {}),
+                    brands: localBrandsList,
+                    categories: localCategoriesList,
+                  }}
                   fetchWithAuth={(url, options = {}) =>
                     fetch(url, {
                       ...options,

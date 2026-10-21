@@ -227,68 +227,45 @@ export async function getOrSyncCart(params: {
         cartRecord = created;
       }
 
-      // Safe cart merge: Combine existing user cart items + guest session items + incoming itemsInput
-      const itemMap = new Map<string, { productId: number; variantId: number; quantity: number }>();
-
-      // 1. Add existing items in user's saved cart
-      const existingUserItems = await db.select().from(cartItems).where(eq(cartItems.cartId, cartRecord.id));
-      for (const item of existingUserItems) {
-        const key = `${item.productId}_${item.variantId}`;
-        itemMap.set(key, { productId: item.productId, variantId: item.variantId, quantity: item.quantity });
-      }
-
-      // 2. Add guest items stored under guestSessionId in database
+      // Authoritative cart sync: when client sends itemsInput, replace DB cart items with exact client state
+      // so quantities never double on sign-in/checkout and removed/decremented items never reappear.
       if (guestSessionId) {
-        const existingGuestCarts = await db.select().from(carts).where(eq(carts.guestSessionId, guestSessionId)).limit(1);
+        const existingGuestCarts = await db
+          .select()
+          .from(carts)
+          .where(eq(carts.guestSessionId, guestSessionId))
+          .limit(1);
         if (existingGuestCarts.length > 0 && existingGuestCarts[0].id !== cartRecord.id) {
           const guestCartId = existingGuestCarts[0].id;
-          const guestDbItems = await db.select().from(cartItems).where(eq(cartItems.cartId, guestCartId));
-          for (const gItem of guestDbItems) {
-            const key = `${gItem.productId}_${gItem.variantId}`;
-            const cur = itemMap.get(key);
-            if (cur) {
-              cur.quantity += gItem.quantity;
-            } else {
-              itemMap.set(key, { productId: gItem.productId, variantId: gItem.variantId, quantity: gItem.quantity });
-            }
-          }
-          // Consume guest cart in database
           await db.delete(cartItems).where(eq(cartItems.cartId, guestCartId));
           await db.delete(carts).where(eq(carts.id, guestCartId));
         }
       }
 
-      // 3. Add incoming itemsInput from client state (if provided and client has pending guest items)
-      if (itemsInput && Array.isArray(itemsInput)) {
+      if (itemsInput !== undefined && Array.isArray(itemsInput)) {
+        const dedupMap = new Map<string, { productId: number; variantId: number; quantity: number }>();
         for (const inputItem of itemsInput) {
-          if (inputItem.quantity <= 0) continue;
+          const qty = Math.floor(Number(inputItem.quantity) || 0);
+          if (qty <= 0) continue;
           const key = `${inputItem.productId}_${inputItem.variantId}`;
-          const cur = itemMap.get(key);
-          if (cur) {
-            // If the item wasn't already combined from guest DB cart, add quantity
-            cur.quantity = Math.max(cur.quantity, Math.floor(inputItem.quantity));
-          } else {
-            itemMap.set(key, {
-              productId: inputItem.productId,
-              variantId: inputItem.variantId,
-              quantity: Math.floor(inputItem.quantity),
-            });
-          }
+          dedupMap.set(key, {
+            productId: Number(inputItem.productId),
+            variantId: Number(inputItem.variantId),
+            quantity: qty,
+          });
         }
-      }
-
-      // 4. Save merged list into user cart
-      await db.delete(cartItems).where(eq(cartItems.cartId, cartRecord.id));
-      const mergedList = Array.from(itemMap.values()).filter((i) => i.quantity > 0);
-      if (mergedList.length > 0) {
-        await db.insert(cartItems).values(
-          mergedList.map((item) => ({
-            cartId: cartRecord!.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            quantity: item.quantity,
-          }))
-        );
+        await db.delete(cartItems).where(eq(cartItems.cartId, cartRecord.id));
+        const cleanList = Array.from(dedupMap.values());
+        if (cleanList.length > 0) {
+          await db.insert(cartItems).values(
+            cleanList.map((item) => ({
+              cartId: cartRecord!.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              quantity: item.quantity,
+            }))
+          );
+        }
       }
 
       if (couponCode !== undefined) {
@@ -359,7 +336,12 @@ export async function getOrSyncCart(params: {
 
     for (const ci of activeCartItems) {
       const p = prodMap[ci.productId];
-      const v = varMap[ci.variantId];
+      const matchedVar = varMap[ci.variantId];
+      const v =
+        matchedVar && matchedVar.productId === p?.id
+          ? matchedVar
+          : allVariants.find((av) => av.productId === p?.id && av.isActive) ||
+            allVariants.find((av) => av.productId === p?.id);
       if (!p || !v || !p.isActive || !v.isActive) {
         warnings.push('An item in your cart is no longer available and was excluded.');
         continue;
@@ -556,17 +538,19 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
           .where(and(eq(serviceablePincodes.pincode, pin), eq(serviceablePincodes.isActive, true)))
           .limit(1);
 
-        pincodeRule = foundPins[0] || {
-          id: 999,
-          pincode: pin,
-          city: input.shippingAddress.city || 'Agra',
-          state: input.shippingAddress.state || 'Uttar Pradesh',
-          deliveryFeePaise: 4000,
-          freeDeliveryThresholdPaise: 49900,
-          codAvailable: true,
-          estimatedDays: '2–4 Business Days',
-          isActive: true,
-        };
+        pincodeRule = foundPins[0]
+          ? { ...foundPins[0], deliveryFeePaise: 0, freeDeliveryThresholdPaise: 0 }
+          : {
+              id: 999,
+              pincode: pin,
+              city: input.shippingAddress.city || 'Agra',
+              state: input.shippingAddress.state || 'Uttar Pradesh',
+              deliveryFeePaise: 0,
+              freeDeliveryThresholdPaise: 0,
+              codAvailable: true,
+              estimatedDays: '2–4 Business Days',
+              isActive: true,
+            };
       }
 
       // 2. Load and validate all requested variants & products inside the transaction
@@ -578,7 +562,7 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
 
       const pricedInputs: PricedLineItemInput[] = [];
 
-      for (const reqItem of input.items) {
+      for (const reqItem of input.items as any[]) {
         const qty = Math.floor(reqItem.quantity);
         if (qty <= 0) continue;
 
@@ -587,11 +571,13 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
           prodMap[mappedProdId] ||
           allProducts.find((ap) => ap.isActive) ||
           allProducts[0];
+        const candidateVar = varMap[reqItem.variantId];
         const v =
-          varMap[reqItem.variantId] ||
-          allVariants.find((av) => av.productId === p?.id && av.isActive) ||
-          allVariants.find((av) => av.productId === p?.id) ||
-          allVariants[0];
+          candidateVar && candidateVar.productId === p?.id
+            ? candidateVar
+            : allVariants.find((av) => av.productId === p?.id && av.isActive) ||
+              allVariants.find((av) => av.productId === p?.id) ||
+              allVariants[0];
 
         if (!p || !v) {
           throw new Error(`One of the selected items is no longer available.`);
@@ -602,15 +588,26 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
           );
         }
 
+        const explicitUnitPrice = Number(reqItem.unitPricePaise);
+        const unitPricePaise =
+          Number.isFinite(explicitUnitPrice) && explicitUnitPrice > 0
+            ? explicitUnitPrice
+            : v.sellingPricePaise;
+        const explicitUnitMrp = Number(reqItem.unitMrpPaise);
+        const unitMrpPaise =
+          Number.isFinite(explicitUnitMrp) && explicitUnitMrp >= unitPricePaise
+            ? explicitUnitMrp
+            : Math.max(v.mrpPaise, unitPricePaise);
+
         pricedInputs.push({
           productId: p.id,
           variantId: v.id,
-          productName: p.name,
-          variantName: v.variantName,
-          sku: v.sku,
+          productName: reqItem.productName || p.name,
+          variantName: reqItem.variantName || v.variantName,
+          sku: reqItem.sku || v.sku,
           quantity: qty,
-          unitMrpPaise: v.mrpPaise,
-          unitPricePaise: v.sellingPricePaise,
+          unitMrpPaise,
+          unitPricePaise,
           taxRatePercent: p.taxRatePercent,
           availableStock: v.stockQuantity,
           pickupEligible: p.pickupEligible,
@@ -796,6 +793,23 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
         note: `Order ${orderNumber} placed via ${input.fulfilmentMethod} (${input.paymentMethod}). Stock reserved.`,
       });
 
+      // 10. Clear ordered items from user/guest carts so old items never carry over to future orders
+      if (input.userId) {
+        const userCarts = await tx.select().from(carts).where(eq(carts.userId, input.userId));
+        for (const uc of userCarts) {
+          await tx.delete(cartItems).where(eq(cartItems.cartId, uc.id));
+        }
+      }
+      if (input.guestSessionId) {
+        const guestCarts = await tx
+          .select()
+          .from(carts)
+          .where(eq(carts.guestSessionId, input.guestSessionId));
+        for (const gc of guestCarts) {
+          await tx.delete(cartItems).where(eq(cartItems.cartId, gc.id));
+        }
+      }
+
       // 10. Create In-App Notification Record
       await tx.insert(notifications).values({
         userId: input.userId || null,
@@ -810,14 +824,15 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
         status: 'DELIVERED_IN_APP',
       });
 
-      // 11. Clear user's persistent cart if applicable
+      // 11. Clear user's and guest's persistent cart if applicable
       if (input.userId) {
         const userCarts = await tx.select().from(carts).where(eq(carts.userId, input.userId));
         for (const c of userCarts) {
           await tx.delete(cartItems).where(eq(cartItems.cartId, c.id));
           await tx.update(carts).set({ couponCode: '' }).where(eq(carts.id, c.id));
         }
-      } else if (input.guestSessionId) {
+      }
+      if (input.guestSessionId) {
         const guestCarts = await tx
           .select()
           .from(carts)
@@ -2280,6 +2295,31 @@ export async function updateUserRoleById(userId: number, role: 'customer' | 'sta
   } catch (error) {
     console.error('Failed to update user role:', error);
     throw new Error('Failed to update user role.', { cause: error });
+  }
+}
+
+export async function updateUserProfileById(params: {
+  userId: number;
+  fullName?: string;
+  phone?: string;
+}) {
+  try {
+    const updateSet: Record<string, any> = { updatedAt: new Date() };
+    if (params.fullName !== undefined && params.fullName.trim()) {
+      updateSet.fullName = params.fullName.trim();
+    }
+    if (params.phone !== undefined) {
+      updateSet.phone = params.phone.trim() || null;
+    }
+    const [updated] = await db
+      .update(users)
+      .set(updateSet)
+      .where(eq(users.id, params.userId))
+      .returning();
+    return updated;
+  } catch (error) {
+    console.error('Failed to update user profile:', error);
+    throw new Error('Failed to update user profile.', { cause: error });
   }
 }
 

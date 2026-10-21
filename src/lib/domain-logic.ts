@@ -161,8 +161,8 @@ export function calculateOrderTotals(params: {
     fulfilmentMethod,
     coupon,
     pincodeRule,
-    defaultDeliveryFeePaise = 6000,
-    defaultFreeThresholdPaise = 59900,
+    defaultDeliveryFeePaise = 0,
+    defaultFreeThresholdPaise = 0,
   } = params;
 
   let mrpTotalPaise = 0;
@@ -212,17 +212,8 @@ export function calculateOrderTotals(params: {
 
   const discountedSubtotalPaise = Math.max(0, subtotalPaise - couponDiscountPaise);
 
-  let shippingPaise = 0;
-  if (fulfilmentMethod === 'STORE_PICKUP' || subtotalPaise === 0) {
-    shippingPaise = 0;
-  } else {
-    const fee = pincodeRule ? pincodeRule.deliveryFeePaise : defaultDeliveryFeePaise;
-    const threshold = pincodeRule
-      ? pincodeRule.freeDeliveryThresholdPaise
-      : defaultFreeThresholdPaise;
-    shippingPaise =
-      threshold > 0 && discountedSubtotalPaise >= threshold ? 0 : fee;
-  }
+  // Free delivery / zero extra gateway or shipping surcharge so gateway price matches item total
+  const shippingPaise = 0;
 
   const totalPaise = discountedSubtotalPaise + shippingPaise;
 

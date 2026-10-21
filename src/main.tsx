@@ -28,6 +28,25 @@ function saveStoredOrder(orderBundle: any) {
   }
 }
 
+function getStoredList(key: string): any[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredList(key: string, list: any[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Response {
   const method = (init?.method || 'GET').toUpperCase();
   let body: any = {};
@@ -45,12 +64,13 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
       headers: { 'Content-Type': 'application/json' },
     });
 
-  // 1. Auth & Admin Login Endpoints
+  // 1. Auth, Admin Login & Profile Endpoints
   if (
     apiPath.startsWith('/api/admin/auth/login') ||
     apiPath.startsWith('/api/admin/auth/google') ||
     apiPath.startsWith('/api/auth/promote-owner') ||
-    apiPath.startsWith('/api/auth/switch-role')
+    apiPath.startsWith('/api/auth/switch-role') ||
+    apiPath.startsWith('/api/auth/role-switch')
   ) {
     const email = String(body.email || 'vainhavgupta20052014@gmail.com')
       .trim()
@@ -61,7 +81,7 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
       uid: `admin-owner-${email}`,
       email,
       fullName: body.fullName || email.split('@')[0] || 'Gayatri Stationers Admin',
-      phone: null,
+      phone: body.phone || null,
       role,
     };
     const token = `gs_admin_direct_owner:${email}`;
@@ -97,6 +117,50 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
     return jsonResponse({ authenticated: true, token, expiresAt, user });
   }
 
+  if (apiPath.startsWith('/api/auth/profile')) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('gs_admin_session_v1') || 'null');
+      const existingProfile = JSON.parse(localStorage.getItem('gs_user_profile_v1') || '{}');
+      const baseUser = saved?.user || {
+        id: 2,
+        uid: 'cust-profile',
+        email: body.email || existingProfile.email || 'customer@gayatristationers.com',
+        role: 'customer',
+      };
+      const updatedUser = {
+        ...baseUser,
+        fullName: body.fullName || baseUser.fullName || existingProfile.fullName || 'Valued Customer',
+        phone: body.phone !== undefined ? body.phone : baseUser.phone || existingProfile.phone || '',
+        email: body.email || baseUser.email || existingProfile.email,
+        addressLine1: body.addressLine1 ?? existingProfile.addressLine1 ?? '',
+        addressLine2: body.addressLine2 ?? existingProfile.addressLine2 ?? '',
+        landmark: body.landmark ?? existingProfile.landmark ?? '',
+        city: body.city ?? existingProfile.city ?? 'Agra',
+        state: body.state ?? existingProfile.state ?? 'Uttar Pradesh',
+        pincode: body.pincode ?? existingProfile.pincode ?? '282010',
+      };
+      localStorage.setItem('gs_user_profile_v1', JSON.stringify(updatedUser));
+      if (saved) {
+        localStorage.setItem(
+          'gs_admin_session_v1',
+          JSON.stringify({ ...saved, user: updatedUser })
+        );
+      }
+      return jsonResponse({ user: updatedUser });
+    } catch {
+      return jsonResponse({
+        user: {
+          id: 2,
+          uid: 'cust-profile',
+          email: body.email || 'customer@gayatristationers.com',
+          fullName: body.fullName || 'Valued Customer',
+          phone: body.phone || '',
+          role: 'customer',
+        },
+      });
+    }
+  }
+
   if (apiPath.startsWith('/api/auth/me')) {
     try {
       const saved = JSON.parse(localStorage.getItem('gs_admin_session_v1') || 'null');
@@ -117,57 +181,73 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
     });
   }
 
-  // 2. Order Placement (POST /api/orders)
+  // 2. Order Placement (POST /api/orders) — Preserves exact product & cart calculation prices with zero extra fees
   if (apiPath === '/api/orders' && method === 'POST') {
     const rawItems = Array.isArray(body.items) ? body.items : [];
-    let catalogProducts: any[] = [];
-    try {
-      const cached = JSON.parse(localStorage.getItem('gs_fallback_catalogue_v1') || 'null');
-      if (Array.isArray(cached)) catalogProducts = cached;
-    } catch {
-      // Ignore
-    }
+    const catalogProducts = getStoredList('gs_fallback_catalogue_v1');
 
     const enrichedItems = rawItems.map((it: any, idx: number) => {
       const prod = catalogProducts.find((p: any) => Number(p.id) === Number(it.productId));
       const variant =
         prod?.variants?.find((v: any) => Number(v.id) === Number(it.variantId)) ||
         prod?.variants?.[0];
-      const unitPricePaise = Number(
-        variant?.sellingPricePaise ?? prod?.sellingPricePaise ?? prod?.basePricePaise ?? 22000
-      );
-      const unitMrpPaise = Number(
-        variant?.mrpPaise ?? prod?.mrpPaise ?? prod?.baseMrpPaise ?? unitPricePaise
-      );
+      const explicitUnitPrice = Number(it.unitPricePaise);
+      const unitPricePaise =
+        Number.isFinite(explicitUnitPrice) && explicitUnitPrice > 0
+          ? explicitUnitPrice
+          : Number(
+              variant?.sellingPricePaise ??
+                variant?.pricePaise ??
+                prod?.sellingPricePaise ??
+                prod?.basePricePaise ??
+                0
+            );
+      const explicitMrp = Number(it.unitMrpPaise);
+      const unitMrpPaise =
+        Number.isFinite(explicitMrp) && explicitMrp >= unitPricePaise
+          ? explicitMrp
+          : Number(
+              variant?.mrpPaise ?? prod?.mrpPaise ?? prod?.baseMrpPaise ?? unitPricePaise
+            );
       const qty = Math.max(1, Number(it.quantity) || 1);
       return {
         id: idx + 1,
         productId: Number(it.productId) || idx + 1,
         variantId: Number(it.variantId) || idx + 1,
-        productName: prod?.name || it.productName || 'Stationery Item',
-        variantName: variant?.variantName || it.variantName || 'Standard Pack',
-        sku: variant?.sku || `GS-SKU-${idx + 1}`,
+        productName: it.productName || prod?.name || 'Stationery Item',
+        variantName: it.variantName || variant?.variantName || 'Standard Pack',
+        sku: it.sku || variant?.sku || prod?.sku || `GS-SKU-${idx + 1}`,
         quantity: qty,
         unitMrpPaise,
         unitPricePaise,
-        taxRatePercent: Number(prod?.taxRatePercent ?? 12),
+        taxRatePercent: Number(it.taxRatePercent ?? prod?.taxRatePercent ?? 12),
         lineSubtotalPaise: unitPricePaise * qty,
         lineTotalPaise: unitPricePaise * qty,
       };
     });
 
-    const subtotalPaise = enrichedItems.reduce(
+    const computedSubtotal = enrichedItems.reduce(
       (sum: number, i: any) => sum + i.lineSubtotalPaise,
       0
     );
+    const subtotalPaise =
+      Number.isFinite(Number(body.subtotalPaise)) && Number(body.subtotalPaise) > 0
+        ? Number(body.subtotalPaise)
+        : computedSubtotal;
+    const discountPaise =
+      Number.isFinite(Number(body.discountPaise)) && Number(body.discountPaise) >= 0
+        ? Number(body.discountPaise)
+        : 0;
     const mrpTotalPaise = enrichedItems.reduce(
       (sum: number, i: any) => sum + i.unitMrpPaise * i.quantity,
       0
     );
     const fulfilmentMethod = body.fulfilmentMethod || 'STORE_PICKUP';
-    const shippingPaise =
-      fulfilmentMethod === 'HOME_DELIVERY' && subtotalPaise < 49900 ? 4000 : 0;
-    const totalPaise = subtotalPaise + shippingPaise;
+    const shippingPaise = 0;
+    const totalPaise =
+      Number.isFinite(Number(body.totalPaise)) && Number(body.totalPaise) > 0
+        ? Number(body.totalPaise)
+        : Math.max(0, subtotalPaise - discountPaise);
     const orderNumber = `GS-${Date.now().toString().slice(-6)}`;
     const nowIso = new Date().toISOString();
 
@@ -183,8 +263,8 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
       paymentStatus: 'PENDING',
       orderStatus: 'CONFIRMED',
       subtotalPaise,
-      discountPaise: 0,
-      taxPaise: Math.round(subtotalPaise * 0.12),
+      discountPaise,
+      taxPaise: Math.round(subtotalPaise - (subtotalPaise * 100) / 112),
       shippingPaise,
       totalPaise,
       catalogSavingsPaise: Math.max(0, mrpTotalPaise - subtotalPaise),
@@ -270,16 +350,327 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
     return jsonResponse({ error: `Order ${orderNum} not found.` }, 404);
   }
 
-  // 4. Admin Dashboard & CMS Fallback (Guaranteed Full Schema)
+  // 4. Company / Brand Save & Delete Endpoints
+  if (apiPath === '/api/admin/brands/save' && method === 'POST') {
+    const cleanName = String(body.name || '').trim();
+    if (!cleanName) {
+      return jsonResponse({ error: 'Company / Brand name is required.' }, 400);
+    }
+    const cleanSlug =
+      String(body.slug || cleanName)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || `brand-${Date.now().toString().slice(-4)}`;
+    const status = body.status || (body.isActive === false ? 'HIDDEN' : 'PUBLISHED');
+    const isActive = status === 'PUBLISHED';
+
+    const brandsList = getStoredList('gs_fallback_brands_v1');
+    const existingIdx = brandsList.findIndex(
+      (b: any) =>
+        (body.id && Number(b.id) === Number(body.id)) ||
+        b.slug === cleanSlug ||
+        String(b.name || '').toLowerCase() === cleanName.toLowerCase()
+    );
+
+    const savedBrand =
+      existingIdx >= 0
+        ? {
+            ...brandsList[existingIdx],
+            name: cleanName,
+            slug: cleanSlug,
+            description:
+              body.description !== undefined
+                ? String(body.description).trim()
+                : brandsList[existingIdx].description,
+            logoUrl: body.logoUrl !== undefined ? body.logoUrl : brandsList[existingIdx].logoUrl,
+            bannerUrl:
+              body.bannerUrl !== undefined ? body.bannerUrl : brandsList[existingIdx].bannerUrl,
+            isFeatured:
+              body.isFeatured !== undefined
+                ? Boolean(body.isFeatured)
+                : brandsList[existingIdx].isFeatured !== false,
+            showInNav:
+              body.showInNav !== undefined
+                ? Boolean(body.showInNav)
+                : brandsList[existingIdx].showInNav !== false,
+            sortOrder: Number(body.sortOrder) || brandsList[existingIdx].sortOrder || 1,
+            seoTitle: body.seoTitle || brandsList[existingIdx].seoTitle || '',
+            seoDescription: body.seoDescription || brandsList[existingIdx].seoDescription || '',
+            status,
+            isActive,
+          }
+        : {
+            id: Number(body.id) || Date.now(),
+            name: cleanName,
+            slug: cleanSlug,
+            description: String(
+              body.description || `Authorized ${cleanName} stationery & supplies`
+            ).trim(),
+            logoUrl: body.logoUrl || '',
+            bannerUrl: body.bannerUrl || '',
+            isFeatured: body.isFeatured !== undefined ? Boolean(body.isFeatured) : true,
+            showInNav: body.showInNav !== undefined ? Boolean(body.showInNav) : true,
+            sortOrder: Number(body.sortOrder) || brandsList.length + 1,
+            seoTitle: body.seoTitle || '',
+            seoDescription: body.seoDescription || '',
+            status,
+            isActive,
+            productCount: 0,
+            createdAt: new Date().toISOString(),
+          };
+
+    if (existingIdx >= 0) {
+      brandsList[existingIdx] = savedBrand;
+    } else {
+      brandsList.push(savedBrand);
+    }
+    saveStoredList('gs_fallback_brands_v1', brandsList);
+    return jsonResponse({ brand: savedBrand });
+  }
+
+  if (apiPath.startsWith('/api/admin/brands/') && method === 'DELETE') {
+    const id = Number(apiPath.split('/api/admin/brands/')[1]);
+    const brandsList = getStoredList('gs_fallback_brands_v1').filter(
+      (b: any) => Number(b.id) !== id
+    );
+    saveStoredList('gs_fallback_brands_v1', brandsList);
+    return jsonResponse({ action: 'DELETED', id });
+  }
+
+  // 5. Category Save & Delete Endpoints
+  if (apiPath === '/api/admin/categories/save' && method === 'POST') {
+    const cleanName = String(body.name || '').trim();
+    if (!cleanName) {
+      return jsonResponse({ error: 'Category name is required.' }, 400);
+    }
+    const cleanSlug =
+      String(body.slug || cleanName)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || `cat-${Date.now().toString().slice(-4)}`;
+    const status = body.status || (body.isActive === false ? 'HIDDEN' : 'PUBLISHED');
+    const isActive = status === 'PUBLISHED';
+
+    const catsList = getStoredList('gs_fallback_categories_v1');
+    const existingIdx = catsList.findIndex(
+      (c: any) =>
+        (body.id && Number(c.id) === Number(body.id)) ||
+        c.slug === cleanSlug ||
+        String(c.name || '').toLowerCase() === cleanName.toLowerCase()
+    );
+
+    const savedCategory =
+      existingIdx >= 0
+        ? {
+            ...catsList[existingIdx],
+            ...body,
+            name: cleanName,
+            slug: cleanSlug,
+            status,
+            isActive,
+            showOnHomepage: body.showOnHomepage !== false,
+          }
+        : {
+            id: Number(body.id) || Date.now(),
+            name: cleanName,
+            slug: cleanSlug,
+            description: String(body.description || `${cleanName} stationery essentials`).trim(),
+            imageUrl: body.imageUrl || '',
+            iconName: body.iconName || 'FolderOpen',
+            parentId: body.parentId ? Number(body.parentId) : null,
+            sortOrder: Number(body.sortOrder) || catsList.length + 1,
+            showInNav: body.showInNav !== false,
+            showOnHomepage: body.showOnHomepage !== false,
+            showInFooter: body.showInFooter !== false,
+            status,
+            isActive,
+            productCount: 0,
+          };
+
+    if (existingIdx >= 0) {
+      catsList[existingIdx] = savedCategory;
+    } else {
+      catsList.push(savedCategory);
+    }
+    saveStoredList('gs_fallback_categories_v1', catsList);
+    return jsonResponse({ category: savedCategory });
+  }
+
+  if (apiPath.startsWith('/api/admin/categories/') && method === 'DELETE') {
+    const id = Number(apiPath.split('/api/admin/categories/')[1]);
+    const catsList = getStoredList('gs_fallback_categories_v1').filter(
+      (c: any) => Number(c.id) !== id
+    );
+    saveStoredList('gs_fallback_categories_v1', catsList);
+    return jsonResponse({ action: 'DELETED', id });
+  }
+
+  // 6. Product Save Endpoint (with inline newBrandName & newCategoryName support)
+  if (apiPath === '/api/admin/products/save' && method === 'POST') {
+    const brandsList = getStoredList('gs_fallback_brands_v1');
+    const catsList = getStoredList('gs_fallback_categories_v1');
+    const prodsList = getStoredList('gs_fallback_catalogue_v1');
+
+    let targetBrandId = Number(body.brandId) || 1;
+    let targetBrandName = 'Gayatri Essentials';
+    let targetBrandSlug = 'gayatri';
+
+    if (body.newBrandName && String(body.newBrandName).trim()) {
+      const cleanBrandName = String(body.newBrandName).trim();
+      const brandSlug =
+        cleanBrandName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || `brand-${Date.now().toString().slice(-4)}`;
+      let foundBrand = brandsList.find(
+        (b: any) =>
+          String(b.name || '').toLowerCase() === cleanBrandName.toLowerCase() ||
+          b.slug === brandSlug
+      );
+      if (!foundBrand) {
+        foundBrand = {
+          id: Date.now() - 10,
+          name: cleanBrandName,
+          slug: brandSlug,
+          description: `Authorized ${cleanBrandName} stationery range`,
+          isFeatured: true,
+          showInNav: true,
+          sortOrder: brandsList.length + 1,
+          status: 'PUBLISHED',
+          isActive: true,
+          productCount: 1,
+        };
+        brandsList.push(foundBrand);
+        saveStoredList('gs_fallback_brands_v1', brandsList);
+      }
+      targetBrandId = foundBrand.id;
+      targetBrandName = foundBrand.name;
+      targetBrandSlug = foundBrand.slug;
+    } else {
+      const foundBrand = brandsList.find((b: any) => Number(b.id) === targetBrandId);
+      if (foundBrand) {
+        targetBrandName = foundBrand.name;
+        targetBrandSlug = foundBrand.slug;
+      }
+    }
+
+    let targetCatId = Number(body.categoryId) || 1;
+    let targetCatName = 'Stationery';
+    let targetCatSlug = 'stationery';
+
+    if (body.newCategoryName && String(body.newCategoryName).trim()) {
+      const cleanCatName = String(body.newCategoryName).trim();
+      const catSlug =
+        cleanCatName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || `cat-${Date.now().toString().slice(-4)}`;
+      let foundCat = catsList.find(
+        (c: any) =>
+          String(c.name || '').toLowerCase() === cleanCatName.toLowerCase() || c.slug === catSlug
+      );
+      if (!foundCat) {
+        foundCat = {
+          id: Date.now() - 20,
+          name: cleanCatName,
+          slug: catSlug,
+          description: `${cleanCatName} stationery supplies`,
+          showInNav: true,
+          showOnHomepage: true,
+          showInFooter: true,
+          status: 'PUBLISHED',
+          isActive: true,
+          productCount: 1,
+        };
+        catsList.push(foundCat);
+        saveStoredList('gs_fallback_categories_v1', catsList);
+      }
+      targetCatId = foundCat.id;
+      targetCatName = foundCat.name;
+      targetCatSlug = foundCat.slug;
+    } else {
+      const foundCat = catsList.find((c: any) => Number(c.id) === targetCatId);
+      if (foundCat) {
+        targetCatName = foundCat.name;
+        targetCatSlug = foundCat.slug;
+      }
+    }
+
+    const mrpPaise = Number(body.mrpPaise) || Math.round(Number(body.mrpRupees || 100) * 100);
+    const sellingPricePaise =
+      Number(body.sellingPricePaise) || Math.round(Number(body.sellingPriceRupees || 90) * 100);
+    const stockQuantity = Number(body.initialStockQuantity ?? 25);
+    const prodId = Number(body.id) || Date.now();
+    const cleanSku = String(body.sku || `GS-${prodId.toString().slice(-4)}`).trim();
+    const cleanName = String(body.name || 'Stationery Item').trim();
+
+    const savedProduct = {
+      id: prodId,
+      sku: cleanSku,
+      name: cleanName,
+      slug:
+        cleanName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') + `-${cleanSku.toLowerCase()}`,
+      categoryId: targetCatId,
+      categoryName: targetCatName,
+      categorySlug: targetCatSlug,
+      brandId: targetBrandId,
+      brandName: targetBrandName,
+      brandSlug: targetBrandSlug,
+      shortDescription: body.shortDescription || cleanName,
+      description: body.description || body.shortDescription || cleanName,
+      mrpPaise,
+      sellingPricePaise,
+      baseMrpPaise: mrpPaise,
+      basePricePaise: sellingPricePaise,
+      taxRatePercent: Number(body.taxRatePercent ?? 12),
+      imageUrl: body.imageUrl || '',
+      galleryUrls: Array.isArray(body.galleryUrls) ? body.galleryUrls : [],
+      illustrationType: body.illustrationType || 'spiral_notebook',
+      pickupEligible: body.pickupEligible !== false,
+      deliveryEligible: body.deliveryEligible !== false,
+      isFeatured: Boolean(body.isFeatured),
+      isBestseller: Boolean(body.isBestseller),
+      isNewArrival: body.isNewArrival !== false,
+      isActive: body.isActive !== false,
+      status: body.status || 'PUBLISHED',
+      totalStock: stockQuantity,
+      variants: [
+        {
+          id: prodId + 1,
+          productId: prodId,
+          sku: `${cleanSku}-STD`,
+          variantName: body.variantName || 'Standard Pack',
+          mrpPaise,
+          sellingPricePaise,
+          pricePaise: sellingPricePaise,
+          stockQuantity,
+          inStock: stockQuantity > 0,
+          isActive: true,
+        },
+      ],
+    };
+
+    const existingProdIdx = prodsList.findIndex(
+      (p: any) => Number(p.id) === prodId || p.sku === cleanSku
+    );
+    if (existingProdIdx >= 0) {
+      prodsList[existingProdIdx] = savedProduct;
+    } else {
+      prodsList.unshift(savedProduct);
+    }
+    saveStoredList('gs_fallback_catalogue_v1', prodsList);
+    return jsonResponse({ product: savedProduct });
+  }
+
+  // 7. Admin Dashboard & CMS Fallback (Guaranteed Full Schema)
   if (apiPath.startsWith('/api/admin/dashboard')) {
     const savedOrders = getStoredOrders();
-    let products: any[] = [];
-    try {
-      const cached = JSON.parse(localStorage.getItem('gs_fallback_catalogue_v1') || 'null');
-      if (Array.isArray(cached)) products = cached;
-    } catch {
-      // Ignore
-    }
+    const products = getStoredList('gs_fallback_catalogue_v1');
+    const categories = getStoredList('gs_fallback_categories_v1');
+    const brands = getStoredList('gs_fallback_brands_v1');
     const totalRev = savedOrders.reduce(
       (s: number, o: any) => s + Number(o?.order?.totalPaise || 0),
       0
@@ -313,8 +704,8 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
       lowStockVariants: [],
       inventoryMovements: [],
       products,
-      categories: [],
-      brands: [],
+      categories,
+      brands,
       coupons: [],
       serviceablePincodes: [
         {
@@ -434,6 +825,23 @@ function installResilientApiInterceptor() {
             .json()
             .then((data) => {
               if (data?.order) saveStoredOrder(data);
+            })
+            .catch(() => {});
+        } else if (apiPath === '/api/admin/brands/save' && res.ok) {
+          res
+            .clone()
+            .json()
+            .then((data) => {
+              if (data?.brand) {
+                const list = getStoredList('gs_fallback_brands_v1');
+                const idx = list.findIndex(
+                  (b: any) =>
+                    Number(b.id) === Number(data.brand.id) || b.slug === data.brand.slug
+                );
+                if (idx >= 0) list[idx] = data.brand;
+                else list.push(data.brand);
+                saveStoredList('gs_fallback_brands_v1', list);
+              }
             })
             .catch(() => {});
         }

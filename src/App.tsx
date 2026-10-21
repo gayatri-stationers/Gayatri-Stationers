@@ -259,12 +259,14 @@ export default function App() {
     | 'wishlist'
     | 'page'
     | 'signin'
+    | 'profile'
     | 'admin-login'
     | 'admin'
   >(() => {
     if (typeof window !== 'undefined') {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
       if (p === '/admin/login' || p === '/admin') return 'admin';
+      if (p === '/profile' || p === '/account') return 'profile';
       if (p === '/signin' || p === '/login') return 'signin';
       if (p === '/checkout' || p === '/cart') return 'checkout';
       if (POLICY_URL_SLUG_MAP[p]) return 'page';
@@ -335,6 +337,15 @@ const DEFAULT_CATEGORIES = [
   { id: 2, name: 'Pens & Writing Instruments', slug: 'pens-and-writing-instruments', description: 'Gel pens, ball pens, fountain pens, and highlighters', isActive: true, showInNav: true, showOnHomepage: true },
   { id: 3, name: 'Art & Craft Supplies', slug: 'art-and-craft-supplies', description: 'Acrylic paints, sketchbooks, and canvases', isActive: true, showInNav: true, showOnHomepage: true },
   { id: 4, name: 'School & Geometry Essentials', slug: 'school-and-geometry-essentials', description: 'Geometry boxes, compasses, and rulers', isActive: true, showInNav: true, showOnHomepage: true },
+];
+
+const DEFAULT_BRANDS = [
+  { id: 1, name: 'ITC Classmate', slug: 'itc-classmate', description: 'Spiral notebooks, registers, and school stationery', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 1 },
+  { id: 2, name: 'Unomax', slug: 'unomax', description: 'Precision liquid ball pens and gel pens', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 2 },
+  { id: 3, name: 'Flair', slug: 'flair', description: 'Roller gel pens, fountain pens, and markers', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 3 },
+  { id: 4, name: 'DOMS', slug: 'doms', description: 'Colour pencils, geometry boxes, and art kits', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 4 },
+  { id: 5, name: 'Camlin Kokuyo', slug: 'camlin-kokuyo', description: 'Fine art paints, brushes, markers, and inks', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 5 },
+  { id: 6, name: 'Faber-Castell', slug: 'faber-castell', description: 'Highlighters, drawing pencils, and connectors', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 6 },
 ];
 
 const DEFAULT_PRODUCTS = [
@@ -504,12 +515,51 @@ const DEFAULT_PRODUCTS = [
   },
 ].map(normalizeCatalogueProduct);
 
-// Storefront data from PostgreSQL
+  // Storefront data from PostgreSQL + LocalStorage persistence
   const [loadingBootstrap, setLoadingBootstrap] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
-  const [categories, setCategories] = useState<any[]>(DEFAULT_CATEGORIES);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>(DEFAULT_PRODUCTS);
+  const [categories, setCategories] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('gs_fallback_categories_v1');
+      const stored = raw ? JSON.parse(raw) : [];
+      const merged = new Map<string, any>();
+      for (const c of [...DEFAULT_CATEGORIES, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!c || !c.name) continue;
+        merged.set(String(c.slug || c.name).toLowerCase(), c);
+      }
+      return Array.from(merged.values());
+    } catch {
+      return DEFAULT_CATEGORIES;
+    }
+  });
+  const [brands, setBrands] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('gs_fallback_brands_v1');
+      const stored = raw ? JSON.parse(raw) : [];
+      const merged = new Map<string, any>();
+      for (const b of [...DEFAULT_BRANDS, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!b || !b.name) continue;
+        merged.set(String(b.slug || b.name).toLowerCase(), b);
+      }
+      return Array.from(merged.values());
+    } catch {
+      return DEFAULT_BRANDS;
+    }
+  });
+  const [products, setProducts] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('gs_fallback_catalogue_v1');
+      const stored = raw ? JSON.parse(raw) : [];
+      const merged = new Map<string, any>();
+      for (const p of [...DEFAULT_PRODUCTS, ...(Array.isArray(stored) ? stored : [])]) {
+        if (!p || !p.name) continue;
+        merged.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
+      }
+      return Array.from(merged.values());
+    } catch {
+      return DEFAULT_PRODUCTS;
+    }
+  });
   const [bundles, setBundles] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([
@@ -518,8 +568,8 @@ const DEFAULT_PRODUCTS = [
       pincode: '282010',
       city: 'Agra (Shahganj / Dayal Bagh Local Zone)',
       state: 'Uttar Pradesh',
-      deliveryFeePaise: 3500,
-      freeDeliveryThresholdPaise: 39900,
+      deliveryFeePaise: 0,
+      freeDeliveryThresholdPaise: 0,
       codAvailable: true,
       estimatedDays: 'Same Day / Next Day Delivery',
       isActive: true,
@@ -529,8 +579,8 @@ const DEFAULT_PRODUCTS = [
       pincode: '282001',
       city: 'Agra Cantt / Civil Lines',
       state: 'Uttar Pradesh',
-      deliveryFeePaise: 4500,
-      freeDeliveryThresholdPaise: 49900,
+      deliveryFeePaise: 0,
+      freeDeliveryThresholdPaise: 0,
       codAvailable: true,
       estimatedDays: '1–2 Business Days',
       isActive: true,
@@ -540,8 +590,8 @@ const DEFAULT_PRODUCTS = [
       pincode: '282002',
       city: 'Agra (Sanjay Place / Commercial Hub)',
       state: 'Uttar Pradesh',
-      deliveryFeePaise: 4000,
-      freeDeliveryThresholdPaise: 49900,
+      deliveryFeePaise: 0,
+      freeDeliveryThresholdPaise: 0,
       codAvailable: true,
       estimatedDays: '1–2 Business Days',
       isActive: true,
@@ -673,12 +723,18 @@ const DEFAULT_PRODUCTS = [
     }
   }, [cartItems]);
 
-  // Sync browser URL popstate for /admin, /signin, /checkout, and policy pages (/contact-us, /terms-and-conditions, /refunds-and-cancellations)
+  // Customer Profile Page state
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
+
+  // Sync browser URL popstate for /admin, /profile, /signin, /checkout, and policy pages
   useEffect(() => {
     const handlePopState = () => {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
       if (p === '/admin/login' || p === '/admin') {
         setActiveView('admin');
+      } else if (p === '/profile' || p === '/account') {
+        setActiveView('profile');
       } else if (p === '/signin' || p === '/login') {
         setActiveView('signin');
       } else if (p === '/checkout' || p === '/cart') {
@@ -791,15 +847,65 @@ const DEFAULT_PRODUCTS = [
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load store catalogue');
       }
-      if (Array.isArray(data.categories) && data.categories.length > 0) setCategories(data.categories);
-      if (Array.isArray(data.brands)) setBrands(data.brands);
+      // Merge Categories with localStorage fallback
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        try {
+          const localCatsRaw = localStorage.getItem('gs_fallback_categories_v1');
+          const localCats = localCatsRaw ? JSON.parse(localCatsRaw) : [];
+          const catMap = new Map<string, any>();
+          for (const c of [...data.categories, ...(Array.isArray(localCats) ? localCats : [])]) {
+            if (!c || !c.name) continue;
+            catMap.set(String(c.slug || c.name).toLowerCase(), c);
+          }
+          const finalCats = Array.from(catMap.values());
+          setCategories(finalCats);
+          localStorage.setItem('gs_fallback_categories_v1', JSON.stringify(finalCats));
+        } catch {
+          setCategories(data.categories);
+        }
+      }
+
+      // Merge Companies / Brands with localStorage fallback so newly added companies always persist
+      if (Array.isArray(data.brands)) {
+        try {
+          const localBrandsRaw = localStorage.getItem('gs_fallback_brands_v1');
+          const localBrands = localBrandsRaw ? JSON.parse(localBrandsRaw) : [];
+          const brandMap = new Map<string, any>();
+          const sourceBrands = data.brands.length > 0 ? data.brands : DEFAULT_BRANDS;
+          for (const b of [...sourceBrands, ...(Array.isArray(localBrands) ? localBrands : [])]) {
+            if (!b || !b.name) continue;
+            brandMap.set(String(b.slug || b.name).toLowerCase(), b);
+          }
+          const finalBrands = Array.from(brandMap.values());
+          setBrands(finalBrands);
+          localStorage.setItem('gs_fallback_brands_v1', JSON.stringify(finalBrands));
+        } catch {
+          setBrands(data.brands.length > 0 ? data.brands : DEFAULT_BRANDS);
+        }
+      }
+
       const normalizedProducts = Array.isArray(data.products) && data.products.length > 0
         ? data.products.map(normalizeCatalogueProduct)
         : [];
-      if (normalizedProducts.length > 0) setProducts(normalizedProducts);
+      if (normalizedProducts.length > 0) {
+        setProducts(normalizedProducts);
+        try {
+          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(normalizedProducts));
+        } catch {
+          // Ignore storage quota
+        }
+      }
       if (Array.isArray(data.bundles)) setBundles(data.bundles);
       if (Array.isArray(data.coupons)) setCoupons(data.coupons);
-      if (Array.isArray(data.serviceablePincodes)) setServiceablePincodes(data.serviceablePincodes);
+      if (Array.isArray(data.serviceablePincodes)) {
+        setServiceablePincodes(
+          data.serviceablePincodes.map((sp: any) => ({
+            ...sp,
+            deliveryFeePaise: 0,
+            freeDeliveryThresholdPaise: 0,
+          }))
+        );
+      }
       if (data.settings) setStoreSettings(data.settings);
       if (Array.isArray(data.navigationItems)) setNavigationItems(data.navigationItems);
       if (Array.isArray(data.homepageSections)) setHomepageSections(data.homepageSections);
@@ -837,14 +943,14 @@ const DEFAULT_PRODUCTS = [
         setPaymentGatewayStatus(data.paymentGatewayStatus);
       }
 
-      // Initialize default selected variant for each product
+      // Initialize default selected variant for each product (DB variant IDs take precedence)
       const initialVarMap: Record<number, number> = {};
       for (const p of normalizedProducts) {
         if (p.variants && p.variants.length > 0) {
           initialVarMap[p.id] = p.variants[0].id;
         }
       }
-      setSelectedVariantByProduct((prev) => ({ ...initialVarMap, ...prev }));
+      setSelectedVariantByProduct((prev) => ({ ...prev, ...initialVarMap }));
     } catch (err: any) {
       console.warn('Storefront bootstrap load error:', err.message);
     } finally {
@@ -1684,17 +1790,20 @@ const DEFAULT_PRODUCTS = [
       let environment = existingSession?.environment || 'SANDBOX';
 
       if (!paymentSessionId) {
+        const exactGatewayPaise =
+          Number(calculation.totalPaise) > 0
+            ? Number(calculation.totalPaise)
+            : Number(
+                pendingOrderResponse?.order?.totalPaise ||
+                  confirmedOrderData?.order?.totalPaise ||
+                  0
+              );
         const res = await fetch('/api/payments/cashfree/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             orderNumber,
-            amountRupees: Number(
-              (pendingOrderResponse?.order?.totalPaise ||
-                confirmedOrderData?.order?.totalPaise ||
-                calculation.totalPaise ||
-                19500) / 100
-            ),
+            amountRupees: Number((exactGatewayPaise / 100).toFixed(2)),
             customerName:
               pendingOrderResponse?.order?.customerName ||
               confirmedOrderData?.order?.customerName ||
@@ -1882,6 +1991,35 @@ const DEFAULT_PRODUCTS = [
         'x-customer-email': resolvedEmail,
       };
 
+      // Build exact priced items from the storefront catalogue so neither server nor fallback ever inflates prices
+      const exactPricedItems = cartItems.map((ci) => {
+        const prod = products.find((p) => Number(p.id) === Number(ci.productId));
+        const variant =
+          prod?.variants?.find((v: any) => Number(v.id) === Number(ci.variantId)) ||
+          prod?.variants?.[0];
+        const unitPricePaise = Number(
+          variant?.sellingPricePaise ??
+            variant?.pricePaise ??
+            prod?.sellingPricePaise ??
+            prod?.basePricePaise ??
+            0
+        );
+        const unitMrpPaise = Number(
+          variant?.mrpPaise ?? prod?.mrpPaise ?? prod?.baseMrpPaise ?? unitPricePaise
+        );
+        return {
+          productId: ci.productId,
+          variantId: variant?.id || ci.variantId,
+          quantity: ci.quantity,
+          productName: prod?.name || 'Stationery Item',
+          variantName: variant?.variantName || 'Standard Pack',
+          sku: variant?.sku || prod?.sku || `GS-${ci.productId}`,
+          unitPricePaise,
+          unitMrpPaise,
+          taxRatePercent: Number(prod?.taxRatePercent ?? prod?.gstRatePercent ?? 12),
+        };
+      });
+
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers,
@@ -1894,7 +2032,11 @@ const DEFAULT_PRODUCTS = [
           paymentMethod,
           couponCode: appliedCouponCode,
           notes: orderNotes,
-          items: cartItems,
+          items: exactPricedItems,
+          subtotalPaise: localFallbackCalculation.subtotalPaise,
+          discountPaise: localFallbackCalculation.couponDiscountPaise,
+          shippingPaise: 0,
+          totalPaise: localFallbackCalculation.totalPaise,
           returnOrigin:
             typeof window !== 'undefined'
               ? window.location.origin
@@ -2055,7 +2197,7 @@ const DEFAULT_PRODUCTS = [
   }, [idToken, dbUser, supabaseUser, customerEmail, trackPhoneInput]);
 
   useEffect(() => {
-    if (activeView === 'track') {
+    if (activeView === 'track' || activeView === 'profile') {
       handleLoadMyOrders();
     }
   }, [activeView, dbUser, supabaseUser, idToken, handleLoadMyOrders]);
@@ -2281,8 +2423,27 @@ const DEFAULT_PRODUCTS = [
                 ))}
             </nav>
 
-            {/* Right Zone: Cart Button (Always navigates directly to full-page /checkout, no drawer/popup) */}
-            <div className="flex items-center shrink-0">
+            {/* Right Zone: Profile & Cart Buttons */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/profile');
+                  setActiveView('profile');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`px-3 sm:px-4 py-2 sm:py-2.5 text-xs font-semibold rounded-full border transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  activeView === 'profile'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                }`}
+                aria-label="Open My Profile Page"
+              >
+                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="font-bold">
+                  {dbUser?.fullName ? dbUser.fullName.split(' ')[0] : 'Profile'}
+                </span>
+              </button>
               <button
                 ref={cartButtonRef}
                 onClick={navigateToCheckout}
@@ -2358,6 +2519,20 @@ const DEFAULT_PRODUCTS = [
               }`}
             >
               My Orders
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/profile');
+                setActiveView('profile');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'profile'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Profile
             </button>
             <button
               type="button"
@@ -5291,6 +5466,427 @@ const DEFAULT_PRODUCTS = [
               </div>
             )}
 
+            {/* VIEW 8.9: DEDICATED CUSTOMER & STORE PROFILE PAGE (/profile) */}
+            {activeView === 'profile' && (
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.history.pushState({}, '', '/');
+                      setActiveView('storefront');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 shadow-2xs cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Back to Storefront</span>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('track');
+                      }}
+                      className="px-4 py-2 bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>My Orders ({myOrdersList.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('wishlist');
+                      }}
+                      className="px-4 py-2 bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Heart className="w-3.5 h-3.5" />
+                      <span>Wishlist ({wishlistProductIds.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.history.pushState({}, '', '/admin');
+                        setActiveView('admin');
+                      }}
+                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span>Admin Console</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Top Identity Banner */}
+                <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif-display text-2xl font-bold shrink-0">
+                      {(dbUser?.fullName || customerName || dbUser?.email || 'G')
+                        .trim()
+                        .slice(0, 1)
+                        .toUpperCase()}
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-slate-900">
+                          {dbUser?.fullName || customerName || 'Gayatri Stationers Member'}
+                        </h1>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold bg-emerald-100 text-emerald-900">
+                          {dbUser?.role === 'owner' ? 'Store Owner / Admin' : 'Verified Customer'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 font-mono-tabular">
+                        {dbUser?.email || customerEmail || supabaseUser?.email || 'Not signed in — enter your details below'}
+                        {customerPhone ? ` · +91 ${customerPhone}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {!(dbUser || supabaseUser) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.history.pushState({}, '', '/signin');
+                          setActiveView('signin');
+                        }}
+                        className="px-5 py-2.5 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold rounded-full cursor-pointer"
+                      >
+                        Sign In / Connect Google
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-semibold rounded-full cursor-pointer flex items-center gap-1.5"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {profileSuccessMsg && (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-semibold text-emerald-900 flex items-center justify-between">
+                    <span>✓ {profileSuccessMsg}</span>
+                    <button
+                      type="button"
+                      onClick={() => setProfileSuccessMsg(null)}
+                      className="text-emerald-700 underline cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  {/* Left Column: Personal Details & Default Delivery Address Form */}
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setProfileSaving(true);
+                      setProfileSuccessMsg(null);
+                      try {
+                        const cleanEmail = (
+                          customerEmail ||
+                          dbUser?.email ||
+                          supabaseUser?.email ||
+                          'customer@gayatristationers.com'
+                        )
+                          .trim()
+                          .toLowerCase();
+                        const cleanName = (customerName || dbUser?.fullName || 'Valued Customer').trim();
+                        const cleanPhone = customerPhone.trim();
+
+                        const res = await fetch('/api/auth/profile', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+                          },
+                          body: JSON.stringify({
+                            fullName: cleanName,
+                            email: cleanEmail,
+                            phone: cleanPhone,
+                            addressLine1: shippingAddress.addressLine1,
+                            addressLine2: shippingAddress.addressLine2,
+                            landmark: shippingAddress.landmark,
+                            city: shippingAddress.city,
+                            state: shippingAddress.state,
+                            pincode: shippingAddress.pincode,
+                          }),
+                        });
+                        const data = await res.json();
+                        const updatedUser = data?.user || {
+                          id: dbUser?.id || 2,
+                          uid: dbUser?.uid || `cust-${cleanEmail}`,
+                          email: cleanEmail,
+                          fullName: cleanName,
+                          phone: cleanPhone,
+                          role: dbUser?.role || 'customer',
+                        };
+                        setDbUser(updatedUser);
+                        try {
+                          localStorage.setItem(
+                            'gs_user_profile_v1',
+                            JSON.stringify({
+                              ...updatedUser,
+                              shippingAddress,
+                            })
+                          );
+                        } catch {
+                          // Ignore
+                        }
+                        setProfileSuccessMsg(
+                          'Profile and default delivery address saved! Your checkout details are now pre-filled.'
+                        );
+                      } catch {
+                        setProfileSuccessMsg('Profile saved to your device.');
+                      } finally {
+                        setProfileSaving(false);
+                      }
+                    }}
+                    className="lg:col-span-7 bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-7 space-y-5 shadow-2xs"
+                  >
+                    <div className="border-b border-stone-200 pb-3">
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+                        PERSONAL DETAILS & SAVED ADDRESS
+                      </span>
+                      <h2 className="font-serif-display text-lg font-bold text-slate-900">
+                        Edit Profile &amp; Delivery Preferences
+                      </h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={customerName || dbUser?.fullName || ''}
+                          onChange={(e) => setCustomerName(e.target.value)}
+                          placeholder="Your Full Name"
+                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          10-Digit Mobile / WhatsApp *
+                        </label>
+                        <input
+                          type="tel"
+                          value={customerPhone}
+                          onChange={(e) => setCustomerPhone(e.target.value)}
+                          placeholder="e.g. 9876543210"
+                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm font-mono-tabular"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Email Address *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={customerEmail || dbUser?.email || supabaseUser?.email || ''}
+                          onChange={(e) => setCustomerEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-stone-200 space-y-3 text-xs">
+                      <div className="font-bold text-slate-900">
+                        Default Home Delivery Address (Agra &amp; NCR)
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-slate-600 mb-1">
+                            House / Flat / Shop No. &amp; Street
+                          </label>
+                          <input
+                            type="text"
+                            value={shippingAddress.addressLine1}
+                            onChange={(e) =>
+                              setShippingAddress({
+                                ...shippingAddress,
+                                addressLine1: e.target.value,
+                              })
+                            }
+                            placeholder="e.g. House 42, Dayal Bagh Main Road"
+                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-600 mb-1">Landmark / Area</label>
+                          <input
+                            type="text"
+                            value={shippingAddress.landmark}
+                            onChange={(e) =>
+                              setShippingAddress({
+                                ...shippingAddress,
+                                landmark: e.target.value,
+                              })
+                            }
+                            placeholder="Near DEI Gate / Shahganj"
+                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-600 mb-1">PIN Code</label>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={shippingAddress.pincode}
+                            onChange={(e) =>
+                              setShippingAddress({
+                                ...shippingAddress,
+                                pincode: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              })
+                            }
+                            placeholder="282010"
+                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm font-mono-tabular"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-600 mb-1">City</label>
+                          <input
+                            type="text"
+                            value={shippingAddress.city}
+                            onChange={(e) =>
+                              setShippingAddress({
+                                ...shippingAddress,
+                                city: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-600 mb-1">State</label>
+                          <input
+                            type="text"
+                            value={shippingAddress.state}
+                            onChange={(e) =>
+                              setShippingAddress({
+                                ...shippingAddress,
+                                state: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={profileSaving}
+                      className="w-full py-3.5 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs sm:text-sm font-semibold rounded-full shadow-xs cursor-pointer transition-colors"
+                    >
+                      {profileSaving
+                        ? 'Saving Profile...'
+                        : 'Save Profile & Delivery Preferences'}
+                    </button>
+                  </form>
+
+                  {/* Right Column: Recent Orders & Saved Wishlist Summary */}
+                  <div className="lg:col-span-5 space-y-5">
+                    <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 space-y-4 shadow-2xs">
+                      <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                        <div>
+                          <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500">
+                            ORDER HISTORY
+                          </span>
+                          <h3 className="font-serif-display text-base font-bold text-slate-900">
+                            Recent Orders ({myOrdersList.length})
+                          </h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.history.pushState({}, '', '/');
+                            setActiveView('track');
+                          }}
+                          className="text-xs font-semibold text-[#B42318] hover:underline cursor-pointer"
+                        >
+                          View All →
+                        </button>
+                      </div>
+
+                      {myOrdersList.length === 0 ? (
+                        <div className="py-6 text-center space-y-2 text-xs text-stone-500">
+                          <p>No orders placed yet on this account.</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.history.pushState({}, '', '/');
+                              setActiveView('storefront');
+                            }}
+                            className="px-4 py-2 bg-slate-900 text-white rounded-full text-xs font-semibold cursor-pointer"
+                          >
+                            Browse Stationery Catalogue
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                          {myOrdersList.slice(0, 5).map((o: any, idx: number) => (
+                            <div
+                              key={o?.order?.orderNumber || idx}
+                              className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3 text-xs"
+                            >
+                              <div>
+                                <div className="font-mono font-bold text-slate-900">
+                                  {o?.order?.orderNumber}
+                                </div>
+                                <div className="text-[11px] text-stone-500">
+                                  {formatPaiseToINR(o?.order?.totalPaise || 0)} ·{' '}
+                                  {o?.order?.paymentMethod === 'CASHFREE_ONLINE'
+                                    ? 'Online Payment'
+                                    : o?.order?.paymentMethod || 'COD'}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTrackedOrderResult(o);
+                                  setActiveView('track');
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                className="px-3 py-1.5 bg-white border border-stone-300 rounded-full text-[11px] font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer shrink-0"
+                              >
+                                Track Order
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 space-y-3 shadow-2xs text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900">
+                          Saved Wishlist ({wishlistProductIds.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveView('wishlist')}
+                          className="text-[#B42318] font-semibold hover:underline cursor-pointer"
+                        >
+                          Open Wishlist →
+                        </button>
+                      </div>
+                      <p className="text-stone-600">
+                        Quickly access your bookmarked notebooks, pens, art supplies, and exam kits.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* VIEW 9: DIRECT ADMIN CONSOLE (/admin) — Instant Access Without Login Wall */}
             {(activeView === 'admin-login' || activeView === 'admin') && (
               <AdminDashboard
@@ -5425,21 +6021,18 @@ const DEFAULT_PRODUCTS = [
           <button
             type="button"
             onClick={() => {
-              if (supabaseUser || dbUser) {
-                window.history.pushState({}, '', '/');
-                setActiveView('track');
-              } else {
-                window.history.pushState({}, '', '/signin');
-                setActiveView('signin');
-              }
+              window.history.pushState({}, '', '/profile');
+              setActiveView('profile');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-              activeView === 'signin' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+              activeView === 'profile' || activeView === 'signin'
+                ? 'text-[#B42318] font-bold'
+                : 'text-slate-600'
             }`}
           >
             <User className="w-4 h-4" />
-            <span>{supabaseUser || dbUser ? 'Account' : 'Sign In'}</span>
+            <span>Profile</span>
           </button>
         </div>
       </nav>

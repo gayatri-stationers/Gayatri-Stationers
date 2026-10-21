@@ -87,6 +87,40 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
   const [uploadingCatImg, setUploadingCatImg] = useState(false);
 
   // 2. Brand Form State
+  const [localBrands, setLocalBrands] = useState<any[]>(() => {
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_brands_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const mergedMap = new Map<string, any>();
+      for (const b of [...(Array.isArray(brands) ? brands : []), ...(Array.isArray(stored) ? stored : [])]) {
+        if (!b || !b.name) continue;
+        const key = String(b.slug || b.name).toLowerCase();
+        mergedMap.set(key, b);
+      }
+      return Array.from(mergedMap.values());
+    } catch {
+      return Array.isArray(brands) ? brands : [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const storedRaw = localStorage.getItem('gs_fallback_brands_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const mergedMap = new Map<string, any>();
+      for (const b of [...(Array.isArray(brands) ? brands : []), ...(Array.isArray(stored) ? stored : [])]) {
+        if (!b || !b.name) continue;
+        const key = String(b.slug || b.name).toLowerCase();
+        mergedMap.set(key, b);
+      }
+      setLocalBrands(Array.from(mergedMap.values()));
+    } catch {
+      if (Array.isArray(brands) && brands.length > 0) {
+        setLocalBrands(brands);
+      }
+    }
+  }, [brands]);
+
   const [brandForm, setBrandForm] = useState({
     id: undefined as number | undefined,
     name: '',
@@ -312,22 +346,62 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!brandForm.name.trim()) {
+    const cleanName = brandForm.name.trim();
+    if (!cleanName) {
       notify('Company / Brand name is required.', 'error');
       return;
     }
     setSaving(true);
     try {
+      const cleanSlug =
+        (brandForm.slug || cleanName)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || `brand-${Date.now().toString().slice(-4)}`;
+
       const res = await fetchWithAuth('/api/admin/brands/save', {
         method: 'POST',
         body: JSON.stringify({
           ...brandForm,
-          sortOrder: Number(brandForm.sortOrder) || 1,
+          name: cleanName,
+          slug: cleanSlug,
+          sortOrder: Number(brandForm.sortOrder) || localBrands.length + 1,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save brand');
-      notify(`Company / Brand "${data.brand.name}" saved.`);
+
+      const savedBrand = data.brand || {
+        id: brandForm.id || Date.now(),
+        name: cleanName,
+        slug: cleanSlug,
+        description: brandForm.description || `Authorized ${cleanName} stationery products`,
+        logoUrl: brandForm.logoUrl || '',
+        bannerUrl: brandForm.bannerUrl || '',
+        isFeatured: brandForm.isFeatured,
+        showInNav: brandForm.showInNav,
+        sortOrder: Number(brandForm.sortOrder) || localBrands.length + 1,
+        status: brandForm.status || 'PUBLISHED',
+        isActive: (brandForm.status || 'PUBLISHED') === 'PUBLISHED',
+      };
+
+      setLocalBrands((prev) => {
+        const idx = prev.findIndex(
+          (b) =>
+            Number(b.id) === Number(savedBrand.id) ||
+            String(b.slug || '').toLowerCase() === String(savedBrand.slug || '').toLowerCase() ||
+            String(b.name || '').toLowerCase() === String(savedBrand.name || '').toLowerCase()
+        );
+        const updated = idx >= 0 ? prev.map((b, i) => (i === idx ? { ...b, ...savedBrand } : b)) : [...prev, savedBrand];
+        try {
+          localStorage.setItem('gs_fallback_brands_v1', JSON.stringify(updated));
+        } catch {
+          // Ignore storage error
+        }
+        return updated;
+      });
+
+      notify(`Company / Brand "${savedBrand.name}" saved and published to storefront!`);
       setBrandForm({
         id: undefined,
         name: '',
@@ -337,7 +411,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
         bannerUrl: '',
         isFeatured: true,
         showInNav: true,
-        sortOrder: brands.length + 2,
+        sortOrder: localBrands.length + 2,
         seoTitle: '',
         seoDescription: '',
         status: 'PUBLISHED',
@@ -356,6 +430,20 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       const res = await fetchWithAuth(`/api/admin/brands/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Action failed');
+
+      setLocalBrands((prev) => {
+        const updated =
+          data.action === 'ARCHIVED'
+            ? prev.map((b) => (Number(b.id) === Number(id) ? { ...b, status: 'ARCHIVED', isActive: false } : b))
+            : prev.filter((b) => Number(b.id) !== Number(id));
+        try {
+          localStorage.setItem('gs_fallback_brands_v1', JSON.stringify(updated));
+        } catch {
+          // Ignore
+        }
+        return updated;
+      });
+
       notify(
         data.action === 'ARCHIVED'
           ? `Brand "${name}" has linked products and was safely archived.`
@@ -1363,12 +1451,12 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
                 <span className="text-[10px] font-mono uppercase tracking-widest text-[#57534E]">
                   REGISTERED STATIONERY COMPANIES
                 </span>
-                <h4 className="text-base font-bold">Companies & Brands ({brands.length})</h4>
+                <h4 className="text-base font-bold">Companies & Brands ({localBrands.length})</h4>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[640px] overflow-y-auto">
-              {brands.map((b) => (
+              {localBrands.map((b) => (
                 <div
                   key={b.id}
                   className="p-3.5 border border-[#D6D1C7] bg-[#FAF7F2] flex flex-col justify-between gap-3"
