@@ -82,12 +82,14 @@ export interface CartCalculationResult {
 /**
  * Formats integer paise to INR currency string (e.g. 14900 -> "₹149.00" or "₹149")
  */
-export function formatPaiseToINR(paise: number, showDecimals = false): string {
-  const rupees = paise / 100;
+export function formatPaiseToINR(paise: number | undefined | null, showDecimals = false): string {
+  const numeric = Number(paise);
+  const safePaise = Number.isFinite(numeric) ? numeric : 0;
+  const rupees = safePaise / 100;
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: showDecimals ? 2 : paise % 100 === 0 ? 0 : 2,
+    minimumFractionDigits: showDecimals ? 2 : safePaise % 100 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(rupees);
 }

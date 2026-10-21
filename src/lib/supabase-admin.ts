@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 export function normalizeSupabaseUrl(raw?: string): string {
   if (!raw) return 'https://idhvqdcgzyaxdrkwcoxt.supabase.co';

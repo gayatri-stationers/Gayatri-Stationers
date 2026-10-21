@@ -17,11 +17,17 @@ import {
   cmsPages,
 } from './schema.ts';
 
+let seedVerifiedInMemory = false;
+
 export async function ensureSeeded() {
+  if (seedVerifiedInMemory) {
+    return { seeded: false };
+  }
   try {
     const existingCategories = await db.select().from(categories).limit(1);
     if (existingCategories.length > 0) {
       await ensureCmsAndExtendedCatalogueSeeded();
+      seedVerifiedInMemory = true;
       return { seeded: false };
     }
 

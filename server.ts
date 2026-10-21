@@ -73,7 +73,7 @@ import {
 } from './src/lib/supabase-admin.ts';
 import { generateRecoverableMigrationBackup } from './scripts/migrate_firebase_to_supabase.ts';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

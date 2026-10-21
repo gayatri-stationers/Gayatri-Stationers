@@ -193,6 +193,46 @@ export async function createCashfreeOrder(
   const responseData: any = await response.json();
 
   if (!response.ok) {
+    // If order with same ID already exists on Cashfree, fetch it or create a fresh attempt ID
+    if (
+      response.status === 409 ||
+      responseData?.code === 'order_already_exists' ||
+      String(responseData?.message || '').toLowerCase().includes('already present') ||
+      String(responseData?.message || '').toLowerCase().includes('already exists')
+    ) {
+      try {
+        const existingOrder = await getCashfreeOrder(cleanOrderId, config);
+        if (existingOrder && existingOrder.order_status === 'ACTIVE' && existingOrder.payment_session_id) {
+          return existingOrder;
+        }
+      } catch {
+        // Fall through to retry with unique attempt suffix
+      }
+
+      const retryOrderId = sanitizeCashfreeIdentifier(
+        `${cleanOrderId}_${Date.now().toString().slice(-5)}`,
+        `GS_${Date.now()}`
+      );
+      const retryPayload = {
+        ...requestPayload,
+        order_id: retryOrderId,
+      };
+      const retryRes = await fetch(`${config.baseUrl}/orders`, {
+        method: 'POST',
+        headers: {
+          'x-client-id': config.appId,
+          'x-client-secret': config.secretKey,
+          'x-api-version': config.apiVersion,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(retryPayload),
+      });
+      const retryData: any = await retryRes.json();
+      if (retryRes.ok && retryData?.payment_session_id) {
+        return retryData as CashfreeOrderResponse;
+      }
+    }
+
     const errorMsg =
       responseData?.message ||
       responseData?.error ||
