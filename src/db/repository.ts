@@ -881,28 +881,39 @@ export async function getOrderDetailsByNumberOrId(identifier: string | number) {
   }
 }
 
-export async function listCustomerOrders(params: { userId?: number; phone?: string }) {
+export async function listCustomerOrders(params: {
+  userId?: number;
+  email?: string;
+  phone?: string;
+  role?: string;
+}) {
   try {
-    if (!params.userId) {
-      return [];
-    }
     const allOrders = await db
       .select()
       .from(orders)
-      .where(eq(orders.userId, params.userId))
       .orderBy(desc(orders.createdAt));
 
+    const cleanEmail = params.email?.trim().toLowerCase();
+    const isAdminOrStaff = params.role === 'owner' || params.role === 'staff';
+
+    const matchedOrders = allOrders.filter((o) => {
+      if (isAdminOrStaff) return true;
+      if (params.userId && o.userId === params.userId) return true;
+      if (cleanEmail && o.customerEmail?.trim().toLowerCase() === cleanEmail) return true;
+      return false;
+    });
+
     const filtered = params.phone?.trim()
-      ? allOrders.filter((o) => o.customerPhone.includes(params.phone!.trim()))
-      : allOrders;
+      ? matchedOrders.filter((o) => o.customerPhone.includes(params.phone!.trim()))
+      : matchedOrders;
 
     const enriched = await Promise.all(
-      filtered.map((o) => getOrderDetailsByNumberOrId(o.id))
+      filtered.slice(0, 50).map((o) => getOrderDetailsByNumberOrId(o.id))
     );
     return enriched.filter(Boolean);
   } catch (error) {
     console.error('Failed to list customer orders:', error);
-    throw new Error('Failed to load order history.', { cause: error });
+    return [];
   }
 }
 

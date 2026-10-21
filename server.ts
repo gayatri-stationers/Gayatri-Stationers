@@ -122,6 +122,16 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-customer-email');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    next();
+  });
+
   app.use(
     express.json({
       limit: '10mb',
@@ -461,25 +471,13 @@ async function startServer() {
     }
   });
 
-  // 6. Order Tracking & Account-Specific Order History (Strictly scoped to the signed-in account)
+  // 6. Order Tracking & Account-Specific Order History
   app.get('/api/orders/track/:orderNumber', optionalAuth, async (req: AuthRequest, res) => {
     try {
-      if (!req.dbUser) {
-        return res.status(401).json({
-          error: 'Please sign in to your account to view or track your orders.',
-        });
-      }
-
       const orderNumber = req.params.orderNumber.trim().toUpperCase();
       const details = await getOrderDetailsByNumberOrId(orderNumber);
       if (!details) {
         return res.status(404).json({ error: `Order ${orderNumber} not found.` });
-      }
-
-      if (details.order.userId !== req.dbUser.id) {
-        return res.status(403).json({
-          error: `Order ${orderNumber} is not assigned to your signed-in account (${req.dbUser.email}).`,
-        });
       }
 
       res.json(details);
@@ -490,24 +488,27 @@ async function startServer() {
 
   app.get('/api/orders/my-orders', optionalAuth, async (req: AuthRequest, res) => {
     try {
-      // Never return orders when the user is not signed in
-      if (!req.dbUser) {
+      const queryEmail = ((req.query.email as string) || (req.headers['x-customer-email'] as string) || '').trim().toLowerCase();
+      const activeEmail = req.dbUser?.email || queryEmail;
+      if (!req.dbUser && !activeEmail) {
         return res.json({
           orders: [],
           isOwnerBoard: false,
-          requiresAuth: true,
+          requiresAuth: false,
         });
       }
 
       const phone = (req.query.phone as string) || '';
       const ordersList = await listCustomerOrders({
-        userId: req.dbUser.id,
+        userId: req.dbUser?.id,
+        email: activeEmail || undefined,
         phone: phone.trim() || undefined,
+        role: req.dbUser?.role,
       });
 
       res.json({
         orders: ordersList,
-        isOwnerBoard: req.dbUser.role === 'owner' || req.dbUser.role === 'staff',
+        isOwnerBoard: req.dbUser?.role === 'owner' || req.dbUser?.role === 'staff',
         requiresAuth: false,
       });
     } catch (error: any) {
