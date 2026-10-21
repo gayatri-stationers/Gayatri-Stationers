@@ -266,6 +266,7 @@ export default function App() {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
       if (p === '/admin/login' || p === '/admin') return 'admin';
       if (p === '/signin' || p === '/login') return 'signin';
+      if (p === '/checkout' || p === '/cart') return 'checkout';
       if (POLICY_URL_SLUG_MAP[p]) return 'page';
     }
     return 'storefront';
@@ -672,7 +673,7 @@ const DEFAULT_PRODUCTS = [
     }
   }, [cartItems]);
 
-  // Sync browser URL popstate for /admin, /signin, and policy pages (/contact-us, /terms-and-conditions, /refunds-and-cancellations)
+  // Sync browser URL popstate for /admin, /signin, /checkout, and policy pages (/contact-us, /terms-and-conditions, /refunds-and-cancellations)
   useEffect(() => {
     const handlePopState = () => {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
@@ -680,6 +681,8 @@ const DEFAULT_PRODUCTS = [
         setActiveView('admin');
       } else if (p === '/signin' || p === '/login') {
         setActiveView('signin');
+      } else if (p === '/checkout' || p === '/cart') {
+        setActiveView('checkout');
       } else if (POLICY_URL_SLUG_MAP[p]) {
         setActivePageSlug(POLICY_URL_SLUG_MAP[p]);
         setActiveView('page');
@@ -906,81 +909,31 @@ const DEFAULT_PRODUCTS = [
     }
   }, [paymentMethod, fulfilmentMethod]);
 
-  const showToast = (msg: string) => {
-    setCartFeedbackToast(msg);
-    setTimeout(() => {
-      setCartFeedbackToast((prev) => (prev === msg ? null : prev));
-    }, 3200);
-  };
-
-  const triggerSwipeToCartAnimation = (
-    product: any,
-    pricePaise: number,
-    sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null
-  ) => {
-    try {
-      const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
-      const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
-      // Do not show flying popup animation on mobile screens
-      if (vw < 768) return;
-
-      let startX = Math.round(vw / 2 - 72);
-      let startY = Math.round(vh / 2 - 54);
-
-      const rawEl: HTMLElement | null =
-        sourceEventOrEl && 'currentTarget' in sourceEventOrEl
-          ? (sourceEventOrEl.currentTarget as HTMLElement)
-          : (sourceEventOrEl as HTMLElement | null);
-
-      if (rawEl && typeof rawEl.getBoundingClientRect === 'function') {
-        const cardEl = (rawEl.closest('article') as HTMLElement | null) || rawEl;
-        const rect = cardEl.getBoundingClientRect();
-        startX = Math.round(rect.left + Math.min(rect.width * 0.2, 42));
-        startY = Math.round(rect.top + Math.min(rect.height * 0.18, 42));
-      }
-
-      let endX = Math.max(24, vw - 160);
-      let endY = 20;
-      if (cartButtonRef.current) {
-        const cartRect = cartButtonRef.current.getBoundingClientRect();
-        endX = Math.round(cartRect.left + cartRect.width / 2 - 64);
-        endY = Math.round(cartRect.top + cartRect.height / 2 - 38);
-      }
-
-      const flyId = `fly_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const newItem: FlyingCartItem = {
-        id: flyId,
-        name: product.name || 'Stationery Item',
-        priceFormatted: formatPaiseToINR(pricePaise),
-        illustrationType: product.illustrationType || 'spiral_notebook',
-        imageUrl: product.imageUrl || undefined,
-        startX,
-        startY,
-        endX,
-        endY,
-      };
-
-      setFlyingCartItems((prev) => [...prev, newItem]);
-
-      setTimeout(() => {
-        setCartButtonBouncing(true);
-        setTimeout(() => setCartButtonBouncing(false), 420);
-      }, 480);
-
-      setTimeout(() => {
-        setFlyingCartItems((prev) => prev.filter((item) => item.id !== flyId));
-      }, 820);
-    } catch {
-      // Never block cart addition if animation coordinates fail
+  const navigateToCheckout = useCallback(() => {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/checkout') {
+      window.history.pushState({}, '', '/checkout');
     }
+    setCartDrawerOpen(false);
+    setCartFeedbackToast(null);
+    setFlyingCartItems([]);
+    setMobileMenuOpen(false);
+    setActiveView('checkout');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, []);
+
+  const showToast = (_msg: string) => {
+    // Cart toast/drawer pop-ups disabled to ensure a clean full-page experience
   };
 
-  // Cart manipulation handlers
+  // Cart manipulation handlers — force navigation to full-page /checkout on all screen sizes
   const handleAddToCart = (
     product: any,
     variantId?: number,
     qtyToAdd = 1,
-    sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null
+    _sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null,
+    skipRedirect = false
   ) => {
     const targetVarId =
       variantId || selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
@@ -988,7 +941,6 @@ const DEFAULT_PRODUCTS = [
     if (!variant) return;
 
     if (variant.stockQuantity <= 0) {
-      showToast(`${product.name} is currently out of stock.`);
       return;
     }
 
@@ -996,15 +948,9 @@ const DEFAULT_PRODUCTS = [
       (i) => i.productId === product.id && i.variantId === variant.id
     );
     if (existingItem && existingItem.quantity >= variant.stockQuantity) {
-      showToast(`Maximum available stock (${variant.stockQuantity}) reached for ${product.name}.`);
+      if (!skipRedirect) navigateToCheckout();
       return;
     }
-
-    triggerSwipeToCartAnimation(
-      product,
-      variant.sellingPricePaise || product.sellingPricePaise || 0,
-      sourceEventOrEl
-    );
 
     setCartItems((prev) => {
       const existingIdx = prev.findIndex(
@@ -1015,37 +961,33 @@ const DEFAULT_PRODUCTS = [
         const nextQty = Math.min(variant.stockQuantity, currentQty + qtyToAdd);
         const copy = [...prev];
         copy[existingIdx] = { ...copy[existingIdx], quantity: nextQty };
-        showToast(`Swiped ${product.name} (${variant.variantName}) into cart.`);
         return copy;
       } else {
         const clampedQty = Math.min(variant.stockQuantity, qtyToAdd);
-        showToast(`Swiped ${product.name} (${variant.variantName}) into cart.`);
         return [
           ...prev,
           { productId: product.id, variantId: variant.id, quantity: clampedQty },
         ];
       }
     });
+
+    if (!skipRedirect) {
+      navigateToCheckout();
+    }
   };
 
   const handleAddBundleToCart = (
     bundle: any,
-    sourceEvent?: React.MouseEvent<HTMLElement>
+    _sourceEvent?: React.MouseEvent<HTMLElement>
   ) => {
     const bundleItems = bundle.itemsJson || [];
-    let animatedFirst = false;
     for (const bi of bundleItems) {
       const prod = products.find((p) => p.id === bi.productId);
       if (prod) {
-        handleAddToCart(
-          prod,
-          bi.variantId,
-          bi.quantity,
-          !animatedFirst ? sourceEvent : undefined
-        );
-        animatedFirst = true;
+        handleAddToCart(prod, bi.variantId, bi.quantity, undefined, true);
       }
     }
+    navigateToCheckout();
   };
 
   const handleUpdateCartQuantity = (productId: number, variantId: number, nextQty: number) => {
@@ -2241,188 +2183,316 @@ const DEFAULT_PRODUCTS = [
         </div>
       )}
 
-      {/* Strict 3-Zone Top Bar */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 py-3 sticky top-0 z-30 shadow-2xs">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
-          {/* Left Zone: Mobile Menu Toggle + Wordmark */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-
-            <button
-              onClick={() => {
-                setSelectedCategorySlug('ALL');
-                setSelectedBrandSlug('ALL');
-                setActiveView('storefront');
-                setMobileMenuOpen(false);
-              }}
-              className="font-serif-display text-lg sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left cursor-pointer"
-            >
-              {themeConfig.storeName || 'Gayatri Stationers'}
-            </button>
-          </div>
-
-          {/* Center Zone: Concise Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium text-slate-700">
-            <button
-              onClick={() => {
-                setSelectedCategorySlug('ALL');
-                setSelectedBrandSlug('ALL');
-                setActiveView('storefront');
-              }}
-              className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeView === 'storefront'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              Shop Catalogue
-            </button>
-            <button
-              onClick={() => setActiveView('combos')}
-              className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeView === 'combos'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              School Combos
-            </button>
-            <button
-              onClick={() => setActiveView('bulk')}
-              className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeView === 'bulk'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              Bulk Orders
-            </button>
-            <button
-              onClick={() => setActiveView('track')}
-              className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                activeView === 'track'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'hover:bg-slate-100 hover:text-slate-950'
-              }`}
-            >
-              Track Order
-            </button>
-            {cmsPages
-              .filter((p) => p.isActive !== false && p.showInHeader)
-              .map((p) => (
-                <button
-                  key={`hdr-page-${p.id}`}
-                  onClick={() => {
-                    setActivePageSlug(p.slug);
-                    setActiveView('page');
-                  }}
-                  className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    activeView === 'page' && activePageSlug === p.slug
-                      ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                      : 'hover:bg-slate-100 hover:text-slate-950'
-                  }`}
-                >
-                  {p.title}
-                </button>
-              ))}
-          </nav>
-
-          {/* Right Zone: Cart Button (Navigates to Cart & Checkout page, no popup) */}
-          <div className="flex items-center shrink-0">
-            <button
-              ref={cartButtonRef}
-              onClick={() => {
-                setCartDrawerOpen(false);
-                setActiveView('checkout');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className={`px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 sm:gap-2 ${
-                cartButtonBouncing
-                  ? 'scale-110 ring-4 ring-amber-400/70 shadow-lg'
-                  : 'scale-100'
-              }`}
-              aria-label="Open Shopping Bag"
-            >
-              <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              <span className="font-bold">Cart ({totalCartItemsCount})</span>
-              <span className="hidden sm:inline opacity-90">· {formatPaiseToINR(calculation.totalPaise)}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Responsive Mobile Drawer / Navigation Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden pt-3 pb-2 border-t border-slate-200/80 mt-3 space-y-3 animate-in fade-in duration-200">
-            <div className="grid grid-cols-2 gap-2 text-xs font-medium">
+      {/* Sticky Top Header & Navigation Container — Stays still when scrolling on mobile and desktop */}
+      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-xs">
+        {/* Strict 3-Zone Top Bar */}
+        <header className="border-b border-slate-200/80 px-4 sm:px-6 py-2.5 sm:py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
+            {/* Left Zone: Wordmark */}
+            <div className="flex items-center gap-2.5 shrink-0">
               <button
                 onClick={() => {
+                  window.history.pushState({}, '', '/');
                   setSelectedCategorySlug('ALL');
                   setSelectedBrandSlug('ALL');
                   setActiveView('storefront');
                   setMobileMenuOpen(false);
                 }}
-                className={`p-2.5 rounded-2xl text-left flex items-center justify-between ${
-                  activeView === 'storefront' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'
-                }`}
+                className="font-serif-display text-lg sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left cursor-pointer"
               >
-                <span>Shop Catalogue</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-              </button>
-              <button
-                onClick={() => {
-                  setActiveView('combos');
-                  setMobileMenuOpen(false);
-                }}
-                className={`p-2.5 rounded-2xl text-left flex items-center justify-between ${
-                  activeView === 'combos' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'
-                }`}
-              >
-                <span>School Combos</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-              </button>
-              <button
-                onClick={() => {
-                  setActiveView('bulk');
-                  setMobileMenuOpen(false);
-                }}
-                className={`p-2.5 rounded-2xl text-left flex items-center justify-between ${
-                  activeView === 'bulk' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'
-                }`}
-              >
-                <span>Bulk Orders</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-              </button>
-              <button
-                onClick={() => {
-                  setActiveView('track');
-                  setMobileMenuOpen(false);
-                }}
-                className={`p-2.5 rounded-2xl text-left flex items-center justify-between ${
-                  activeView === 'track' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800'
-                }`}
-              >
-                <span>Track Order</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+                {themeConfig.storeName || 'Gayatri Stationers'}
               </button>
             </div>
 
-            {/* Quick Actions in Mobile Menu */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+            {/* Center Zone: Concise Desktop Navigation Links */}
+            <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium text-slate-700">
               <button
                 onClick={() => {
-                  setActiveView('wishlist');
-                  setMobileMenuOpen(false);
+                  window.history.pushState({}, '', '/');
+                  setSelectedCategorySlug('ALL');
+                  setSelectedBrandSlug('ALL');
+                  setActiveView('storefront');
                 }}
-                className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-medium text-slate-800 flex items-center justify-center gap-1.5"
+                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeView === 'storefront'
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'hover:bg-slate-100 hover:text-slate-950'
+                }`}
               >
-                <Heart className="w-3.5 h-3.5 text-[#B42318]" />
+                Shop Catalogue
+              </button>
+              <button
+                onClick={() => {
+                  window.history.pushState({}, '', '/');
+                  setActiveView('combos');
+                }}
+                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeView === 'combos'
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'hover:bg-slate-100 hover:text-slate-950'
+                }`}
+              >
+                School Combos
+              </button>
+              <button
+                onClick={() => {
+                  window.history.pushState({}, '', '/');
+                  setActiveView('bulk');
+                }}
+                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeView === 'bulk'
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'hover:bg-slate-100 hover:text-slate-950'
+                }`}
+              >
+                Bulk Orders
+              </button>
+              <button
+                onClick={() => {
+                  window.history.pushState({}, '', '/');
+                  setActiveView('track');
+                }}
+                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeView === 'track'
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'hover:bg-slate-100 hover:text-slate-950'
+                }`}
+              >
+                Track Order
+              </button>
+              {cmsPages
+                .filter((p) => p.isActive !== false && p.showInHeader)
+                .map((p) => (
+                  <button
+                    key={`hdr-page-${p.id}`}
+                    onClick={() => {
+                      window.history.pushState({}, '', `/${p.slug}`);
+                      setActivePageSlug(p.slug);
+                      setActiveView('page');
+                    }}
+                    className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeView === 'page' && activePageSlug === p.slug
+                        ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                        : 'hover:bg-slate-100 hover:text-slate-950'
+                    }`}
+                  >
+                    {p.title}
+                  </button>
+                ))}
+            </nav>
+
+            {/* Right Zone: Cart Button (Always navigates directly to full-page /checkout, no drawer/popup) */}
+            <div className="flex items-center shrink-0">
+              <button
+                ref={cartButtonRef}
+                onClick={navigateToCheckout}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 sm:gap-2"
+                aria-label="Open Cart & Checkout Page"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                <span className="font-bold">Cart ({totalCartItemsCount})</span>
+                <span className="hidden sm:inline opacity-90">· {formatPaiseToINR(calculation.totalPaise)}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Always-Visible Mobile Navigation Bar (Stays still when scrolling on mobile) */}
+          <nav
+            aria-label="Mobile Primary Navigation"
+            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2.5 mt-2 border-t border-slate-100 text-xs font-medium"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/');
+                setSelectedCategorySlug('ALL');
+                setSelectedBrandSlug('ALL');
+                setActiveView('storefront');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'storefront'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Shop
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/');
+                setActiveView('combos');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'combos'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Combos
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/');
+                setActiveView('bulk');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'bulk'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Bulk Orders
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/');
+                setActiveView('track');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'track'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              My Orders
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/');
+                setActiveView('wishlist');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'wishlist'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Wishlist ({wishlistProductIds.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '/admin');
+                setActiveView('admin');
+              }}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                activeView === 'admin' || activeView === 'admin-login'
+                  ? 'bg-[#B42318] text-white font-semibold'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+            >
+              Admin
+            </button>
+            {supabaseUser || dbUser ? (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Sign Out
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/signin');
+                  setActiveView('signin');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeView === 'signin'
+                    ? 'bg-slate-900 text-white font-semibold'
+                    : 'bg-slate-100 text-slate-900 font-semibold'
+                }`}
+              >
+                Sign In
+              </button>
+            )}
+          </nav>
+        </header>
+
+        {/* Practical Retail Search, Account & Discovery Bar */}
+        <div className="border-b border-slate-200/80 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <div className="bg-slate-100/90 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900 border border-slate-200 rounded-full flex items-center px-3.5 py-1.5 transition-all">
+                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  type="search"
+                  aria-label="Search stationery catalogue by product name, brand, or SKU"
+                  value={searchQuery}
+                  onFocus={() => setSearchSuggestionsOpen(true)}
+                  onBlur={() => setTimeout(() => setSearchSuggestionsOpen(false), 180)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (activeView !== 'storefront') setActiveView('storefront');
+                  }}
+                  placeholder="Search notebooks, pens, DOMS, Classmate..."
+                  className="w-full px-2.5 py-0.5 text-xs bg-transparent focus:outline-none border-none text-slate-900 placeholder:text-slate-400"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="px-2 py-0.5 text-[11px] bg-slate-200/80 hover:bg-slate-300 rounded-full text-slate-700 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {searchSuggestionsOpen && searchSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl z-40 divide-y divide-slate-100 overflow-hidden p-1.5">
+                  {searchSuggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      onMouseDown={() => openProductDetail(s)}
+                      className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between text-xs rounded-xl cursor-pointer"
+                    >
+                      <div>
+                        <p className="font-semibold text-slate-900">{s.name}</p>
+                        <p className="text-slate-500">
+                          {s.brandName} · {s.categoryName} · SKU: {s.sku}
+                        </p>
+                      </div>
+                      <span className="font-mono-tabular font-semibold text-slate-900">
+                        {formatPaiseToINR(s.sellingPricePaise)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Filter Button (School Kits & Combos) */}
+            <button
+              type="button"
+              onClick={() => setActiveView('combos')}
+              className="w-9 h-9 flex items-center justify-center shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              title="School Kits & Combos"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+
+            {/* Desktop & Tablet Account, Admin & Wishlist Buttons */}
+            <div className="hidden sm:flex items-center justify-end gap-2 shrink-0 text-xs">
+              <button
+                onClick={() => setActiveView('track')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+              >
+                <Package className="w-3.5 h-3.5 text-slate-500" />
+                <span>My Orders</span>
+              </button>
+
+              <button
+                onClick={() => setActiveView('wishlist')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+              >
+                <Heart className="w-3.5 h-3.5 text-slate-500" />
                 <span>Wishlist ({wishlistProductIds.length})</span>
               </button>
 
@@ -2430,32 +2500,38 @@ const DEFAULT_PRODUCTS = [
                 onClick={() => {
                   window.history.pushState({}, '', '/admin');
                   setActiveView('admin');
-                  setMobileMenuOpen(false);
                 }}
-                className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold flex items-center justify-center gap-1.5"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
                 <span>Admin Console</span>
               </button>
 
               {supabaseUser || dbUser ? (
-                <button
-                  onClick={() => {
-                    handleSignOut();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="py-2 px-3 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-medium text-slate-700 flex items-center justify-center gap-1.5"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('track')}
+                    className="text-slate-700 hidden xl:inline truncate max-w-[140px] px-3 py-1 bg-white hover:bg-slate-50 rounded-full border border-slate-200 text-[11px] cursor-pointer"
+                  >
+                    {dbUser?.email || supabaseUser?.email}
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => {
-                    handleGoogleSignIn();
-                    setMobileMenuOpen(false);
+                    window.history.pushState({}, '', '/signin');
+                    setActiveView('signin');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-full text-xs font-medium flex items-center justify-center gap-1.5"
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold whitespace-nowrap shrink-0 cursor-pointer text-xs transition-colors"
                 >
                   <User className="w-3.5 h-3.5" />
                   <span>Sign In</span>
@@ -2463,217 +2539,77 @@ const DEFAULT_PRODUCTS = [
               )}
             </div>
           </div>
-        )}
-      </header>
-
-      {/* Practical Retail Search, Account & Discovery Bar */}
-      <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 py-2.5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <div className="bg-slate-100/90 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900 border border-slate-200 rounded-full flex items-center px-3.5 py-1.5 transition-all">
-              <Search className="w-4 h-4 text-slate-400 shrink-0" />
-              <input
-                type="search"
-                aria-label="Search stationery catalogue by product name, brand, or SKU"
-                value={searchQuery}
-                onFocus={() => setSearchSuggestionsOpen(true)}
-                onBlur={() => setTimeout(() => setSearchSuggestionsOpen(false), 180)}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (activeView !== 'storefront') setActiveView('storefront');
-                }}
-                placeholder="Search notebooks, pens, DOMS, Classmate..."
-                className="w-full px-2.5 py-0.5 text-xs bg-transparent focus:outline-none border-none text-slate-900 placeholder:text-slate-400"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="px-2 py-0.5 text-[11px] bg-slate-200/80 hover:bg-slate-300 rounded-full text-slate-700 cursor-pointer"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {searchSuggestionsOpen && searchSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl z-40 divide-y divide-slate-100 overflow-hidden p-1.5">
-                {searchSuggestions.map((s) => (
-                  <button
-                    key={s.id}
-                    onMouseDown={() => openProductDetail(s)}
-                    className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between text-xs rounded-xl cursor-pointer"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-900">{s.name}</p>
-                      <p className="text-slate-500">
-                        {s.brandName} · {s.categoryName} · SKU: {s.sku}
-                      </p>
-                    </div>
-                    <span className="font-mono-tabular font-semibold text-slate-900">
-                      {formatPaiseToINR(s.sellingPricePaise)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Filter Button (School Kits & Combos) */}
-          <button
-            type="button"
-            onClick={() => setActiveView('combos')}
-            className="w-9 h-9 flex items-center justify-center shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-            title="School Kits & Combos"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
-
-          {/* Desktop & Tablet Account, Admin & Wishlist Buttons */}
-          <div className="hidden sm:flex items-center justify-end gap-2 shrink-0 text-xs">
-            <button
-              onClick={() => setActiveView('track')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-            >
-              <Package className="w-3.5 h-3.5 text-slate-500" />
-              <span>My Orders</span>
-            </button>
-
-            <button
-              onClick={() => setActiveView('wishlist')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-            >
-              <Heart className="w-3.5 h-3.5 text-slate-500" />
-              <span>Wishlist ({wishlistProductIds.length})</span>
-            </button>
-
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/admin');
-                setActiveView('admin');
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span>Admin Console</span>
-            </button>
-
-            {supabaseUser || dbUser ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveView('track')}
-                  className="text-slate-700 hidden xl:inline truncate max-w-[140px] px-3 py-1 bg-white hover:bg-slate-50 rounded-full border border-slate-200 text-[11px] cursor-pointer"
-                >
-                  {dbUser?.email || supabaseUser?.email}
-                </button>
-                <button
-                  onClick={handleSignOut}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setActiveView('signin');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold whitespace-nowrap shrink-0 cursor-pointer text-xs transition-colors"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Sign In</span>
-              </button>
-            )}
-          </div>
         </div>
-      </div>
 
-      {/* Dynamic CMS Navigation & Category Filter Strip */}
-      <div className="bg-slate-50/90 border-b border-slate-200/80 px-4 py-2 overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setSelectedCategorySlug('ALL');
-              setSelectedBrandSlug('ALL');
-              setActiveView('storefront');
-            }}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-              selectedCategorySlug === 'ALL' && selectedBrandSlug === 'ALL' && activeView === 'storefront'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            All Stationery ({products.filter((p) => p.isActive !== false).length})
-          </button>
-
-          {/* Dynamic Categories managed from Store CMS */}
-          {activeNavCategories.map((cat) => (
+        {/* Dynamic CMS Navigation & Category Filter Strip */}
+        <div className="bg-slate-50/95 border-b border-slate-200/80 px-4 py-2 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2">
             <button
-              key={cat.id}
               onClick={() => {
-                setSelectedCategorySlug(cat.slug);
+                window.history.pushState({}, '', '/');
+                setSelectedCategorySlug('ALL');
                 setSelectedBrandSlug('ALL');
                 setActiveView('storefront');
               }}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                selectedCategorySlug === cat.slug && activeView === 'storefront'
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+                selectedCategorySlug === 'ALL' && selectedBrandSlug === 'ALL' && activeView === 'storefront'
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
               }`}
             >
-              <span>{cat.name}</span>
-              {cat.slug === 'diy-and-crafts' && (
-                <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                  NEW
-                </span>
-              )}
+              All Stationery ({products.filter((p) => p.isActive !== false).length})
             </button>
-          ))}
 
-          {/* Additional Custom Navigation Items from CMS Navigation Builder */}
-          {navigationItems
-            .filter(
-              (item) =>
-                item.isActive !== false &&
-                item.showOnDesktop !== false &&
-                item.linkType !== 'CATEGORY'
-            )
-            .map((item) => (
+            {/* Dynamic Categories managed from Store CMS */}
+            {activeNavCategories.map((cat) => (
               <button
-                key={`nav-${item.id}`}
-                onClick={() => handleNavigateCmsDestination(item.linkType, item.targetValue)}
-                className="px-4 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200/80 transition-all whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5"
+                key={cat.id}
+                onClick={() => {
+                  window.history.pushState({}, '', '/');
+                  setSelectedCategorySlug(cat.slug);
+                  setSelectedBrandSlug('ALL');
+                  setActiveView('storefront');
+                }}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                  selectedCategorySlug === cat.slug && activeView === 'storefront'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
+                }`}
               >
-                <span>{item.label}</span>
-                {item.highlightBadge && (
-                  <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                    {item.highlightBadge}
+                <span>{cat.name}</span>
+                {cat.slug === 'diy-and-crafts' && (
+                  <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
+                    NEW
                   </span>
                 )}
               </button>
             ))}
+
+            {/* Additional Custom Navigation Items from CMS Navigation Builder */}
+            {navigationItems
+              .filter(
+                (item) =>
+                  item.isActive !== false &&
+                  item.showOnDesktop !== false &&
+                  item.linkType !== 'CATEGORY'
+              )
+              .map((item) => (
+                <button
+                  key={`nav-${item.id}`}
+                  onClick={() => handleNavigateCmsDestination(item.linkType, item.targetValue)}
+                  className="px-4 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200/80 transition-all whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>{item.label}</span>
+                  {item.highlightBadge && (
+                    <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
+                      {item.highlightBadge}
+                    </span>
+                  )}
+                </button>
+              ))}
+          </div>
         </div>
       </div>
-
-      {/* Toast Notification (Desktop only — no mobile pop-up) */}
-      {cartFeedbackToast && (
-        <div className="hidden md:flex fixed bottom-6 right-6 z-50 bg-stone-900/95 backdrop-blur-md text-white px-5 py-3 rounded-full shadow-xl text-xs font-medium items-center gap-3 border border-stone-700">
-          <span>{cartFeedbackToast}</span>
-          <button
-            onClick={() => {
-              setCartFeedbackToast(null);
-              setActiveView('checkout');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className="px-3 py-1 bg-amber-400/20 text-amber-300 rounded-full font-semibold whitespace-nowrap hover:bg-amber-400/30 cursor-pointer"
-          >
-            Go to Cart
-          </button>
-        </div>
-      )}
 
       {authError && (
         <div className="max-w-7xl mx-auto mt-4 px-6">
@@ -5424,85 +5360,89 @@ const DEFAULT_PRODUCTS = [
         )}
       </main>
 
-      {/* SWIPE / DRAG PRODUCT INTO CART ANIMATION OVERLAY WITH MOTION TRAIL */}
-      <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden">
-        <AnimatePresence>
-          {flyingCartItems.map((item) => {
-            const midX = item.startX + (item.endX - item.startX) * 0.36;
-            const peakY = Math.max(12, Math.min(item.startY, item.endY) - 68);
-            return (
-              <React.Fragment key={item.id}>
-                {/* Motion Trail Echo 1 */}
-                <motion.div
-                  initial={{ x: item.startX, y: item.startY, scale: 0.85, opacity: 0.45 }}
-                  animate={{
-                    x: [item.startX, midX, item.endX],
-                    y: [item.startY, peakY, item.endY],
-                    scale: [0.85, 0.9, 0.15],
-                    rotate: [0, -12, 16],
-                    opacity: [0.45, 0.35, 0],
-                  }}
-                  transition={{
-                    duration: 0.72,
-                    delay: 0.045,
-                    ease: [0.22, 1, 0.36, 1],
-                    times: [0, 0.38, 1],
-                  }}
-                  className="fixed top-0 left-0 w-40 h-28 rounded-3xl bg-[#B42318]/25 border border-[#B42318]/50 pointer-events-none"
-                />
-
-                {/* Primary Dragged / Swiped Product Card */}
-                <motion.div
-                  initial={{
-                    x: item.startX,
-                    y: item.startY,
-                    scale: 0.95,
-                    rotate: 0,
-                    opacity: 1,
-                  }}
-                  animate={{
-                    x: [item.startX, midX, item.endX],
-                    y: [item.startY, peakY, item.endY],
-                    scale: [0.96, 1.08, 0.22],
-                    rotate: [0, -9, 12],
-                    opacity: [1, 1, 0.15],
-                  }}
-                  exit={{ opacity: 0, scale: 0.1 }}
-                  transition={{
-                    duration: 0.72,
-                    ease: [0.22, 1, 0.36, 1],
-                    times: [0, 0.38, 1],
-                  }}
-                  className="fixed top-0 left-0 w-40 bg-white border-2 border-[#B42318] rounded-3xl shadow-2xl p-2 pointer-events-none"
-                >
-                  <div className="bg-[#B42318] text-white text-[9px] font-mono uppercase tracking-wider font-bold px-2 py-0.5 rounded-full mb-1.5 flex items-center justify-between">
-                    <span>SWIPING TO CART</span>
-                    <span>→</span>
-                  </div>
-                  <div className="aspect-4/3 w-full rounded-2xl overflow-hidden bg-slate-50 border border-slate-200">
-                    <ProductIllustration
-                      type={item.illustrationType}
-                      imageUrl={item.imageUrl}
-                      alt={item.name}
-                      className="w-full h-full"
-                    />
-                  </div>
-                  <div className="pt-1 px-1 flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-bold text-stone-900 truncate">
-                      {item.name}
-                    </span>
-                    <span className="text-[10px] font-mono-tabular font-bold text-[#B42318] shrink-0">
-                      {item.priceFormatted}
-                    </span>
-                  </div>
-                </motion.div>
-              </React.Fragment>
-            );
-          })}
-        </AnimatePresence>
-      </div>
-
-      {/* Sign-In and Cart are now dedicated pages ('signin' and 'checkout') — no modal or drawer popups */}
+      {/* Fixed Mobile Bottom Navigation Bar — Stays still when scrolling on mobile */}
+      <nav
+        aria-label="Mobile Bottom Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 shadow-lg"
+      >
+        <div className="grid grid-cols-5 gap-1 text-[11px] font-medium">
+          <button
+            type="button"
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              setSelectedCategorySlug('ALL');
+              setSelectedBrandSlug('ALL');
+              setActiveView('storefront');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeView === 'storefront' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span>Shop</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              setActiveView('combos');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeView === 'combos' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span>Combos</span>
+          </button>
+          <button
+            type="button"
+            onClick={navigateToCheckout}
+            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeView === 'checkout'
+                ? 'bg-[#B42318] text-white font-bold'
+                : 'bg-slate-900 text-white font-semibold'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Cart ({totalCartItemsCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.history.pushState({}, '', '/');
+              setActiveView('track');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeView === 'track' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Orders</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (supabaseUser || dbUser) {
+                window.history.pushState({}, '', '/');
+                setActiveView('track');
+              } else {
+                window.history.pushState({}, '', '/signin');
+                setActiveView('signin');
+              }
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+              activeView === 'signin' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>{supabaseUser || dbUser ? 'Account' : 'Sign In'}</span>
+          </button>
+        </div>
+      </nav>
 
       {/* Quiet, Authentic Retail Footer (Dynamically powered by Store CMS) */}
       <footer className="bg-white border-t border-stone-200 px-6 py-10 mt-16 text-xs text-stone-600">
