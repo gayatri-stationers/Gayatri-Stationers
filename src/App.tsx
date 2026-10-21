@@ -2325,13 +2325,13 @@ const DEFAULT_PRODUCTS = [
         </div>
       )}
 
-      {/* Sticky Top Header & Navigation Container — Stays still when scrolling on mobile and desktop */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-xs">
-        {/* Strict 3-Zone Top Bar */}
-        <header className="border-b border-slate-200/80 px-4 sm:px-6 py-2.5 sm:py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-6">
+      {/* Sticky Top Header & Navigation Container — Oval Capsule on Mobile, Stays Still When Scrolling */}
+      <div className="sticky top-0 z-40 px-2.5 pt-2 pb-1.5 md:p-0 bg-[#FAFAFA]/85 md:bg-white/95 backdrop-blur-md md:shadow-xs space-y-1.5 md:space-y-0">
+        {/* Strict 3-Zone Top Bar — Floating Oval Capsule on Mobile */}
+        <header className="bg-white/95 backdrop-blur-xl border border-slate-200/90 md:border-x-0 md:border-t-0 md:border-b rounded-[32px] md:rounded-none shadow-sm md:shadow-none px-3.5 sm:px-6 py-2.5 sm:py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-6">
             {/* Left Zone: Wordmark */}
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => {
                   window.history.pushState({}, '', '/');
@@ -2340,7 +2340,7 @@ const DEFAULT_PRODUCTS = [
                   setActiveView('storefront');
                   setMobileMenuOpen(false);
                 }}
-                className="font-serif-display text-lg sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left cursor-pointer"
+                className="font-serif-display text-base sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left cursor-pointer pl-1 sm:pl-0"
               >
                 {themeConfig.storeName || 'Gayatri Stationers'}
               </button>
@@ -2423,8 +2423,8 @@ const DEFAULT_PRODUCTS = [
                 ))}
             </nav>
 
-            {/* Right Zone: Profile & Cart Buttons */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Right Zone: Oval Profile & Cart Buttons */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -2432,10 +2432,10 @@ const DEFAULT_PRODUCTS = [
                   setActiveView('profile');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`px-3 sm:px-4 py-2 sm:py-2.5 text-xs font-semibold rounded-full border transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2.5 text-xs font-semibold rounded-full border transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
                   activeView === 'profile'
                     ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                    : 'bg-slate-50 text-slate-800 border-slate-200/90 hover:bg-slate-100'
                 }`}
                 aria-label="Open My Profile Page"
               >
@@ -2447,7 +2447,7 @@ const DEFAULT_PRODUCTS = [
               <button
                 ref={cartButtonRef}
                 onClick={navigateToCheckout}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 sm:gap-2"
+                className="px-3.5 sm:px-5 py-1.5 sm:py-2.5 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 sm:gap-2"
                 aria-label="Open Cart & Checkout Page"
               >
                 <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -2457,10 +2457,10 @@ const DEFAULT_PRODUCTS = [
             </div>
           </div>
 
-          {/* Always-Visible Mobile Navigation Bar (Stays still when scrolling on mobile) */}
+          {/* Always-Visible Oval Mobile Navigation Pill Track (Stays still when scrolling on mobile) */}
           <nav
             aria-label="Mobile Primary Navigation"
-            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2.5 mt-2 border-t border-slate-100 text-xs font-medium"
+            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar p-1 mt-2 bg-slate-100/90 border border-slate-200/70 rounded-full text-xs font-medium"
           >
             <button
               type="button"
@@ -2470,10 +2470,10 @@ const DEFAULT_PRODUCTS = [
                 setSelectedBrandSlug('ALL');
                 setActiveView('storefront');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'storefront'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Shop
@@ -2484,10 +2484,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/');
                 setActiveView('combos');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'combos'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Combos
@@ -2498,10 +2498,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/');
                 setActiveView('bulk');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'bulk'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Bulk Orders
@@ -2512,10 +2512,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/');
                 setActiveView('track');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'track'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               My Orders
@@ -2526,10 +2526,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/profile');
                 setActiveView('profile');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'profile'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Profile
@@ -2540,10 +2540,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/');
                 setActiveView('wishlist');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'wishlist'
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Wishlist ({wishlistProductIds.length})
@@ -2554,10 +2554,10 @@ const DEFAULT_PRODUCTS = [
                 window.history.pushState({}, '', '/admin');
                 setActiveView('admin');
               }}
-              className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                 activeView === 'admin' || activeView === 'admin-login'
-                  ? 'bg-[#B42318] text-white font-semibold'
-                  : 'bg-slate-100 text-slate-800'
+                  ? 'bg-[#B42318] text-white font-semibold shadow-2xs'
+                  : 'text-slate-700 hover:bg-white/80'
               }`}
             >
               Admin
@@ -2566,7 +2566,7 @@ const DEFAULT_PRODUCTS = [
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full text-slate-700 hover:bg-white/80 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Sign Out
               </button>
@@ -2578,10 +2578,10 @@ const DEFAULT_PRODUCTS = [
                   setActiveView('signin');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
                   activeView === 'signin'
-                    ? 'bg-slate-900 text-white font-semibold'
-                    : 'bg-slate-100 text-slate-900 font-semibold'
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'bg-white text-slate-900 font-semibold shadow-2xs'
                 }`}
               >
                 Sign In
@@ -2590,8 +2590,8 @@ const DEFAULT_PRODUCTS = [
           </nav>
         </header>
 
-        {/* Practical Retail Search, Account & Discovery Bar */}
-        <div className="border-b border-slate-200/80 px-4 py-2">
+        {/* Practical Retail Search, Account & Discovery Bar — Oval Pill Container on Mobile */}
+        <div className="bg-white/95 md:bg-transparent border border-slate-200/80 md:border-x-0 md:border-t-0 md:border-b rounded-full md:rounded-none shadow-2xs md:shadow-none px-2.5 sm:px-4 py-1.5 sm:py-2">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
             {/* Search Input */}
             <div className="relative flex-1">
@@ -2716,8 +2716,8 @@ const DEFAULT_PRODUCTS = [
           </div>
         </div>
 
-        {/* Dynamic CMS Navigation & Category Filter Strip */}
-        <div className="bg-slate-50/95 border-b border-slate-200/80 px-4 py-2 overflow-x-auto no-scrollbar">
+        {/* Dynamic CMS Navigation & Category Filter Strip — Oval Pill Strip on Mobile */}
+        <div className="bg-white/90 md:bg-slate-50/95 border border-slate-200/80 md:border-x-0 md:border-t-0 md:border-b rounded-full md:rounded-none shadow-2xs md:shadow-none px-2.5 sm:px-4 py-1.5 sm:py-2 overflow-x-auto no-scrollbar">
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
@@ -2885,33 +2885,33 @@ const DEFAULT_PRODUCTS = [
 
                       {/* Quick Category Showcase Cards */}
                       <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mt-6">
-                        <div className="p-3 text-center rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('notebooks-and-registers')}>
+                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('notebooks-and-registers')}>
                           <ProductIllustration type="spiral_notebook" alt="Ruled Books" className="w-full h-14 object-contain mx-auto" />
                           <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Ruled Books</p>
                         </div>
-                        <div className="p-3 text-center rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('pens-and-writing')}>
+                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('pens-and-writing')}>
                           <ProductIllustration type="ballpoint_pen" alt="Pastel Pens" className="w-full h-14 object-contain mx-auto" />
                           <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Pastel Pens</p>
                         </div>
-                        <div className="p-3 text-center rounded-2xl bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('diy-and-crafts')}>
+                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('diy-and-crafts')}>
                           <ProductIllustration type="drawing_book" alt="Fine Art Kits" className="w-full h-14 object-contain mx-auto" />
                           <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Fine Art Kits</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Clean Retail Promo Card (Flat 25% Off) */}
-                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4 shadow-xs">
+                    {/* Clean Retail Promo Card (Flat 25% Off — Oval Capsule) */}
+                    <div className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex items-center justify-between gap-4 shadow-xs">
                       <div className="space-y-1">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#B42318]">
                           <Tag className="w-3.5 h-3.5 text-[#B42318]" />
                           <span>Flat 25% Off on First Order</span>
                         </div>
                         <p className="text-[11px] text-slate-600">
-                          Use code <strong className="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">BACKTOSCHOOL10</strong> on orders above ₹399
+                          Use code <strong className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">BACKTOSCHOOL10</strong> on orders above ₹399
                         </p>
                       </div>
-                      <span className="shrink-0 px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full shadow-2xs">
+                      <span className="shrink-0 px-3.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full shadow-2xs">
                         ₹0 Pickup Fee
                       </span>
                     </div>
@@ -5956,10 +5956,10 @@ const DEFAULT_PRODUCTS = [
         )}
       </main>
 
-      {/* Fixed Mobile Bottom Navigation Bar — Stays still when scrolling on mobile */}
+      {/* Fixed Mobile Bottom Navigation Bar — Floating Oval Capsule Dock that stays still when scrolling */}
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 shadow-lg"
+        className="md:hidden fixed bottom-3 left-3 right-3 z-40 bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-full px-2 py-1.5 shadow-xl"
       >
         <div className="grid grid-cols-5 gap-1 text-[11px] font-medium">
           <button
@@ -5971,8 +5971,10 @@ const DEFAULT_PRODUCTS = [
               setActiveView('storefront');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-              activeView === 'storefront' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeView === 'storefront'
+                ? 'bg-slate-100 text-[#B42318] font-bold'
+                : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <Store className="w-4 h-4" />
@@ -5985,8 +5987,10 @@ const DEFAULT_PRODUCTS = [
               setActiveView('combos');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-              activeView === 'combos' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeView === 'combos'
+                ? 'bg-slate-100 text-[#B42318] font-bold'
+                : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <SlidersHorizontal className="w-4 h-4" />
@@ -5995,7 +5999,7 @@ const DEFAULT_PRODUCTS = [
           <button
             type="button"
             onClick={navigateToCheckout}
-            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer shadow-xs transition-all ${
               activeView === 'checkout'
                 ? 'bg-[#B42318] text-white font-bold'
                 : 'bg-slate-900 text-white font-semibold'
@@ -6011,8 +6015,10 @@ const DEFAULT_PRODUCTS = [
               setActiveView('track');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-              activeView === 'track' ? 'text-[#B42318] font-bold' : 'text-slate-600'
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeView === 'track'
+                ? 'bg-slate-100 text-[#B42318] font-bold'
+                : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <Package className="w-4 h-4" />
@@ -6025,10 +6031,10 @@ const DEFAULT_PRODUCTS = [
               setActiveView('profile');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className={`py-1.5 rounded-2xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
               activeView === 'profile' || activeView === 'signin'
-                ? 'text-[#B42318] font-bold'
-                : 'text-slate-600'
+                ? 'bg-slate-100 text-[#B42318] font-bold'
+                : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <User className="w-4 h-4" />
