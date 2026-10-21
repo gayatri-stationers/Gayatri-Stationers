@@ -302,12 +302,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
         throw new Error(data.error || `Access denied (HTTP ${res.status})`);
       }
-      setDashboardData(data);
+      const safeOrders = Array.isArray(data?.orders) ? data.orders : [];
+      const normalizedData = {
+        ...data,
+        metrics: {
+          todaysOrdersCount: Number(data?.metrics?.todaysOrdersCount ?? safeOrders.length),
+          totalOrdersCount: Number(data?.metrics?.totalOrdersCount ?? data?.metrics?.totalOrders ?? safeOrders.length),
+          readyForPickupCount: Number(data?.metrics?.readyForPickupCount ?? 0),
+          pendingOrdersCount: Number(data?.metrics?.pendingOrdersCount ?? 0),
+          pendingOfflinePaymentsCount: Number(data?.metrics?.pendingOfflinePaymentsCount ?? 0),
+          paidRevenuePaise: Number(data?.metrics?.paidRevenuePaise ?? data?.metrics?.totalRevenuePaise ?? 0),
+          activeOrdersValuePaise: Number(data?.metrics?.activeOrdersValuePaise ?? 0),
+          unreadNotificationsCount: Number(data?.metrics?.unreadNotificationsCount ?? 0),
+          ...(data?.metrics || {}),
+        },
+        orders: safeOrders,
+        lowStockVariants: Array.isArray(data?.lowStockVariants) ? data.lowStockVariants : [],
+        inventoryMovements: Array.isArray(data?.inventoryMovements) ? data.inventoryMovements : [],
+        coupons: Array.isArray(data?.coupons) ? data.coupons : [],
+        serviceablePincodes: Array.isArray(data?.serviceablePincodes)
+          ? data.serviceablePincodes
+          : Array.isArray(data?.pincodes)
+          ? data.pincodes
+          : [],
+        bulkEnquiries: Array.isArray(data?.bulkEnquiries)
+          ? data.bulkEnquiries
+          : Array.isArray(data?.enquiries)
+          ? data.enquiries
+          : [],
+        users: Array.isArray(data?.users) ? data.users : [],
+        notifications: Array.isArray(data?.notifications) ? data.notifications : [],
+        pages: Array.isArray(data?.pages) ? data.pages : [],
+      };
+      setDashboardData(normalizedData);
       if (selectedOrder) {
-        const refreshed = data.orders.find((o: any) => o.order.id === selectedOrder.order.id);
+        const refreshed = safeOrders.find((o: any) => o?.order?.id === selectedOrder?.order?.id);
         if (refreshed) setSelectedOrder(refreshed);
-      } else if (data.orders?.length > 0) {
-        setSelectedOrder(data.orders[0]);
+      } else if (safeOrders.length > 0) {
+        setSelectedOrder(safeOrders[0]);
       }
     } catch (err: any) {
       if (!dashboardData) {
@@ -2902,8 +2934,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
-                        {products.map((p) =>
-                          p.variants.map((v: any) => (
+                        {(products || []).map((p) =>
+                          (p.variants || []).map((v: any) => (
                             <tr key={v.id} className="hover:bg-slate-50">
                               <td className="py-2.5 px-3">
                                 <input
@@ -3115,7 +3147,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <p className="font-semibold text-emerald-800">
                           Imported/Updated {csvResult.importedCount} rows successfully.
                         </p>
-                        {csvResult.warnings.map((w, i) => (
+                        {(csvResult.warnings || []).map((w, i) => (
                           <p key={i} className="text-amber-800">
                             Warning: {w}
                           </p>

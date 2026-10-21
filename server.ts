@@ -425,9 +425,16 @@ async function startServer() {
           });
         }
         try {
-          const appBaseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+          const rawOrigin =
+            req.body.returnOrigin ||
+            (req.headers.origin as string) ||
+            process.env.APP_URL ||
+            'https://gayatristationers.co.in';
+          const appBaseUrl = rawOrigin.replace(/\/$/, '');
           const returnUrl = `${appBaseUrl}/?cf_order_id={order_id}`;
-          const notifyUrl = `${appBaseUrl}/api/webhooks/cashfree`;
+          const notifyUrl = appBaseUrl.startsWith('https://')
+            ? `${appBaseUrl}/api/webhooks/cashfree`
+            : undefined;
 
           const cfOrder = await createCashfreeOrder(
             {
@@ -599,44 +606,53 @@ async function startServer() {
   // 7.5. Server-Side Cashfree Payment Session, Order Verification, Webhook & Admin Configuration
   app.post('/api/payments/cashfree/create-session', optionalAuth, async (req: AuthRequest, res) => {
     try {
-      const { orderNumber } = req.body;
+      const {
+        orderNumber,
+        amountRupees,
+        customerName,
+        customerPhone,
+        customerEmail,
+        returnOrigin,
+      } = req.body;
       if (!orderNumber) {
         return res.status(400).json({ error: 'Order number is required.' });
       }
 
-      const details = await getOrderDetailsByNumberOrId(orderNumber);
-      if (!details) {
-        return res.status(404).json({ error: `Order ${orderNumber} not found.` });
-      }
-
-      if (details.order.paymentStatus === 'PAID') {
+      const details = await getOrderDetailsByNumberOrId(orderNumber).catch(() => null);
+      if (details?.order?.paymentStatus === 'PAID') {
         return res.json({ alreadyPaid: true, order: details.order });
       }
 
-      const bootstrapData = await getStoreBootstrapData();
+      const bootstrapData = await getStoreBootstrapData().catch(() => ({ settings: {} }));
       const activeCashfree = getActiveCashfreeConfig(bootstrapData.settings);
 
-      if (!activeCashfree.isConfigured) {
-        return res.status(503).json({
-          error: 'Cashfree is not configured. Please enter App ID and Secret Key in Admin Settings.',
-        });
-      }
-
-      const appBaseUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const rawOrigin =
+        returnOrigin ||
+        (req.headers.origin as string) ||
+        process.env.APP_URL ||
+        'https://gayatristationers.co.in';
+      const appBaseUrl = rawOrigin.replace(/\/$/, '');
       const returnUrl = `${appBaseUrl}/?cf_order_id={order_id}`;
-      const notifyUrl = `${appBaseUrl}/api/webhooks/cashfree`;
+      const notifyUrl = appBaseUrl.startsWith('https://')
+        ? `${appBaseUrl}/api/webhooks/cashfree`
+        : undefined;
+
+      const resolvedAmountRupees = details?.order
+        ? details.order.totalPaise / 100
+        : Math.max(1, Number(amountRupees || 195));
 
       const cfOrder = await createCashfreeOrder(
         {
-          orderNumber: details.order.orderNumber,
-          orderAmountRupees: details.order.totalPaise / 100,
-          customerId: `cust_${details.order.userId || 'guest'}`,
-          customerName: details.order.customerName,
-          customerEmail: details.order.customerEmail || 'customer@gayatristationers.com',
-          customerPhone: details.order.customerPhone,
+          orderNumber: details?.order?.orderNumber || orderNumber,
+          orderAmountRupees: resolvedAmountRupees,
+          customerId: `cust_${details?.order?.userId || 'guest'}`,
+          customerName: details?.order?.customerName || customerName || 'Valued Customer',
+          customerEmail:
+            details?.order?.customerEmail || customerEmail || 'support@gayatristationers.co.in',
+          customerPhone: details?.order?.customerPhone || customerPhone || '9876543210',
           returnUrl,
           notifyUrl,
-          orderNote: `Gayatri Stationers Order ${details.order.orderNumber}`,
+          orderNote: `Gayatri Stationers Order ${details?.order?.orderNumber || orderNumber}`,
         },
         activeCashfree
       );

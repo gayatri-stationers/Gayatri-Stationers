@@ -100,8 +100,154 @@ function normalizeCatalogueProduct(p: any): any {
   };
 }
 
+const POLICY_URL_SLUG_MAP: Record<string, string> = {
+  '/contact-us': 'contact-us',
+  '/contact': 'contact-us',
+  '/terms-and-conditions': 'terms-and-conditions',
+  '/terms': 'terms-and-conditions',
+  '/terms-of-service': 'terms-and-conditions',
+  '/refunds-and-cancellations': 'refunds-and-cancellations',
+  '/refund-policy': 'refunds-and-cancellations',
+  '/returns-and-refunds': 'refunds-and-cancellations',
+  '/shipping-and-pickup-policy': 'shipping-and-pickup-policy',
+  '/shipping-policy': 'shipping-and-pickup-policy',
+  '/privacy-policy': 'privacy-policy',
+  '/privacy': 'privacy-policy',
+};
+
+const DEFAULT_CMS_PAGES = [
+  {
+    id: 501,
+    title: 'Contact Us',
+    slug: 'contact-us',
+    pageType: 'POLICY',
+    summary:
+      'Official merchant contact details, registered retail store address, telephone, email, and customer grievance redressal officer for Gayatri Stationers.',
+    contentMarkdown: `Merchant & Legal Entity Name: Gayatri Stationers
+Trade / Brand Name: Gayatri Stationers (gayatristationers.co.in)
+
+Registered & Retail Store Address:
+Gayatri Stationers — Retail & Institutional Supply Counter
+Shop No. 14, Dayal Bagh / Shahganj Main Market,
+Agra, Uttar Pradesh – 282010, India
+
+Customer Support & Order Helpline:
+• Telephone / Mobile / WhatsApp: +91 98765 43210
+• Customer Support Email: support@gayatristationers.co.in
+• Owner / Escalation Email: vainhavgupta20052014@gmail.com
+• Operating Hours: Monday to Saturday, 10:00 AM – 8:00 PM IST (Closed on Sundays & National Holidays)
+
+Grievance Redressal Officer:
+• Name: Vaibhav Gupta (Proprietor & Store Owner)
+• Designation: Grievance Officer — Gayatri Stationers
+• Address: Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+• Email: vainhavgupta20052014@gmail.com
+• Resolution Timeline: All payment, delivery, or product queries are acknowledged within 24 hours and resolved within 2–5 business days.`,
+    isActive: true,
+    showInFooter: true,
+    showInHeader: true,
+    status: 'PUBLISHED',
+  },
+  {
+    id: 502,
+    title: 'Terms & Conditions',
+    slug: 'terms-and-conditions',
+    pageType: 'POLICY',
+    summary:
+      'Terms of Service and Conditions of Sale governing online stationery purchases, INR pricing, GST invoicing, and order fulfilment at Gayatri Stationers.',
+    contentMarkdown: `1. Introduction & Acceptance of Terms
+Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an order on our website (https://gayatristationers.co.in), you agree to be bound by these Terms & Conditions, our Refunds & Cancellations Policy, and applicable laws of India.
+
+2. Products, Services & INR Pricing
+• Gayatri Stationers retails authentic school notebooks, registers, writing instruments (pens, pencils, markers), fine art & craft materials, geometry instruments, calculators, and office filing stationery, as well as institutional bulk supply services.
+• All product and service prices on this website are listed strictly in Indian Rupees (INR / ₹) and are inclusive of applicable Goods and Services Tax (GST) unless explicitly stated otherwise.
+• We reserve the right to update product pricing, stock availability, and promotional offers prior to order confirmation.
+
+3. Payments & Security
+• We accept online payments in Indian Rupees (INR) via Cashfree Payments (UPI, Google Pay, PhonePe, Paytm, Credit Cards, Debit Cards, and NetBanking), Cash on Delivery (COD) for eligible delivery orders, and Pay at Store Counter for Store Pickup orders.
+• All online payments are processed through PCI-DSS compliant payment gateways. Gayatri Stationers does not store your card numbers, CVV, or UPI PINs on its servers.
+
+4. Order Fulfilment, Store Pickup & Home Delivery
+• Store Pickup orders generate a 6-digit Pickup Code and can be collected from our Agra retail counter during business hours once marked Ready for Pickup.
+• Home Delivery orders are dispatched to the customer's shipping address and PIN code within 24–48 business hours.
+
+5. Limitation of Liability & Governing Law
+• Our maximum liability for any claim arising out of an order shall not exceed the total amount paid by the customer in INR for that specific order.
+• These Terms & Conditions are governed by the laws of India, and any disputes shall be subject to the exclusive jurisdiction of the courts in Agra, Uttar Pradesh.`,
+    isActive: true,
+    showInFooter: true,
+    showInHeader: true,
+    status: 'PUBLISHED',
+  },
+  {
+    id: 503,
+    title: 'Refunds & Cancellations',
+    slug: 'refunds-and-cancellations',
+    pageType: 'POLICY',
+    summary:
+      'Complete Order Cancellation, Return, Replacement, and Refund Policy with timelines for UPI, Card, NetBanking, and COD orders.',
+    contentMarkdown: `1. Order Cancellation Policy
+• Before Dispatch / Pickup: You may cancel your order at any time before it is marked "Shipped / Out for Delivery" or collected at the Store Pickup counter. A 100% full refund in INR (₹) will be initiated with zero cancellation charges.
+• How to Cancel: Contact our support desk at support@gayatristationers.co.in or +91 98765 43210 with your Order Number (e.g., GS-XXXXXX).
+
+2. Return & Replacement Eligibility (7-Day Window)
+• Customers can request a return, replacement, or refund within 7 calendar days of receiving the delivery or collecting the order if:
+  (a) The stationery item received is physically damaged, defective, or broken in transit;
+  (b) An incorrect product, variant, or quantity was delivered compared to the order invoice;
+  (c) The item is unused, in its original manufacturer packaging, with intact tags and seals.
+• Opened ink bottles, used pens/markers, or custom-printed institutional stationery are only eligible for return if delivered in a defective or damaged condition.
+
+3. Refund Processing & Timelines (in INR / ₹)
+• Online Prepaid Orders (Cashfree — UPI / Credit Card / Debit Card / NetBanking): Once your cancellation or return is approved, the refund is initiated within 24–48 business hours. The refunded amount in INR (₹) will be credited back to your original payment source within 5 to 7 business days, depending on your issuing bank or UPI provider.
+• Cash on Delivery (COD) & Pay at Store Orders: Refunds for returned COD or counter-paid orders are processed in INR (₹) via UPI transfer or NEFT/IMPS bank transfer to the customer's verified bank account within 3 to 5 business days.`,
+    isActive: true,
+    showInFooter: true,
+    showInHeader: true,
+    status: 'PUBLISHED',
+  },
+  {
+    id: 504,
+    title: 'Shipping & Delivery Policy',
+    slug: 'shipping-and-pickup-policy',
+    pageType: 'POLICY',
+    summary:
+      'Store Pickup counter slots, Home Delivery shipping charges in INR, and estimated dispatch timelines.',
+    contentMarkdown: `1. Store Pickup (FREE — ₹0 INR)
+• Select "Store Pickup" at checkout to reserve your stationery items immediately at Gayatri Stationers, Agra.
+• Present your 6-digit Pickup Code at our retail counter during business hours (Mon–Sat, 10:00 AM – 8:00 PM).
+
+2. Home Delivery & Courier Dispatch
+• Local Agra Delivery (PIN 282010, 282001, 282002): Same-Day or Next-Business-Day delivery (₹35 – ₹45 INR, FREE on orders above ₹399 / ₹499 INR).
+• Outstation & National Delivery: Dispatched within 24–48 hours via tracked surface/air courier with delivery in 2–5 business days (₹40 – ₹75 INR, FREE above threshold).`,
+    isActive: true,
+    showInFooter: true,
+    showInHeader: false,
+    status: 'PUBLISHED',
+  },
+  {
+    id: 505,
+    title: 'Privacy Policy',
+    slug: 'privacy-policy',
+    pageType: 'POLICY',
+    summary:
+      'How Gayatri Stationers collects, uses, and protects your personal contact details and payment information.',
+    contentMarkdown: `1. Information We Collect
+We collect your name, mobile number, email address, and delivery address solely to process your stationery orders, send GST invoices, provide order tracking updates, and fulfill customer support requests.
+
+2. Payment Data Security
+All online payments (UPI, Credit/Debit Cards, NetBanking) are processed securely through Cashfree Payments using industry-standard encryption and PCI-DSS compliance. We never store your card numbers, CVV, or banking passwords.
+
+3. Data Sharing & Contact
+We never sell or rent customer personal data to third parties. Data is shared only with logistics partners and payment processors strictly to complete your transaction. For privacy inquiries, email support@gayatristationers.co.in.`,
+    isActive: true,
+    showInFooter: true,
+    showInHeader: false,
+    status: 'PUBLISHED',
+  },
+];
+
 export default function App() {
-  // Navigation view state (recognizes private /admin/login and /admin routes via URL path)
+  // Navigation view state (recognizes /admin, /signin, and policy URLs like /contact-us, /terms-and-conditions, /refunds-and-cancellations)
   const [activeView, setActiveView] = useState<
     | 'storefront'
     | 'pdp'
@@ -117,14 +263,21 @@ export default function App() {
     | 'admin'
   >(() => {
     if (typeof window !== 'undefined') {
-      const p = window.location.pathname.replace(/\/+$/, '') || '/';
+      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
       if (p === '/admin/login' || p === '/admin') return 'admin';
       if (p === '/signin' || p === '/login') return 'signin';
+      if (POLICY_URL_SLUG_MAP[p]) return 'page';
     }
     return 'storefront';
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activePageSlug, setActivePageSlug] = useState<string | null>(null);
+  const [activePageSlug, setActivePageSlug] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
+      if (POLICY_URL_SLUG_MAP[p]) return POLICY_URL_SLUG_MAP[p];
+    }
+    return 'contact-us';
+  });
   const [activeHeroBannerIdx, setActiveHeroBannerIdx] = useState<number>(0);
 
   // Auth & Persistent Admin Session state
@@ -185,54 +338,168 @@ const DEFAULT_CATEGORIES = [
 
 const DEFAULT_PRODUCTS = [
   {
-    id: 101,
-    name: 'Classmate Pulsar Premium Spiral Notebook (A4, 300 Pages)',
-    slug: 'classmate-pulsar-premium-spiral-notebook-a4-300-pages',
+    id: 1,
+    name: 'Classmate Pulse 6-Subject Spiral Notebook (300 Pages, 70 GSM)',
+    slug: 'classmate-pulse-6-subject-spiral-300p',
+    sku: 'GS-NB-CM300',
     categoryId: 1,
     categoryName: 'Notebooks & Diaries',
     categorySlug: 'notebooks-and-diaries',
     brandId: 1,
-    brandName: 'Classmate',
-    brandSlug: 'classmate',
-    description: 'High quality 70 GSM elemental chlorine-free paper notebook.',
-    shortDescription: 'High quality 70 GSM elemental chlorine-free paper notebook.',
+    brandName: 'ITC Classmate',
+    brandSlug: 'itc-classmate',
+    description: 'High quality 70 GSM elemental chlorine-free paper 6-subject spiral notebook with divider tabs.',
+    shortDescription: 'A4 6-subject spiral register with micro-perforated 70 GSM sheets.',
     illustrationType: 'spiral_notebook',
-    mrpPaise: 25000,
-    sellingPricePaise: 22000,
-    baseMrpPaise: 25000,
-    basePricePaise: 22000,
-    totalStock: 50,
+    mrpPaise: 22000,
+    sellingPricePaise: 19500,
+    baseMrpPaise: 22000,
+    basePricePaise: 19500,
+    totalStock: 48,
     isActive: true,
     isFeatured: true,
     isBestseller: true,
     status: 'PUBLISHED',
     badge: 'BESTSELLER',
-    variants: [{ id: 1001, variantName: 'A4 / Single Line / 300 Pages', sku: 'GS-NB-001', mrpPaise: 25000, sellingPricePaise: 22000, pricePaise: 22000, stockQuantity: 50, inStock: true }],
+    variants: [
+      { id: 1, variantName: 'Single Ruled — 300 Pages (A4)', sku: 'GS-NB-CM300-SR', mrpPaise: 22000, sellingPricePaise: 19500, pricePaise: 19500, stockQuantity: 48, inStock: true },
+    ],
   },
   {
-    id: 102,
-    name: 'Uniball Eye UB-150 Fine Rollerball Pen (Pack of 3)',
-    slug: 'uniball-eye-ub-150-fine-rollerball-pen-pack-of-3',
+    id: 2,
+    name: 'Long Hardbound Account & Register Book (240 Pages, A4)',
+    slug: 'long-hardbound-register-240p',
+    sku: 'GS-NB-REG240',
+    categoryId: 1,
+    categoryName: 'Notebooks & Diaries',
+    categorySlug: 'notebooks-and-diaries',
+    brandId: 1,
+    brandName: 'ITC Classmate',
+    brandSlug: 'itc-classmate',
+    description: 'Durable section-sewn hardbound register ideal for school notes, coaching institutes, and office ledger records.',
+    shortDescription: 'Stiff laminated cover long register for daily academic and office work.',
+    illustrationType: 'hardbound_register',
+    mrpPaise: 14000,
+    sellingPricePaise: 12000,
+    baseMrpPaise: 14000,
+    basePricePaise: 12000,
+    totalStock: 65,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: false,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 4, variantName: 'Single Pack (240 Pages)', sku: 'GS-NB-REG240-1', mrpPaise: 14000, sellingPricePaise: 12000, pricePaise: 12000, stockQuantity: 65, inStock: true },
+    ],
+  },
+  {
+    id: 3,
+    name: 'Unomax Ultron 2X Matte Liquid Ball Pen Set (0.7mm Tip)',
+    slug: 'unomax-ultron-2x-ball-pen-set',
+    sku: 'GS-PN-UNO2X',
     categoryId: 2,
     categoryName: 'Pens & Writing Instruments',
     categorySlug: 'pens-and-writing-instruments',
     brandId: 2,
-    brandName: 'Uni-ball',
-    brandSlug: 'uniball',
-    description: 'Waterproof fade-proof pigment ink rollerball pens.',
-    shortDescription: 'Waterproof fade-proof pigment ink rollerball pens.',
-    illustrationType: 'gel_pen_pack',
-    mrpPaise: 30000,
-    sellingPricePaise: 27000,
-    baseMrpPaise: 30000,
-    basePricePaise: 27000,
-    totalStock: 40,
+    brandName: 'Unomax',
+    brandSlug: 'unomax',
+    description: 'Ultra-low viscosity ink ball pens offering 2X writing length and smudge-free exam performance.',
+    shortDescription: 'Smooth 0.7mm matte grip ball pens for fast exam writing.',
+    illustrationType: 'ball_pen_box',
+    mrpPaise: 10000,
+    sellingPricePaise: 9000,
+    baseMrpPaise: 10000,
+    basePricePaise: 9000,
+    totalStock: 80,
     isActive: true,
     isFeatured: true,
     isBestseller: true,
     status: 'PUBLISHED',
     badge: 'POPULAR',
-    variants: [{ id: 1002, variantName: 'Pack of 3 (Blue/Black/Red)', sku: 'GS-PEN-002', mrpPaise: 30000, sellingPricePaise: 27000, pricePaise: 27000, stockQuantity: 40, inStock: true }],
+    variants: [
+      { id: 6, variantName: 'Pack of 10 Pens (8 Blue + 2 Black)', sku: 'GS-PN-UNO2X-10', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 80, inStock: true },
+    ],
+  },
+  {
+    id: 4,
+    name: 'Flair Zoox F7 Roller Gel Pen Pack (0.5mm Needle Tip)',
+    slug: 'flair-zoox-f7-roller-gel-pen',
+    sku: 'GS-PN-FLZ7',
+    categoryId: 2,
+    categoryName: 'Pens & Writing Instruments',
+    categorySlug: 'pens-and-writing-instruments',
+    brandId: 3,
+    brandName: 'Flair',
+    brandSlug: 'flair',
+    description: 'Waterproof pigment gel ink pens with ergonomic barrel and fine 0.5mm needle tip.',
+    shortDescription: 'Quick-dry waterproof gel ink pens for crisp handwriting.',
+    illustrationType: 'gel_pen_pack',
+    mrpPaise: 15000,
+    sellingPricePaise: 13500,
+    baseMrpPaise: 15000,
+    basePricePaise: 13500,
+    totalStock: 50,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: false,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 8, variantName: 'Pack of 5 Pens (Blue Ink)', sku: 'GS-PN-FLZ7-5B', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 50, inStock: true },
+    ],
+  },
+  {
+    id: 6,
+    name: 'DOMS Bi-Colour & Water Colour Pencils Studio Tin (24 Shades + Brush)',
+    slug: 'doms-water-colour-pencils-24-tin',
+    sku: 'GS-AR-DOM24',
+    categoryId: 3,
+    categoryName: 'Art & Craft Supplies',
+    categorySlug: 'art-and-craft-supplies',
+    brandId: 4,
+    brandName: 'DOMS',
+    brandSlug: 'doms',
+    description: 'Rich water-soluble colour pigments housed in a protective metal tin with detailing brush.',
+    shortDescription: '24 vibrant water-soluble colour pencils in a collectible tin.',
+    illustrationType: 'colour_pencil_tin',
+    mrpPaise: 32000,
+    sellingPricePaise: 28500,
+    baseMrpPaise: 32000,
+    basePricePaise: 28500,
+    totalStock: 35,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: true,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 11, variantName: '24 Shades Metal Tin + Free Brush', sku: 'GS-AR-DOM24-TIN', mrpPaise: 32000, sellingPricePaise: 28500, pricePaise: 28500, stockQuantity: 35, inStock: true },
+    ],
+  },
+  {
+    id: 8,
+    name: 'DOMS Geommy Mathematical Drawing Instrument Box (Die-Cast Compass Set)',
+    slug: 'doms-geommy-geometry-box',
+    sku: 'GS-GM-DOMG1',
+    categoryId: 4,
+    categoryName: 'School & Geometry Essentials',
+    categorySlug: 'school-and-geometry-essentials',
+    brandId: 4,
+    brandName: 'DOMS',
+    brandSlug: 'doms',
+    description: 'Complete school geometry kit with self-centering die-cast compass, divider, set squares, protractor, and 15cm scale.',
+    shortDescription: 'Precision die-cast metal compass & mathematical drawing instrument box.',
+    illustrationType: 'geometry_box',
+    mrpPaise: 16000,
+    sellingPricePaise: 14500,
+    baseMrpPaise: 16000,
+    basePricePaise: 14500,
+    totalStock: 60,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: true,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 15, variantName: 'Standard Metal Tin Box', sku: 'GS-GM-DOMG1-STD', mrpPaise: 16000, sellingPricePaise: 14500, pricePaise: 14500, stockQuantity: 60, inStock: true },
+    ],
   },
 ].map(normalizeCatalogueProduct);
 
@@ -244,12 +511,46 @@ const DEFAULT_PRODUCTS = [
   const [products, setProducts] = useState<any[]>(DEFAULT_PRODUCTS);
   const [bundles, setBundles] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
-  const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([]);
+  const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([
+    {
+      id: 1,
+      pincode: '282010',
+      city: 'Agra (Shahganj / Dayal Bagh Local Zone)',
+      state: 'Uttar Pradesh',
+      deliveryFeePaise: 3500,
+      freeDeliveryThresholdPaise: 39900,
+      codAvailable: true,
+      estimatedDays: 'Same Day / Next Day Delivery',
+      isActive: true,
+    },
+    {
+      id: 2,
+      pincode: '282001',
+      city: 'Agra Cantt / Civil Lines',
+      state: 'Uttar Pradesh',
+      deliveryFeePaise: 4500,
+      freeDeliveryThresholdPaise: 49900,
+      codAvailable: true,
+      estimatedDays: '1–2 Business Days',
+      isActive: true,
+    },
+    {
+      id: 3,
+      pincode: '282002',
+      city: 'Agra (Sanjay Place / Commercial Hub)',
+      state: 'Uttar Pradesh',
+      deliveryFeePaise: 4000,
+      freeDeliveryThresholdPaise: 49900,
+      codAvailable: true,
+      estimatedDays: '1–2 Business Days',
+      isActive: true,
+    },
+  ]);
   const [storeSettings, setStoreSettings] = useState<Record<string, any>>({});
   const [navigationItems, setNavigationItems] = useState<any[]>([]);
   const [homepageSections, setHomepageSections] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
-  const [cmsPages, setCmsPages] = useState<any[]>([]);
+  const [cmsPages, setCmsPages] = useState<any[]>(DEFAULT_CMS_PAGES);
   const [cmsRevisions, setCmsRevisions] = useState<any[]>([]);
   const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<{
     cashfreeConfigured: boolean;
@@ -371,14 +672,17 @@ const DEFAULT_PRODUCTS = [
     }
   }, [cartItems]);
 
-  // Sync browser URL popstate for /admin/login and /admin
+  // Sync browser URL popstate for /admin, /signin, and policy pages (/contact-us, /terms-and-conditions, /refunds-and-cancellations)
   useEffect(() => {
     const handlePopState = () => {
-      const p = window.location.pathname.replace(/\/+$/, '') || '/';
-      if (p === '/admin/login') {
-        setActiveView('admin-login');
-      } else if (p === '/admin') {
+      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
+      if (p === '/admin/login' || p === '/admin') {
         setActiveView('admin');
+      } else if (p === '/signin' || p === '/login') {
+        setActiveView('signin');
+      } else if (POLICY_URL_SLUG_MAP[p]) {
+        setActivePageSlug(POLICY_URL_SLUG_MAP[p]);
+        setActiveView('page');
       } else {
         setActiveView('storefront');
       }
@@ -484,22 +788,33 @@ const DEFAULT_PRODUCTS = [
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load store catalogue');
       }
-      if (data.categories?.length) setCategories(data.categories);
-      if (data.brands) setBrands(data.brands);
+      if (Array.isArray(data.categories) && data.categories.length > 0) setCategories(data.categories);
+      if (Array.isArray(data.brands)) setBrands(data.brands);
       const normalizedProducts = Array.isArray(data.products) && data.products.length > 0
         ? data.products.map(normalizeCatalogueProduct)
         : [];
       if (normalizedProducts.length > 0) setProducts(normalizedProducts);
-      if (data.bundles) setBundles(data.bundles);
-      if (data.coupons) setCoupons(data.coupons);
-      if (data.serviceablePincodes) setServiceablePincodes(data.serviceablePincodes);
+      if (Array.isArray(data.bundles)) setBundles(data.bundles);
+      if (Array.isArray(data.coupons)) setCoupons(data.coupons);
+      if (Array.isArray(data.serviceablePincodes)) setServiceablePincodes(data.serviceablePincodes);
       if (data.settings) setStoreSettings(data.settings);
-      if (data.navigationItems) setNavigationItems(data.navigationItems);
-      if (data.homepageSections) setHomepageSections(data.homepageSections);
-      if (data.banners) setBanners(data.banners);
-      if (data.pages) setCmsPages(data.pages);
-      if (data.revisions) setCmsRevisions(data.revisions);
-      if (data.wishlistProductIds) setWishlistProductIds(data.wishlistProductIds);
+      if (Array.isArray(data.navigationItems)) setNavigationItems(data.navigationItems);
+      if (Array.isArray(data.homepageSections)) setHomepageSections(data.homepageSections);
+      if (Array.isArray(data.banners)) setBanners(data.banners);
+      if (Array.isArray(data.pages) && data.pages.length > 0) {
+        const mergedPages = [...DEFAULT_CMS_PAGES];
+        for (const dbPage of data.pages) {
+          const existingIdx = mergedPages.findIndex((dp) => dp.slug === dbPage.slug);
+          if (existingIdx >= 0) {
+            mergedPages[existingIdx] = { ...mergedPages[existingIdx], ...dbPage, showInFooter: true };
+          } else {
+            mergedPages.push(dbPage);
+          }
+        }
+        setCmsPages(mergedPages);
+      }
+      if (Array.isArray(data.revisions)) setCmsRevisions(data.revisions);
+      if (Array.isArray(data.wishlistProductIds)) setWishlistProductIds(data.wishlistProductIds);
       if (data.currentUser) {
         setDbUser(data.currentUser);
       } else {
@@ -582,14 +897,14 @@ const DEFAULT_PRODUCTS = [
     syncAndCalculateCart();
   }, [syncAndCalculateCart]);
 
-  // Keep payment method aligned with fulfilment method
+  // Keep fulfilment method aligned when user selects COD or Pay at Store
   useEffect(() => {
-    if (fulfilmentMethod === 'STORE_PICKUP' && paymentMethod === 'COD') {
-      setPaymentMethod('PAY_AT_STORE');
-    } else if (fulfilmentMethod === 'HOME_DELIVERY' && paymentMethod === 'PAY_AT_STORE') {
-      setPaymentMethod('COD');
+    if (paymentMethod === 'COD' && fulfilmentMethod !== 'HOME_DELIVERY') {
+      setFulfilmentMethod('HOME_DELIVERY');
+    } else if (paymentMethod === 'PAY_AT_STORE' && fulfilmentMethod !== 'STORE_PICKUP') {
+      setFulfilmentMethod('STORE_PICKUP');
     }
-  }, [fulfilmentMethod, paymentMethod]);
+  }, [paymentMethod, fulfilmentMethod]);
 
   const showToast = (msg: string) => {
     setCartFeedbackToast(msg);
@@ -1430,7 +1745,34 @@ const DEFAULT_PRODUCTS = [
         const res = await fetch('/api/payments/cashfree/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderNumber }),
+          body: JSON.stringify({
+            orderNumber,
+            amountRupees: Number(
+              (pendingOrderResponse?.order?.totalPaise ||
+                confirmedOrderData?.order?.totalPaise ||
+                calculation.totalPaise ||
+                19500) / 100
+            ),
+            customerName:
+              pendingOrderResponse?.order?.customerName ||
+              confirmedOrderData?.order?.customerName ||
+              customerName ||
+              'Valued Customer',
+            customerPhone:
+              pendingOrderResponse?.order?.customerPhone ||
+              confirmedOrderData?.order?.customerPhone ||
+              customerPhone ||
+              '9876543210',
+            customerEmail:
+              pendingOrderResponse?.order?.customerEmail ||
+              confirmedOrderData?.order?.customerEmail ||
+              customerEmail ||
+              'support@gayatristationers.co.in',
+            returnOrigin:
+              typeof window !== 'undefined'
+                ? window.location.origin
+                : 'https://gayatristationers.co.in',
+          }),
         });
         const data = await res.json();
         if (!res.ok || !data.paymentSessionId) {
@@ -1476,7 +1818,7 @@ const DEFAULT_PRODUCTS = [
       }
 
       const finalOrderData = pendingOrderResponse
-        ? { ...pendingOrderResponse, order: vData.order }
+        ? { ...pendingOrderResponse, order: { ...pendingOrderResponse.order, ...vData.order } }
         : { order: vData.order, items: confirmedOrderData?.items || [] };
 
       setConfirmedOrderData(finalOrderData);
@@ -1491,7 +1833,7 @@ const DEFAULT_PRODUCTS = [
       console.error('Cashfree payment modal error:', err.message || err);
       setCheckoutError(
         err.message ||
-          'Cashfree Payment Gateway could not complete payment. Please try again or choose Cash on Delivery.'
+          'Cashfree Payment Gateway could not complete payment. Please try again or choose Cash on Delivery (COD).'
       );
       return false;
     } finally {
@@ -1611,6 +1953,10 @@ const DEFAULT_PRODUCTS = [
           couponCode: appliedCouponCode,
           notes: orderNotes,
           items: cartItems,
+          returnOrigin:
+            typeof window !== 'undefined'
+              ? window.location.origin
+              : 'https://gayatristationers.co.in',
           pickupWindow: fulfilmentMethod === 'STORE_PICKUP' ? pickupWindow : undefined,
           shippingAddress:
             fulfilmentMethod === 'HOME_DELIVERY'
@@ -1622,7 +1968,7 @@ const DEFAULT_PRODUCTS = [
                   landmark: shippingAddress.landmark,
                   city: shippingAddress.city.trim() || 'Agra',
                   state: shippingAddress.state.trim() || 'Uttar Pradesh',
-                  pincode: shippingAddress.pincode.trim() || '282005',
+                  pincode: shippingAddress.pincode.trim() || '282010',
                 }
               : undefined,
         }),
@@ -1649,15 +1995,17 @@ const DEFAULT_PRODUCTS = [
       }
 
       // If Cashfree Online Payment is selected:
-      // Open the Cashfree Drop-in Popup RIGHT HERE on Checkout using the already-created paymentSessionId!
-      if (paymentMethod === 'CASHFREE_ONLINE' && data.cashfree?.paymentSessionId) {
+      // ALWAYS open the Cashfree Drop-in Popup right here on Checkout (fetching session via /api/payments/cashfree/create-session if not embedded)
+      if (paymentMethod === 'CASHFREE_ONLINE') {
         await triggerCashfreePaymentModal(
           data.order.orderNumber,
-          {
-            paymentSessionId: data.cashfree.paymentSessionId,
-            cfOrderId: data.cashfree.cfOrderId || data.order.orderNumber,
-            environment: data.cashfree.environment,
-          },
+          data.cashfree?.paymentSessionId
+            ? {
+                paymentSessionId: data.cashfree.paymentSessionId,
+                cfOrderId: data.cashfree.cfOrderId || data.order.orderNumber,
+                environment: data.cashfree.environment,
+              }
+            : undefined,
           data
         );
         return;
@@ -1836,7 +2184,8 @@ const DEFAULT_PRODUCTS = [
 
   const calculation =
     serverCartResult?.calculation &&
-    (serverCartResult.calculation.items?.length > 0 || cartItems.length === 0)
+    Array.isArray(serverCartResult.calculation.items) &&
+    (serverCartResult.calculation.items.length > 0 || cartItems.length === 0)
       ? serverCartResult.calculation
       : localFallbackCalculation;
 
@@ -2787,7 +3136,8 @@ const DEFAULT_PRODUCTS = [
                             'Products'}
                       </h2>
                       <p className="text-xs text-stone-600 mt-1">
-                        Showing {filteredProducts.length} items · All prices inclusive of applicable GST
+                        Showing {filteredProducts.length} items · All product &amp; service prices are in{' '}
+                        <strong className="text-stone-900">Indian Rupees (INR / ₹)</strong> inclusive of GST
                       </p>
                     </div>
 
@@ -2978,7 +3328,8 @@ const DEFAULT_PRODUCTS = [
                                 <div className="font-mono-tabular">
                                   <div className="flex items-baseline gap-1.5">
                                     <span className="text-sm sm:text-[15px] font-bold text-slate-900">
-                                      {formatPaiseToINR(price)}
+                                      {formatPaiseToINR(price)}{' '}
+                                      <span className="text-[10px] font-normal text-slate-500">INR</span>
                                     </span>
                                     {mrp > price && (
                                       <span className="text-[10px] sm:text-xs text-slate-400 line-through">
@@ -4101,14 +4452,26 @@ const DEFAULT_PRODUCTS = [
                         </div>
                       )}
 
-                      {/* STEP 1: Payment Method Selection */}
+                      {/* STEP 1: Payment Method Selection (Cashfree Online vs Cash on Delivery vs Store Counter) */}
                       <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
-                        <h2 className="text-sm font-bold text-stone-900">
-                          01. Select Payment Method
-                        </h2>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <h2 className="text-sm font-bold text-stone-900">
+                            01. Select Payment Method (Cashfree Online or Cash on Delivery)
+                          </h2>
+                          <span className="text-[11px] font-mono-tabular text-stone-500">
+                            Currency: INR (₹)
+                          </span>
+                        </div>
 
-                        <div className="space-y-2.5 text-xs">
-                          <label className="flex items-start gap-3 p-4 border border-emerald-300 bg-emerald-50/20 rounded-[24px] cursor-pointer hover:bg-emerald-50/40">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <label
+                            onClick={() => setPaymentMethod('CASHFREE_ONLINE')}
+                            className={`flex items-start gap-3 p-4 border-2 rounded-[24px] cursor-pointer transition-all ${
+                              paymentMethod === 'CASHFREE_ONLINE'
+                                ? 'border-emerald-600 bg-emerald-50/40 shadow-xs'
+                                : 'border-stone-200 hover:border-stone-400 bg-white'
+                            }`}
+                          >
                             <input
                               type="radio"
                               name="paymentMethod"
@@ -4117,64 +4480,87 @@ const DEFAULT_PRODUCTS = [
                               className="mt-0.5 accent-emerald-700"
                             />
                             <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-bold text-stone-900">
-                                  Cashfree Payments (Google Pay, PhonePe, Paytm, UPI, Cards & NetBanking)
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-bold text-stone-900 text-sm">
+                                  Cashfree Online Payment
                                 </p>
                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
-                                  INSTANT GATEWAY POPUP
+                                  UPI / CARDS / NETBANKING
                                 </span>
                               </div>
-                              <p className="text-stone-600 mt-1">
-                                Opens the secure Cashfree Drop-in Popup directly to collect your UPI / Card / NetBanking payment and details.
+                              <p className="text-stone-600 mt-1 leading-relaxed">
+                                Pay instantly in INR (₹) via Google Pay, PhonePe, Paytm, BHIM UPI, Credit/Debit Cards, or NetBanking in the Cashfree Popup.
                               </p>
                             </div>
                           </label>
 
-                          {fulfilmentMethod === 'STORE_PICKUP' && (
-                            <label className="flex items-start gap-3 p-4 border border-stone-300 rounded-[24px] cursor-pointer hover:bg-stone-50">
-                              <input
-                                type="radio"
-                                name="paymentMethod"
-                                checked={paymentMethod === 'PAY_AT_STORE'}
-                                onChange={() => setPaymentMethod('PAY_AT_STORE')}
-                                className="mt-0.5"
-                              />
-                              <div>
-                                <p className="font-bold text-stone-900">
-                                  Pay at Store Counter (Cash / UPI on Collection)
-                                </p>
-                                <p className="text-stone-600 mt-0.5">
-                                  Your items are reserved immediately. Enter your contact details below so we can send your pickup code.
-                                </p>
-                              </div>
-                            </label>
-                          )}
-
-                          {fulfilmentMethod === 'HOME_DELIVERY' && (
-                            <label className="flex items-start gap-3 p-4 border border-stone-300 rounded-[24px] cursor-pointer hover:bg-stone-50">
-                              <input
-                                type="radio"
-                                name="paymentMethod"
-                                checked={paymentMethod === 'COD'}
-                                onChange={() => setPaymentMethod('COD')}
-                                className="mt-0.5"
-                              />
-                              <div>
-                                <p className="font-bold text-stone-900">
+                          <label
+                            onClick={() => {
+                              setPaymentMethod('COD');
+                              setFulfilmentMethod('HOME_DELIVERY');
+                            }}
+                            className={`flex items-start gap-3 p-4 border-2 rounded-[24px] cursor-pointer transition-all ${
+                              paymentMethod === 'COD'
+                                ? 'border-[#B42318] bg-red-50/30 shadow-xs'
+                                : 'border-stone-200 hover:border-stone-400 bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              checked={paymentMethod === 'COD'}
+                              onChange={() => {
+                                setPaymentMethod('COD');
+                                setFulfilmentMethod('HOME_DELIVERY');
+                              }}
+                              className="mt-0.5 accent-[#B42318]"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="font-bold text-stone-900 text-sm">
                                   Cash on Delivery (COD)
                                 </p>
-                                <p className="text-stone-600 mt-0.5">
-                                  {matchedPincodeRule?.codAvailable
-                                    ? `Available for PIN ${shippingAddress.pincode}. Enter your delivery details below and pay ${formatPaiseToINR(
-                                        calculation.totalPaise
-                                      )} upon doorstep delivery.`
-                                    : 'Enter your contact and delivery address below for doorstep COD delivery.'}
-                                </p>
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-900 rounded-full">
+                                  PAY ON DELIVERY
+                                </span>
                               </div>
-                            </label>
-                          )}
+                              <p className="text-stone-600 mt-1 leading-relaxed">
+                                Pay {formatPaiseToINR(calculation.totalPaise)} INR in cash or UPI upon doorstep delivery to your address.
+                              </p>
+                            </div>
+                          </label>
                         </div>
+
+                        <label
+                          onClick={() => {
+                            setPaymentMethod('PAY_AT_STORE');
+                            setFulfilmentMethod('STORE_PICKUP');
+                          }}
+                          className={`flex items-start gap-3 p-3.5 border rounded-[20px] cursor-pointer text-xs transition-all ${
+                            paymentMethod === 'PAY_AT_STORE'
+                              ? 'border-stone-900 bg-stone-100/80'
+                              : 'border-stone-200 hover:bg-stone-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="paymentMethod"
+                            checked={paymentMethod === 'PAY_AT_STORE'}
+                            onChange={() => {
+                              setPaymentMethod('PAY_AT_STORE');
+                              setFulfilmentMethod('STORE_PICKUP');
+                            }}
+                            className="mt-0.5"
+                          />
+                          <div>
+                            <p className="font-bold text-stone-900">
+                              Pay at Store Counter (Store Pickup — Zero Shipping Fee)
+                            </p>
+                            <p className="text-stone-600 mt-0.5">
+                              Reserve your items online and pay at Gayatri Stationers counter in Agra when collecting your order.
+                            </p>
+                          </div>
+                        </label>
                       </div>
 
                       {/* STEP 2: Fulfilment Method (Store Pickup vs Home Delivery) */}
@@ -4701,7 +5087,7 @@ const DEFAULT_PRODUCTS = [
                   <div className="space-y-2 text-xs">
                     <h2 className="font-bold text-stone-900">Ordered Items</h2>
                     <div className="divide-y divide-stone-100">
-                      {confirmedOrderData.items.map((item: any, idx: number) => (
+                      {(confirmedOrderData.items || []).map((item: any, idx: number) => (
                         <div key={idx} className="py-2 flex justify-between">
                           <span>
                             {item.quantity}x {item.productName} ({item.variantName})
@@ -4739,11 +5125,14 @@ const DEFAULT_PRODUCTS = [
                 </div>
               </div>
             )}
-            {/* VIEW 8.5: DYNAMIC CMS INFORMATIONAL & POLICY PAGES */}
+            {/* VIEW 8.5: DYNAMIC CMS INFORMATIONAL & POLICY PAGES (Contact Us, Terms & Conditions, Refunds & Cancellations) */}
             {activeView === 'page' && (
               <div className="max-w-5xl mx-auto px-6 py-10">
                 <button
-                  onClick={() => setActiveView('storefront')}
+                  onClick={() => {
+                    window.history.pushState({}, '', '/');
+                    setActiveView('storefront');
+                  }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 mb-6 shadow-2xs cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -4756,7 +5145,7 @@ const DEFAULT_PRODUCTS = [
                       <>
                         <div className="border-b border-stone-200 pb-4 space-y-1">
                           <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                            GAYATRI STATIONERS · STORE INFORMATION & POLICY
+                            GAYATRI STATIONERS · OFFICIAL MERCHANT POLICY & COMPLIANCE
                           </span>
                           <h1 className="font-serif-display text-2xl sm:text-3xl font-bold text-stone-900">
                             {activeCmsPage.title}
@@ -4767,6 +5156,32 @@ const DEFAULT_PRODUCTS = [
                             </p>
                           )}
                         </div>
+
+                        {activeCmsPage.slug === 'contact-us' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs">
+                            <div>
+                              <p className="font-bold text-stone-900">Merchant / Legal Name</p>
+                              <p className="text-stone-700 mt-0.5">Gayatri Stationers</p>
+                            </div>
+                            <div>
+                              <p className="font-bold text-stone-900">Telephone / WhatsApp</p>
+                              <p className="text-stone-700 font-mono-tabular mt-0.5">+91 98765 43210</p>
+                            </div>
+                            <div>
+                              <p className="font-bold text-stone-900">Support & Grievance Email</p>
+                              <p className="text-stone-700 mt-0.5">
+                                support@gayatristationers.co.in · vainhavgupta20052014@gmail.com
+                              </p>
+                            </div>
+                            <div>
+                              <p className="font-bold text-stone-900">Registered Store Address</p>
+                              <p className="text-stone-700 mt-0.5">
+                                Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="text-sm text-stone-800 leading-relaxed whitespace-pre-line space-y-3">
                           {activeCmsPage.contentMarkdown}
                         </div>
@@ -4778,23 +5193,29 @@ const DEFAULT_PRODUCTS = [
 
                   <aside className="lg:col-span-4 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-3">
                     <h2 className="text-xs font-mono uppercase tracking-wider text-stone-500 font-bold">
-                      Store Guides & Policies
+                      Mandatory Policies &amp; Compliance
                     </h2>
                     <div className="flex flex-col gap-1.5">
                       {cmsPages
                         .filter((p) => p.isActive !== false)
                         .map((p) => (
-                          <button
+                          <a
                             key={p.id}
-                            onClick={() => setActivePageSlug(p.slug)}
-                            className={`text-left px-4 py-2 rounded-full text-xs font-medium transition-colors cursor-pointer ${
+                            href={`/${p.slug}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              window.history.pushState({}, '', `/${p.slug}`);
+                              setActivePageSlug(p.slug);
+                              setActiveView('page');
+                            }}
+                            className={`text-left px-4 py-2 rounded-full text-xs font-medium transition-colors cursor-pointer block ${
                               activeCmsPage?.slug === p.slug
                                 ? 'bg-stone-900 text-white'
                                 : 'text-stone-700 hover:bg-stone-100'
                             }`}
                           >
                             {p.title}
-                          </button>
+                          </a>
                         ))}
                     </div>
                   </aside>
@@ -5124,14 +5545,69 @@ const DEFAULT_PRODUCTS = [
           </div>
 
           <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Store Guides & Policies</p>
-            <ul className="space-y-1">
+            <p className="font-semibold text-stone-900">Policy Pages &amp; Legal Compliance</p>
+            <ul className="space-y-1.5">
+              <li>
+                <a
+                  href="/contact-us"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/contact-us');
+                    setActivePageSlug('contact-us');
+                    setActiveView('page');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="hover:underline font-medium text-stone-800 cursor-pointer"
+                >
+                  Contact Us
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/terms-and-conditions"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/terms-and-conditions');
+                    setActivePageSlug('terms-and-conditions');
+                    setActiveView('page');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="hover:underline font-medium text-stone-800 cursor-pointer"
+                >
+                  Terms &amp; Conditions
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/refunds-and-cancellations"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/refunds-and-cancellations');
+                    setActivePageSlug('refunds-and-cancellations');
+                    setActiveView('page');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="hover:underline font-medium text-stone-800 cursor-pointer"
+                >
+                  Refunds &amp; Cancellations
+                </a>
+              </li>
               {cmsPages
-                .filter((p) => p.isActive !== false && p.showInFooter !== false)
+                .filter(
+                  (p) =>
+                    p.isActive !== false &&
+                    p.showInFooter !== false &&
+                    !['contact-us', 'terms-and-conditions', 'refunds-and-cancellations'].includes(
+                      p.slug
+                    )
+                )
                 .map((p) => (
                   <li key={p.id}>
-                    <button
-                      onClick={() => {
+                    <a
+                      href={`/${p.slug}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.history.pushState({}, '', `/${p.slug}`);
                         setActivePageSlug(p.slug);
                         setActiveView('page');
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -5139,38 +5615,41 @@ const DEFAULT_PRODUCTS = [
                       className="hover:underline cursor-pointer text-left"
                     >
                       {p.title}
-                    </button>
+                    </a>
                   </li>
                 ))}
               <li>
                 <button onClick={() => setActiveView('bulk')} className="hover:underline cursor-pointer">
-                  School & Corporate Bulk Enquiries
+                  School &amp; Corporate Bulk Enquiries
                 </button>
               </li>
               <li>
                 <button onClick={() => setActiveView('track')} className="hover:underline cursor-pointer">
-                  Order Lookup & Pickup Code Tracker
+                  Order Lookup &amp; Pickup Code Tracker
                 </button>
               </li>
             </ul>
           </div>
 
           <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Store Information Notice</p>
+            <p className="font-semibold text-stone-900">Contact Us &amp; Merchant Details</p>
+            <p className="leading-relaxed font-medium text-stone-800">
+              Gayatri Stationers — Retail &amp; Institutional Counter
+            </p>
             <p className="leading-relaxed">
-              {(
-                storeSettings?.store_profile?.pickupCounterLabel ||
-                'Gayatri Stationers — Retail Pickup Counter'
-              ).replace(/\s*\([^)]*Admin[^)]*\)/gi, '')}
+              Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+            </p>
+            <p className="font-mono-tabular">
+              Phone: +91 98765 43210 · Email: support@gayatristationers.co.in
             </p>
             <p>
               {(
                 storeSettings?.store_profile?.businessHoursNote ||
-                'Mon–Sat: 10:00 AM – 8:00 PM'
+                'Mon–Sat: 10:00 AM – 8:00 PM IST'
               ).replace(/\s*\([^)]*Admin[^)]*\)/gi, '')}
             </p>
-            <p className="text-[11px] text-stone-500">
-              Authentic school, office, art, and institutional stationery with GST billing.
+            <p className="text-[11px] text-emerald-800 font-semibold">
+              All product &amp; service prices are listed in Indian Rupees (INR / ₹) inclusive of GST.
             </p>
           </div>
         </div>

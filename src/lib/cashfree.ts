@@ -77,20 +77,20 @@ export function getCashfreeConfig(overrides?: {
     overrides?.appId ||
     process.env.CASHFREE_APP_ID ||
     process.env.CASHFREE_CLIENT_ID ||
-    ''
+    'TEST109386008d393f8344acfd7f332b00683901'
   ).trim();
 
   const secretKey = (
     overrides?.secretKey ||
     process.env.CASHFREE_SECRET_KEY ||
     process.env.CASHFREE_CLIENT_SECRET ||
-    ''
+    'cfsk_ma_test_95c8c9ca404d7f56cc76f146247fe886_e2ef4f0c'
   ).trim();
 
   const rawEnv = (
     overrides?.environment ||
     process.env.CASHFREE_ENVIRONMENT ||
-    'SANDBOX'
+    (appId.startsWith('TEST') ? 'SANDBOX' : 'PRODUCTION')
   )
     .trim()
     .toUpperCase();
@@ -162,20 +162,24 @@ export async function createCashfreeOrder(
     `GS_${Date.now()}`
   );
 
+  const orderMeta: Record<string, string> = {
+    return_url: params.returnUrl,
+  };
+  if (params.notifyUrl && params.notifyUrl.startsWith('https://')) {
+    orderMeta.notify_url = params.notifyUrl;
+  }
+
   const requestPayload = {
     order_id: cleanOrderId,
-    order_amount: Number(params.orderAmountRupees.toFixed(2)),
+    order_amount: Number(Math.max(1, params.orderAmountRupees).toFixed(2)),
     order_currency: 'INR',
     customer_details: {
       customer_id: cleanCustomerId,
-      customer_name: params.customerName.slice(0, 50),
-      customer_email: params.customerEmail || 'support@gayatristationers.com',
+      customer_name: (params.customerName || 'Valued Customer').slice(0, 50),
+      customer_email: params.customerEmail || 'support@gayatristationers.co.in',
       customer_phone: cleanPhone,
     },
-    order_meta: {
-      return_url: params.returnUrl,
-      notify_url: params.notifyUrl,
-    },
+    order_meta: orderMeta,
     order_note: (params.orderNote || `Gayatri Stationers Order ${cleanOrderId}`).slice(0, 150),
   };
 
