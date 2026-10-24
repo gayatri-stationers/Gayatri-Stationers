@@ -395,43 +395,88 @@ export const FirebaseImageUpload: React.FC<FirebaseImageUploadProps> = ({
         {/* Left Column: Product Target Selector, Aspect Crop & Upload Dropzone */}
         <div className="lg:col-span-7 space-y-4">
           {!compactMode && (
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-8 space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  1. Select Product to Manage Photos
-                </label>
-                <select
-                  value={activeProduct?.id || ''}
-                  onChange={(e) => onSelectProductId(Number(e.target.value))}
-                  className="w-full px-4 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-full font-medium text-slate-900"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.sku} — {p.name} ({p.categoryName})
-                      {p.imageUrl ? ' [Custom Photo]' : ' [Vector Default]'}
-                    </option>
-                  ))}
-                </select>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <div className="sm:col-span-8 space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    1. Select Product to Manage Photos
+                  </label>
+                  <select
+                    value={activeProduct?.id || ''}
+                    onChange={(e) => onSelectProductId(Number(e.target.value))}
+                    className="w-full px-4 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-full font-medium text-slate-900"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.sku} — {p.name} ({p.categoryName})
+                        {p.imageUrl ? ' [Custom Photo]' : ' [Vector Default]'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-4 space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    2. Auto-Crop Ratio
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200 text-xs">
+                    {(['4:3', '1:1', 'original'] as const).map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setCropPreset(preset)}
+                        className={`flex-1 py-1.5 rounded-full font-semibold transition-colors cursor-pointer ${
+                          cropPreset === preset
+                            ? 'bg-slate-900 text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {preset === 'original' ? 'Full' : preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="sm:col-span-4 space-y-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  2. Auto-Crop Ratio
-                </label>
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-full border border-slate-200 text-xs">
-                  {(['4:3', '1:1', 'original'] as const).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setCropPreset(preset)}
-                      className={`flex-1 py-1.5 rounded-full font-semibold transition-colors cursor-pointer ${
-                        cropPreset === preset
-                          ? 'bg-slate-900 text-white'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {preset === 'original' ? 'Full' : preset}
-                    </button>
-                  ))}
+
+              {/* Visual Product Picker Strip with Images */}
+              <div className="space-y-1.5">
+                <span className="block text-[11px] font-semibold text-slate-600">
+                  Or tap any product below with image preview:
+                </span>
+                <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 no-scrollbar">
+                  {products.map((p) => {
+                    const isSelected = Number(activeProduct?.id) === Number(p.id);
+                    return (
+                      <button
+                        key={`vis-pick-${p.id}`}
+                        type="button"
+                        onClick={() => onSelectProductId(Number(p.id))}
+                        className={`flex items-center gap-2.5 p-2 pr-3.5 rounded-2xl border text-left shrink-0 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                            : 'bg-white text-slate-800 border-slate-200 hover:border-slate-400'
+                        }`}
+                      >
+                        <div className="w-11 h-9 rounded-xl overflow-hidden border border-slate-200/80 bg-slate-50 shrink-0">
+                          <ProductIllustration
+                            type={p.illustrationType}
+                            imageUrl={p.imageUrl}
+                            alt={p.name}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="min-w-0 max-w-[140px]">
+                          <p className="text-[11px] font-bold truncate">{p.name}</p>
+                          <p
+                            className={`text-[10px] font-mono-tabular truncate ${
+                              isSelected ? 'text-slate-300' : 'text-slate-500'
+                            }`}
+                          >
+                            {p.sku}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

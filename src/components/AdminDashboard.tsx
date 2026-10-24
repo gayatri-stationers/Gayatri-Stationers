@@ -1850,13 +1850,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           handleStartEditProduct(p);
                           setAdminQuickSearch('');
                         }}
-                        className="w-full px-3.5 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between cursor-pointer"
+                        className="w-full px-3 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between gap-2.5 cursor-pointer"
                       >
-                        <div>
-                          <span className="font-semibold text-slate-900">{p.name}</span>
-                          <span className="text-slate-500 ml-2 font-mono-tabular">SKU: {p.sku}</span>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-10 h-8 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
+                            <ProductIllustration
+                              type={p.illustrationType}
+                              imageUrl={p.imageUrl}
+                              alt={p.name}
+                              className="w-full h-full"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">{p.name}</p>
+                            <p className="text-[11px] text-slate-500 font-mono-tabular truncate">
+                              SKU: {p.sku}
+                            </p>
+                          </div>
                         </div>
-                        <span className="font-mono-tabular text-slate-700">
+                        <span className="font-mono-tabular text-slate-700 shrink-0">
                           {p.totalStock ?? p.variants?.[0]?.stockQuantity ?? 0} in stock
                         </span>
                       </button>
@@ -1966,7 +1978,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Notice if user switched to Customer role while staying on the same Admin interface */}
       {currentUser?.role === 'customer' && (
         <div className="max-w-[1440px] mx-auto w-full px-3 sm:px-6 pt-2">
-          <div className="bg-amber-50/90 backdrop-blur-md border border-amber-200 rounded-full px-4 sm:px-6 py-2 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+          <div className="bg-amber-50/90 backdrop-blur-md border border-amber-200 rounded-[24px] lg:rounded-full px-4 sm:px-6 py-2.5 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
             <span>
               <strong>Customer Role Active on Admin Workspace:</strong> Switch back to <strong>Staff</strong> or <strong>Owner</strong> to save administrative changes.
             </span>

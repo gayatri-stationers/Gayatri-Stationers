@@ -818,25 +818,100 @@ const DEFAULT_PRODUCTS = [
   // Wishlist state
   const [wishlistProductIds, setWishlistProductIds] = useState<number[]>([]);
 
-  // Checkout state
+  // Checkout & Customer Profile state (pre-populated from saved profile/session so Full Name & Email are freely editable)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASHFREE_ONLINE');
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerName, setCustomerName] = useState<string>(() => {
+    try {
+      const savedProf = localStorage.getItem('gs_user_profile_v1');
+      if (savedProf) {
+        const parsed = JSON.parse(savedProf);
+        if (parsed?.fullName) return String(parsed.fullName);
+      }
+      const savedSess = localStorage.getItem('gs_admin_session_v1');
+      if (savedSess) {
+        const parsed = JSON.parse(savedSess);
+        if (parsed?.user?.fullName) return String(parsed.user.fullName);
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    try {
+      const savedProf = localStorage.getItem('gs_user_profile_v1');
+      if (savedProf) {
+        const parsed = JSON.parse(savedProf);
+        if (parsed?.phone) return String(parsed.phone);
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
+  const [customerEmail, setCustomerEmail] = useState<string>(() => {
+    try {
+      const savedProf = localStorage.getItem('gs_user_profile_v1');
+      if (savedProf) {
+        const parsed = JSON.parse(savedProf);
+        if (parsed?.email) return String(parsed.email);
+      }
+      const savedSess = localStorage.getItem('gs_admin_session_v1');
+      if (savedSess) {
+        const parsed = JSON.parse(savedSess);
+        if (parsed?.user?.email) return String(parsed.user.email);
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
   const [pickupWindow, setPickupWindow] = useState('Today — Within 2 Hours of Ready Notification');
-  const [shippingAddress, setShippingAddress] = useState({
-    addressLine1: '',
-    addressLine2: '',
-    landmark: '',
-    city: 'Kanpur',
-    state: 'Uttar Pradesh',
-    pincode: '208021',
+  const [shippingAddress, setShippingAddress] = useState(() => {
+    try {
+      const savedProf = localStorage.getItem('gs_user_profile_v1');
+      if (savedProf) {
+        const parsed = JSON.parse(savedProf);
+        if (parsed?.shippingAddress) {
+          return {
+            addressLine1: parsed.shippingAddress.addressLine1 || '',
+            addressLine2: parsed.shippingAddress.addressLine2 || '',
+            landmark: parsed.shippingAddress.landmark || '',
+            city: parsed.shippingAddress.city || 'Kanpur',
+            state: parsed.shippingAddress.state || 'Uttar Pradesh',
+            pincode: parsed.shippingAddress.pincode || '208021',
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      addressLine1: '',
+      addressLine2: '',
+      landmark: '',
+      city: 'Kanpur',
+      state: 'Uttar Pradesh',
+      pincode: '208021',
+    };
   });
   const [orderNotes, setOrderNotes] = useState('');
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [confirmedOrderData, setConfirmedOrderData] = useState<any>(null);
+  const hasInitializedProfileFieldsRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!hasInitializedProfileFieldsRef.current && (dbUser || supabaseUser)) {
+      hasInitializedProfileFieldsRef.current = true;
+      setCustomerName((prev) => prev || dbUser?.fullName || '');
+      setCustomerEmail((prev) => prev || dbUser?.email || supabaseUser?.email || '');
+      if (dbUser?.phone) {
+        setCustomerPhone((prev) => prev || dbUser.phone);
+      }
+    }
+  }, [dbUser, supabaseUser]);
 
   // Order Tracking & History state
   const [trackOrderNumberInput, setTrackOrderNumberInput] = useState('');
@@ -2639,10 +2714,10 @@ const DEFAULT_PRODUCTS = [
       {/* Sticky Top Header & Navigation Container — Oval Capsule on Mobile, Stays Still When Scrolling */}
       <div className="sticky top-0 z-40 px-2.5 pt-2 pb-1.5 md:p-0 bg-[#FAFAFA]/85 md:bg-white/95 backdrop-blur-md md:shadow-xs space-y-1.5 md:space-y-0">
         {/* Strict 3-Zone Top Bar — Floating Oval Capsule on Mobile */}
-        <header className="bg-white/95 backdrop-blur-xl border border-slate-200/90 md:border-x-0 md:border-t-0 md:border-b rounded-[32px] md:rounded-none shadow-sm md:shadow-none px-3.5 sm:px-6 py-2.5 sm:py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-6">
+        <header className="bg-white/95 backdrop-blur-xl border border-slate-200/90 md:border-x-0 md:border-t-0 md:border-b rounded-[28px] md:rounded-none shadow-sm md:shadow-none px-3 sm:px-6 py-2.5 sm:py-3 overflow-hidden">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-4 min-w-0">
             {/* Left Zone: Wordmark */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0 shrink">
               <button
                 onClick={() => {
                   window.history.pushState({}, '', '/');
@@ -2651,7 +2726,7 @@ const DEFAULT_PRODUCTS = [
                   setActiveView('storefront');
                   setMobileMenuOpen(false);
                 }}
-                className="font-serif-display text-base sm:text-xl font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 text-left cursor-pointer pl-1 sm:pl-0"
+                className="font-serif-display text-[15px] sm:text-xl font-bold tracking-tight text-slate-900 truncate text-left cursor-pointer"
               >
                 {themeConfig.storeName || 'Gayatri Stationers'}
               </button>
@@ -2743,7 +2818,7 @@ const DEFAULT_PRODUCTS = [
                   setActiveView('profile');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2.5 text-xs font-semibold rounded-full border transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs font-semibold rounded-full border transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5 ${
                   activeView === 'profile'
                     ? 'bg-slate-900 text-white border-slate-900'
                     : 'bg-slate-50 text-slate-800 border-slate-200/90 hover:bg-slate-100'
@@ -2751,14 +2826,16 @@ const DEFAULT_PRODUCTS = [
                 aria-label="Open My Profile Page"
               >
                 <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="font-bold">
-                  {dbUser?.fullName ? dbUser.fullName.split(' ')[0] : 'Profile'}
+                <span className="font-bold max-w-[76px] sm:max-w-[140px] truncate">
+                  {(customerName || dbUser?.fullName)
+                    ? (customerName || dbUser?.fullName).split(' ')[0]
+                    : 'Profile'}
                 </span>
               </button>
               <button
                 ref={cartButtonRef}
                 onClick={navigateToCheckout}
-                className="px-3.5 sm:px-5 py-1.5 sm:py-2.5 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 sm:gap-2"
+                className="px-3 sm:px-5 py-1.5 sm:py-2 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5"
                 aria-label="Open Cart & Checkout Page"
               >
                 <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -2771,7 +2848,7 @@ const DEFAULT_PRODUCTS = [
           {/* Always-Visible Oval Mobile Navigation Pill Track (Stays still when scrolling on mobile) */}
           <nav
             aria-label="Mobile Primary Navigation"
-            className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar p-1 mt-2 bg-slate-100/90 border border-slate-200/70 rounded-full text-xs font-medium"
+            className="md:hidden flex items-center justify-start gap-1.5 overflow-x-auto no-scrollbar px-1.5 py-1 mt-2 bg-slate-100/90 border border-slate-200/70 rounded-full text-xs font-medium"
           >
             <button
               type="button"
@@ -2937,15 +3014,25 @@ const DEFAULT_PRODUCTS = [
                     <button
                       key={s.id}
                       onMouseDown={() => openProductDetail(s)}
-                      className="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between text-xs rounded-xl cursor-pointer"
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between gap-3 text-xs rounded-xl cursor-pointer"
                     >
-                      <div>
-                        <p className="font-semibold text-slate-900">{s.name}</p>
-                        <p className="text-slate-500">
-                          {s.brandName} · {s.categoryName} · SKU: {s.sku}
-                        </p>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-11 h-9 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
+                          <ProductIllustration
+                            type={s.illustrationType}
+                            imageUrl={s.imageUrl}
+                            alt={s.name}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">{s.name}</p>
+                          <p className="text-slate-500 truncate">
+                            {s.brandName} · {s.categoryName} · SKU: {s.sku}
+                          </p>
+                        </div>
                       </div>
-                      <span className="font-mono-tabular font-semibold text-slate-900">
+                      <span className="font-mono-tabular font-semibold text-slate-900 shrink-0">
                         {formatPaiseToINR(s.sellingPricePaise)}
                       </span>
                     </button>
@@ -3693,6 +3780,7 @@ const DEFAULT_PRODUCTS = [
                                     type={product.illustrationType}
                                     imageUrl={product.imageUrl}
                                     alt={product.name}
+                                    colorTint={selectedColorByProduct[product.id]}
                                   />
                                 </button>
                                 <button
@@ -3973,6 +4061,7 @@ const DEFAULT_PRODUCTS = [
                         type={activePdpProduct.illustrationType}
                         imageUrl={pdpSelectedImageUrl || activePdpProduct.imageUrl}
                         alt={activePdpProduct.name}
+                        colorTint={pdpSelectedColor}
                       />
                       {pdpSelectedColor && (
                         <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
@@ -4017,6 +4106,72 @@ const DEFAULT_PRODUCTS = [
                     <p className="text-xs text-stone-500">
                       SKU: <span className="font-mono-tabular">{activePdpVariant?.sku || activePdpProduct.sku}</span> · Verified Gayatri Stationers Catalogue Item
                     </p>
+
+                    {/* Quick Switch Product Options with Images (Same Category / Related Stationery) */}
+                    {(() => {
+                      const relatedOptions = products
+                        .filter(
+                          (p) =>
+                            p.isActive !== false &&
+                            (p.categorySlug === activePdpProduct.categorySlug ||
+                              p.categoryName === activePdpProduct.categoryName)
+                        )
+                        .slice(0, 6);
+                      if (relatedOptions.length <= 1) return null;
+                      return (
+                        <div className="p-4 bg-slate-50/90 border border-slate-200/80 rounded-[24px] space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-stone-900">
+                              Switch Product in {activePdpProduct.categoryName} (With Images):
+                            </span>
+                            <span className="text-[11px] text-stone-500">
+                              {relatedOptions.length} options
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                            {relatedOptions.map((relProd) => {
+                              const isCurrentProd = relProd.id === activePdpProduct.id;
+                              const relPrice =
+                                relProd.variants?.[0]?.sellingPricePaise ||
+                                relProd.sellingPricePaise;
+                              return (
+                                <button
+                                  key={`pdp-rel-${relProd.id}`}
+                                  type="button"
+                                  onClick={() => openProductDetail(relProd)}
+                                  className={`p-2 rounded-2xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                                    isCurrentProd
+                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
+                                      : 'bg-white text-stone-900 border-stone-200 hover:border-stone-500'
+                                  }`}
+                                >
+                                  <div className="w-12 h-10 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
+                                    <ProductIllustration
+                                      type={relProd.illustrationType}
+                                      imageUrl={relProd.imageUrl}
+                                      alt={relProd.name}
+                                      className="w-full h-full"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[11px] font-bold line-clamp-1">
+                                      {relProd.name}
+                                    </p>
+                                    <p
+                                      className={`text-[10px] font-mono-tabular font-semibold ${
+                                        isCurrentProd ? 'text-amber-300' : 'text-stone-600'
+                                      }`}
+                                    >
+                                      {formatPaiseToINR(relPrice)}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right: Contiguous Purchase Module */}
@@ -4053,21 +4208,21 @@ const DEFAULT_PRODUCTS = [
                       {activePdpProduct.description}
                     </p>
 
-                    {/* INTERACTIVE COLOUR / INK SHADE SELECTOR (For Pens, Markers & Colour Stationery) */}
+                    {/* INTERACTIVE COLOUR / INK SHADE SELECTOR WITH PRODUCT IMAGES */}
                     {(() => {
                       const pdpColorOptions = getProductColorOptions(activePdpProduct);
                       if (pdpColorOptions.length === 0) return null;
                       const currentSelectedColor =
                         pdpSelectedColor || pdpColorOptions[0]?.label || '';
                       return (
-                        <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-[24px] space-y-2.5">
+                        <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-[24px] space-y-3">
                           <div className="flex items-center justify-between gap-2">
                             <label className="text-xs font-bold text-stone-900">
                               {isPenOrWritingProduct(activePdpProduct)
-                                ? 'Select Ink / Pen Colour:'
+                                ? 'Select Ink / Pen Colour Option:'
                                 : 'Select Colour Option:'}
                             </label>
-                            <span className="text-xs font-semibold text-stone-700 flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-stone-800 flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-stone-200 rounded-full">
                               <span
                                 className="w-3 h-3 rounded-full inline-block"
                                 style={{
@@ -4079,9 +4234,17 @@ const DEFAULT_PRODUCTS = [
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                             {pdpColorOptions.map((colOpt) => {
                               const isSelected = currentSelectedColor === colOpt.label;
+                              const matchingVar = colOpt.variantId
+                                ? activePdpProduct.variants?.find(
+                                    (v: any) => v.id === colOpt.variantId
+                                  )
+                                : activePdpVariant;
+                              const optPrice =
+                                matchingVar?.sellingPricePaise ||
+                                activePdpProduct.sellingPricePaise;
                               return (
                                 <button
                                   key={colOpt.label}
@@ -4100,24 +4263,43 @@ const DEFAULT_PRODUCTS = [
                                       }));
                                     }
                                   }}
-                                  className={`px-3.5 py-2 rounded-full text-xs font-semibold border flex items-center gap-2 transition-all cursor-pointer ${
+                                  className={`p-2 rounded-2xl text-xs font-semibold border flex items-center gap-2.5 text-left transition-all cursor-pointer ${
                                     isSelected
-                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs scale-[1.02]'
-                                      : 'bg-white text-stone-800 border-stone-300 hover:border-stone-500'
+                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
+                                      : 'bg-white text-stone-800 border-stone-200 hover:border-stone-500'
                                   }`}
                                 >
-                                  <span
-                                    className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center shadow-2xs"
-                                    style={{
-                                      background: colOpt.swatch,
-                                      border: isSelected
-                                        ? '2px solid #FFFFFF'
-                                        : `1px solid ${colOpt.border}`,
-                                    }}
-                                  >
-                                    {isSelected && <Check className="w-2.5 h-2.5 text-white drop-shadow" />}
-                                  </span>
-                                  <span>{colOpt.label}</span>
+                                  {/* Option Image Thumbnail with Colour Tint */}
+                                  <div className="relative w-12 h-10 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
+                                    <ProductIllustration
+                                      type={activePdpProduct.illustrationType}
+                                      imageUrl={activePdpProduct.imageUrl}
+                                      alt={`${activePdpProduct.name} - ${colOpt.label}`}
+                                      colorTint={colOpt.label}
+                                      className="w-full h-full"
+                                    />
+                                    <span
+                                      className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-2xs"
+                                      style={{
+                                        background: colOpt.swatch,
+                                        border: '1.5px solid #FFFFFF',
+                                      }}
+                                    >
+                                      {isSelected && (
+                                        <Check className="w-2.5 h-2.5 text-white drop-shadow" />
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold truncate">{colOpt.label}</p>
+                                    <p
+                                      className={`text-[10px] font-mono-tabular ${
+                                        isSelected ? 'text-amber-300' : 'text-stone-500'
+                                      }`}
+                                    >
+                                      {formatPaiseToINR(optPrice)}
+                                    </p>
+                                  </div>
                                 </button>
                               );
                             })}
@@ -4126,38 +4308,69 @@ const DEFAULT_PRODUCTS = [
                       );
                     })()}
 
-                    {/* Variant Selection (Apple Oval Pills) */}
+                    {/* Variant / Pack Selection with Thumbnail Images */}
                     {activePdpProduct.variants && activePdpProduct.variants.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         <label className="block text-xs font-semibold text-stone-800">
                           Select Pack / Option ({activePdpProduct.variants[0].attributeType || 'Pack Size'}):
                         </label>
-                        <div className="flex flex-wrap gap-2">
-                          {activePdpProduct.variants.map((v: any) => (
-                            <button
-                              key={v.id}
-                              onClick={() => {
-                                setPdpVariantId(v.id);
-                                setPdpQuantity(1);
-                                const pdpColors = getProductColorOptions(activePdpProduct);
-                                const matchingCol = pdpColors.find((c) => c.variantId === v.id);
-                                if (matchingCol) {
-                                  setPdpSelectedColor(matchingCol.label);
-                                  setSelectedColorByProduct((prev) => ({
-                                    ...prev,
-                                    [activePdpProduct.id]: matchingCol.label,
-                                  }));
-                                }
-                              }}
-                              className={`px-4 py-2 text-xs font-medium rounded-full border transition-all cursor-pointer ${
-                                activePdpVariant?.id === v.id
-                                  ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                  : 'bg-white text-stone-800 border-stone-300 hover:border-stone-500'
-                              }`}
-                            >
-                              {v.variantName} · {formatPaiseToINR(v.sellingPricePaise)}
-                            </button>
-                          ))}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {activePdpProduct.variants.map((v: any) => {
+                            const isVarSelected = activePdpVariant?.id === v.id;
+                            const pdpColors = getProductColorOptions(activePdpProduct);
+                            const matchingCol = pdpColors.find((c) => c.variantId === v.id);
+                            return (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => {
+                                  setPdpVariantId(v.id);
+                                  setPdpQuantity(1);
+                                  if (matchingCol) {
+                                    setPdpSelectedColor(matchingCol.label);
+                                    setSelectedColorByProduct((prev) => ({
+                                      ...prev,
+                                      [activePdpProduct.id]: matchingCol.label,
+                                    }));
+                                  }
+                                }}
+                                className={`p-2.5 text-xs font-medium rounded-2xl border flex items-center justify-between gap-2.5 text-left transition-all cursor-pointer ${
+                                  isVarSelected
+                                    ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                                    : 'bg-white text-stone-800 border-stone-300 hover:border-stone-500'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-11 h-9 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
+                                    <ProductIllustration
+                                      type={activePdpProduct.illustrationType}
+                                      imageUrl={activePdpProduct.imageUrl}
+                                      alt={v.variantName}
+                                      colorTint={matchingCol?.label || pdpSelectedColor}
+                                      className="w-full h-full"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold truncate">{v.variantName}</p>
+                                    <p
+                                      className={`text-[10px] font-mono-tabular ${
+                                        isVarSelected ? 'text-stone-300' : 'text-stone-500'
+                                      }`}
+                                    >
+                                      {v.stockQuantity ?? 25} in stock
+                                    </p>
+                                  </div>
+                                </div>
+                                <span
+                                  className={`font-mono-tabular font-bold shrink-0 ${
+                                    isVarSelected ? 'text-amber-300' : 'text-stone-900'
+                                  }`}
+                                >
+                                  {formatPaiseToINR(v.sellingPricePaise)}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -6076,7 +6289,7 @@ const DEFAULT_PRODUCTS = [
                 <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif-display text-2xl font-bold shrink-0">
-                      {(dbUser?.fullName || customerName || dbUser?.email || 'G')
+                      {(customerName || dbUser?.fullName || dbUser?.email || 'G')
                         .trim()
                         .slice(0, 1)
                         .toUpperCase()}
@@ -6084,14 +6297,29 @@ const DEFAULT_PRODUCTS = [
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-slate-900">
-                          {dbUser?.fullName || customerName || 'Gayatri Stationers Member'}
+                          {customerName || dbUser?.fullName || 'Gayatri Stationers Member'}
                         </h1>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById(
+                              'profile-full-name-input'
+                            ) as HTMLInputElement | null;
+                            if (el) {
+                              el.focus();
+                              el.select();
+                            }
+                          }}
+                          className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 cursor-pointer"
+                        >
+                          ✎ Edit Full Name
+                        </button>
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold bg-emerald-100 text-emerald-900">
                           {dbUser?.role === 'owner' ? 'Store Owner / Admin' : 'Verified Customer'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 font-mono-tabular">
-                        {dbUser?.email || customerEmail || supabaseUser?.email || 'Not signed in — enter your details below'}
+                        {customerEmail || dbUser?.email || supabaseUser?.email || 'Not signed in — enter your details below'}
                         {customerPhone ? ` · +91 ${customerPhone}` : ''}
                       </p>
                     </div>
@@ -6141,18 +6369,48 @@ const DEFAULT_PRODUCTS = [
                       e.preventDefault();
                       setProfileSaving(true);
                       setProfileSuccessMsg(null);
-                      try {
-                        const cleanEmail = (
-                          customerEmail ||
-                          dbUser?.email ||
-                          supabaseUser?.email ||
-                          'customer@gayatristationers.com'
-                        )
-                          .trim()
-                          .toLowerCase();
-                        const cleanName = (customerName || dbUser?.fullName || 'Valued Customer').trim();
-                        const cleanPhone = customerPhone.trim();
+                      const cleanEmail = (
+                        customerEmail ||
+                        dbUser?.email ||
+                        supabaseUser?.email ||
+                        'customer@gayatristationers.com'
+                      )
+                        .trim()
+                        .toLowerCase();
+                      const cleanName = (customerName.trim() || 'Valued Customer').trim();
+                      const cleanPhone = customerPhone.trim();
 
+                      const saveLocalProfileAndSession = (userObj: any) => {
+                        setCustomerName(cleanName);
+                        setCustomerEmail(cleanEmail);
+                        setDbUser(userObj);
+                        try {
+                          localStorage.setItem(
+                            'gs_user_profile_v1',
+                            JSON.stringify({
+                              ...userObj,
+                              fullName: cleanName,
+                              email: cleanEmail,
+                              phone: cleanPhone,
+                              shippingAddress,
+                            })
+                          );
+                          const rawSess = localStorage.getItem('gs_admin_session_v1');
+                          if (rawSess) {
+                            const parsedSess = JSON.parse(rawSess);
+                            if (parsedSess && parsedSess.user) {
+                              parsedSess.user.fullName = cleanName;
+                              parsedSess.user.email = cleanEmail;
+                              parsedSess.user.phone = cleanPhone;
+                              localStorage.setItem('gs_admin_session_v1', JSON.stringify(parsedSess));
+                            }
+                          }
+                        } catch {
+                          // Ignore
+                        }
+                      };
+
+                      try {
                         const res = await fetch('/api/auth/profile', {
                           method: 'POST',
                           headers: {
@@ -6172,7 +6430,22 @@ const DEFAULT_PRODUCTS = [
                           }),
                         });
                         const data = await res.json();
-                        const updatedUser = data?.user || {
+                        const updatedUser = data?.user
+                          ? { ...data.user, fullName: cleanName, email: cleanEmail, phone: cleanPhone }
+                          : {
+                              id: dbUser?.id || 2,
+                              uid: dbUser?.uid || `cust-${cleanEmail}`,
+                              email: cleanEmail,
+                              fullName: cleanName,
+                              phone: cleanPhone,
+                              role: dbUser?.role || 'customer',
+                            };
+                        saveLocalProfileAndSession(updatedUser);
+                        setProfileSuccessMsg(
+                          `Profile updated! Full Name saved as "${cleanName}".`
+                        );
+                      } catch {
+                        const fallbackUser = {
                           id: dbUser?.id || 2,
                           uid: dbUser?.uid || `cust-${cleanEmail}`,
                           email: cleanEmail,
@@ -6180,23 +6453,10 @@ const DEFAULT_PRODUCTS = [
                           phone: cleanPhone,
                           role: dbUser?.role || 'customer',
                         };
-                        setDbUser(updatedUser);
-                        try {
-                          localStorage.setItem(
-                            'gs_user_profile_v1',
-                            JSON.stringify({
-                              ...updatedUser,
-                              shippingAddress,
-                            })
-                          );
-                        } catch {
-                          // Ignore
-                        }
+                        saveLocalProfileAndSession(fallbackUser);
                         setProfileSuccessMsg(
-                          'Profile and default delivery address saved! Your checkout details are now pre-filled.'
+                          `Profile updated! Full Name saved as "${cleanName}".`
                         );
-                      } catch {
-                        setProfileSuccessMsg('Profile saved to your device.');
                       } finally {
                         setProfileSaving(false);
                       }
@@ -6214,14 +6474,31 @@ const DEFAULT_PRODUCTS = [
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label
+                            htmlFor="profile-full-name-input"
+                            className="block font-semibold text-slate-700"
+                          >
+                            Full Name *
+                          </label>
+                          {customerName && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomerName('')}
+                              className="text-[11px] text-[#B42318] hover:underline font-medium cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                         <input
+                          id="profile-full-name-input"
                           type="text"
                           required
-                          value={customerName || dbUser?.fullName || ''}
+                          value={customerName}
                           onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder="Your Full Name"
-                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          placeholder="Enter your full name (e.g. Vaibhav Gupta)"
+                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm bg-white text-slate-900"
                         />
                       </div>
                       <div>
@@ -6233,7 +6510,7 @@ const DEFAULT_PRODUCTS = [
                           value={customerPhone}
                           onChange={(e) => setCustomerPhone(e.target.value)}
                           placeholder="e.g. 9876543210"
-                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm font-mono-tabular"
+                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm font-mono-tabular bg-white text-slate-900"
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -6243,10 +6520,10 @@ const DEFAULT_PRODUCTS = [
                         <input
                           type="email"
                           required
-                          value={customerEmail || dbUser?.email || supabaseUser?.email || ''}
+                          value={customerEmail}
                           onChange={(e) => setCustomerEmail(e.target.value)}
                           placeholder="you@example.com"
-                          className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
+                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm bg-white text-slate-900"
                         />
                       </div>
                     </div>

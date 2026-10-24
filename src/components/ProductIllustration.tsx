@@ -22,19 +22,70 @@ interface ProductIllustrationProps {
   imageUrl?: string | null;
   alt: string;
   className?: string;
+  colorTint?: string;
 }
+
+function resolveTintPalette(colorTint?: string): {
+  primary: string;
+  secondary: string;
+  label: string;
+  isMulti: boolean;
+} | null {
+  if (!colorTint) return null;
+  const lower = colorTint.toLowerCase();
+  if (lower.includes('black')) {
+    return { primary: '#18181B', secondary: '#3F3F46', label: 'BLACK INK', isMulti: false };
+  }
+  if (lower.includes('red')) {
+    return { primary: '#DC2626', secondary: '#991B1B', label: 'RED INK', isMulti: false };
+  }
+  if (lower.includes('green')) {
+    return { primary: '#16A34A', secondary: '#065F46', label: 'GREEN INK', isMulti: false };
+  }
+  if (lower.includes('assorted') || lower.includes('multi') || lower.includes('pastel')) {
+    return { primary: '#7C3AED', secondary: '#DB2777', label: 'MULTI COLOUR', isMulti: true };
+  }
+  if (lower.includes('blue')) {
+    return { primary: '#1D4ED8', secondary: '#1E3A8A', label: 'BLUE INK', isMulti: false };
+  }
+  return null;
+}
+
+const KNOWN_TYPES = new Set([
+  'spiral_notebook',
+  'stickers_craft',
+  'hardbound_register',
+  'pen_set',
+  'roller_pen',
+  'gift_pen',
+  'ballpoint_pen',
+  'pencil_box',
+  'watercolor_set',
+  'sketchbook',
+  'drawing_book',
+  'geometry_box',
+  'calculator',
+  'file_folder',
+  'exam_pad',
+  'practical_book',
+  'notebook',
+]);
 
 export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
   type = 'notebook',
   imageUrl,
   alt,
   className = 'w-full h-full',
+  colorTint,
 }) => {
   const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     setImgError(false);
   }, [imageUrl]);
+
+  const tint = resolveTintPalette(colorTint);
+  const resolvedType = KNOWN_TYPES.has(type) ? type : 'spiral_notebook';
 
   if (imageUrl && imageUrl.trim() !== '' && !imgError) {
     return (
@@ -46,9 +97,21 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           onError={() => setImgError(true)}
           className="w-full h-full object-cover"
         />
+        {tint && (
+          <span
+            className="absolute bottom-1.5 right-1.5 w-3.5 h-3.5 rounded-full border border-white shadow-xs"
+            style={{
+              background: tint.isMulti
+                ? 'conic-gradient(#1D4ED8 0deg 90deg, #DC2626 90deg 180deg, #16A34A 180deg 270deg, #18181B 270deg 360deg)'
+                : tint.primary,
+            }}
+          />
+        )}
       </div>
     );
   }
+
+  const multiColors = ['#1D4ED8', '#18181B', '#DC2626', '#16A34A'];
 
   return (
     <div
@@ -56,14 +119,23 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
       role="img"
       aria-label={alt}
     >
-      <svg className="w-full h-full p-4 sm:p-5" viewBox="0 0 240 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className="w-full h-full p-3 sm:p-4" viewBox="0 0 240 180" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect width="240" height="180" rx="4" fill="#F8FAFC" />
         <ellipse cx="120" cy="154" rx="68" ry="8" fill="#E2E8F0" />
 
-        {type === 'spiral_notebook' && (
+        {resolvedType === 'spiral_notebook' && (
           <g>
             <rect x="76" y="24" width="96" height="126" rx="3" fill="#1E293B" />
-            <rect x="68" y="28" width="96" height="126" rx="3" fill="#B42318" stroke="#18181B" strokeWidth="1.5" />
+            <rect
+              x="68"
+              y="28"
+              width="96"
+              height="126"
+              rx="3"
+              fill={tint ? tint.primary : '#B42318'}
+              stroke="#18181B"
+              strokeWidth="1.5"
+            />
             <rect x="80" y="42" width="72" height="34" rx="2" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.2" />
             <line x1="88" y1="53" x2="144" y2="53" stroke="#18181B" strokeWidth="1.5" />
             <line x1="88" y1="63" x2="128" y2="63" stroke="#71717A" strokeWidth="1.2" />
@@ -83,15 +155,13 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'stickers_craft' && (
+        {resolvedType === 'stickers_craft' && (
           <g>
-            {/* Die-cut sticker backing card */}
             <rect x="58" y="22" width="124" height="132" rx="6" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
             <rect x="58" y="22" width="124" height="22" rx="4" fill="#B42318" />
             <text x="74" y="36" fill="#FFFFFF" fontSize="8.5" fontFamily="monospace" fontWeight="700">
               CRAFT STICKER PACK
             </text>
-            {/* Heart & badge stickers grid */}
             {[
               { cx: 88, cy: 68, color: '#E11D48' },
               { cx: 120, cy: 68, color: '#DB2777' },
@@ -115,12 +185,20 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'hardbound_register' && (
+        {resolvedType === 'hardbound_register' && (
           <g>
             <rect x="66" y="24" width="104" height="130" rx="2" fill="#1E293B" stroke="#18181B" strokeWidth="1.5" />
-            <rect x="66" y="24" width="18" height="130" fill="#991B1B" stroke="#18181B" strokeWidth="1.5" />
-            <path d="M156 24 H170 V38 L156 24Z" fill="#991B1B" />
-            <path d="M156 154 H170 V140 L156 154Z" fill="#991B1B" />
+            <rect
+              x="66"
+              y="24"
+              width="18"
+              height="130"
+              fill={tint ? tint.primary : '#991B1B'}
+              stroke="#18181B"
+              strokeWidth="1.5"
+            />
+            <path d="M156 24 H170 V38 L156 24Z" fill={tint ? tint.primary : '#991B1B'} />
+            <path d="M156 154 H170 V140 L156 154Z" fill={tint ? tint.primary : '#991B1B'} />
             <rect x="96" y="46" width="60" height="38" rx="2" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.2" />
             <line x1="104" y1="58" x2="148" y2="58" stroke="#18181B" strokeWidth="1.5" />
             <line x1="104" y1="68" x2="140" y2="68" stroke="#71717A" strokeWidth="1.2" />
@@ -130,33 +208,72 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {(type === 'pen_set' || type === 'roller_pen' || type === 'gift_pen') && (
+        {(resolvedType === 'pen_set' ||
+          resolvedType === 'roller_pen' ||
+          resolvedType === 'gift_pen' ||
+          resolvedType === 'ballpoint_pen') && (
           <g>
-            <rect x="52" y="34" width="136" height="112" rx="4" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
-            <rect x="52" y="34" width="136" height="24" rx="3" fill={type === 'gift_pen' ? '#18181B' : '#1E3A8A'} />
-            <text x="64" y="50" fill="#FFFFFF" fontSize="9" fontFamily="monospace" fontWeight="600">
-              {type === 'gift_pen' ? 'EXECUTIVE ROLLER' : 'PRECISION INK 0.7MM'}
+            <rect x="52" y="30" width="136" height="116" rx="6" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
+            <rect
+              x="52"
+              y="30"
+              width="136"
+              height="24"
+              rx="4"
+              fill={
+                tint
+                  ? tint.secondary
+                  : resolvedType === 'gift_pen'
+                  ? '#18181B'
+                  : '#1E3A8A'
+              }
+            />
+            <text x="64" y="46" fill="#FFFFFF" fontSize="8.5" fontFamily="monospace" fontWeight="700">
+              {tint
+                ? `PEN SET · ${tint.label}`
+                : resolvedType === 'gift_pen'
+                ? 'EXECUTIVE ROLLER'
+                : 'PRECISION INK 0.7MM'}
             </text>
-            {[74, 98, 122, 146].map((x, idx) => (
-              <g key={x}>
-                <rect
-                  x={x}
-                  y="68"
-                  width="11"
-                  height="64"
-                  rx="3"
-                  fill={type === 'gift_pen' ? '#18181B' : idx % 2 === 0 ? '#1E293B' : '#1D4ED8'}
-                  stroke="#18181B"
-                  strokeWidth="1.2"
-                />
-                <rect x={x + 2} y="72" width="2" height="22" fill="#D97706" />
-                <polygon points={`${x},132 ${x + 11},132 ${x + 5.5},141`} fill="#D4D4D8" stroke="#18181B" strokeWidth="1" />
-              </g>
-            ))}
+            {[74, 98, 122, 146].map((x, idx) => {
+              const barrelFill = tint
+                ? tint.isMulti
+                  ? multiColors[idx % multiColors.length]
+                  : tint.primary
+                : resolvedType === 'gift_pen'
+                ? '#18181B'
+                : resolvedType === 'ballpoint_pen'
+                ? ['#2563EB', '#DB2777', '#0D9488', '#7C3AED'][idx % 4]
+                : idx % 2 === 0
+                ? '#1E293B'
+                : '#1D4ED8';
+              return (
+                <g key={x}>
+                  <rect
+                    x={x}
+                    y="64"
+                    width="12"
+                    height="66"
+                    rx="3"
+                    fill={barrelFill}
+                    stroke="#18181B"
+                    strokeWidth="1.2"
+                  />
+                  <rect x={x + 2.5} y="68" width="2.5" height="22" rx="1" fill="#FBBF24" />
+                  <polygon
+                    points={`${x},130 ${x + 12},130 ${x + 6},140`}
+                    fill="#E2E8F0"
+                    stroke="#18181B"
+                    strokeWidth="1"
+                  />
+                  <circle cx={x + 6} cy="140" r="1.3" fill={barrelFill} />
+                </g>
+              );
+            })}
           </g>
         )}
 
-        {type === 'pencil_box' && (
+        {resolvedType === 'pencil_box' && (
           <g>
             <rect x="64" y="30" width="88" height="120" rx="3" fill="#18181B" stroke="#18181B" strokeWidth="1.5" />
             <rect x="64" y="46" width="88" height="32" fill="#DC2626" />
@@ -181,7 +298,7 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'watercolor_set' && (
+        {(resolvedType === 'watercolor_set' || resolvedType === 'drawing_book') && (
           <g>
             <rect x="44" y="36" width="152" height="106" rx="5" fill="#E4E4E7" stroke="#18181B" strokeWidth="1.5" />
             <rect x="52" y="44" width="136" height="90" rx="3" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.2" />
@@ -220,7 +337,7 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'sketchbook' && (
+        {resolvedType === 'sketchbook' && (
           <g>
             <rect x="46" y="38" width="148" height="108" rx="3" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
             <rect x="46" y="38" width="148" height="24" fill="#D97706" stroke="#18181B" strokeWidth="1.5" />
@@ -236,7 +353,7 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'geometry_box' && (
+        {resolvedType === 'geometry_box' && (
           <g>
             <rect x="44" y="42" width="152" height="96" rx="6" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
             <rect x="44" y="42" width="152" height="22" rx="4" fill="#0F766E" />
@@ -251,7 +368,7 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {type === 'calculator' && (
+        {resolvedType === 'calculator' && (
           <g>
             <rect x="72" y="22" width="96" height="134" rx="6" fill="#27272A" stroke="#18181B" strokeWidth="1.5" />
             <rect x="82" y="34" width="76" height="26" rx="2" fill="#D9F99D" stroke="#18181B" strokeWidth="1.2" />
@@ -274,7 +391,10 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
           </g>
         )}
 
-        {(type === 'file_folder' || type === 'exam_pad' || type === 'practical_book' || type === 'notebook') && (
+        {(resolvedType === 'file_folder' ||
+          resolvedType === 'exam_pad' ||
+          resolvedType === 'practical_book' ||
+          resolvedType === 'notebook') && (
           <g>
             <rect x="68" y="24" width="102" height="130" rx="3" fill="#FFFFFF" stroke="#18181B" strokeWidth="1.5" />
             <rect
@@ -282,7 +402,15 @@ export const ProductIllustration: React.FC<ProductIllustrationProps> = ({
               y="24"
               width="20"
               height="130"
-              fill={type === 'file_folder' ? '#1E3A8A' : type === 'practical_book' ? '#065F46' : '#B42318'}
+              fill={
+                tint
+                  ? tint.primary
+                  : resolvedType === 'file_folder'
+                  ? '#1E3A8A'
+                  : resolvedType === 'practical_book'
+                  ? '#065F46'
+                  : '#B42318'
+              }
               stroke="#18181B"
               strokeWidth="1.5"
             />
