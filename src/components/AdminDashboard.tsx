@@ -819,51 +819,94 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // Upload image from user's computer/phone to Supabase Storage / PostgreSQL Asset Store
+  const [newGalleryUrlInput, setNewGalleryUrlInput] = useState('');
+
+  // Upload one or multiple images from user's computer/phone to Supabase Storage / PostgreSQL Asset Store
   const handleFileUploadChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []) as File[];
+    if (files.length === 0) return;
     setUploadingImage(true);
     setErrorMsg(null);
     try {
-      const base64DataUrl = await compressImageFileToDataUrl(file);
-      let finalUrl = base64DataUrl;
+      const uploadedUrls: string[] = [];
       let providerLabel = 'Supabase Storage (product-images bucket)';
-      try {
-        const upRes = await fetch('/api/admin/upload-image', {
-          method: 'POST',
-          headers: buildAdminHeaders(true),
-          body: JSON.stringify({
-            base64Data: base64DataUrl,
-            mimeType: file.type || 'image/jpeg',
-            folder: 'products',
-            skuOrSlug: productForm.sku || 'NEW-PRODUCT',
-          }),
-        });
-        if (upRes.ok) {
-          const upData = await upRes.json();
-          if (upData.imageUrl) finalUrl = upData.imageUrl;
-          if (upData.storageProvider !== 'SUPABASE_STORAGE') {
-            providerLabel = 'PostgreSQL Asset Store';
+
+      for (const file of files) {
+        const base64DataUrl = await compressImageFileToDataUrl(file);
+        let finalUrl = base64DataUrl;
+        try {
+          const upRes = await fetch('/api/admin/upload-image', {
+            method: 'POST',
+            headers: buildAdminHeaders(true),
+            body: JSON.stringify({
+              base64Data: base64DataUrl,
+              mimeType: file.type || 'image/jpeg',
+              folder: 'products',
+              skuOrSlug: productForm.sku || 'NEW-PRODUCT',
+            }),
+          });
+          if (upRes.ok) {
+            const upData = await upRes.json();
+            if (upData.imageUrl) finalUrl = upData.imageUrl;
+            if (upData.storageProvider !== 'SUPABASE_STORAGE') {
+              providerLabel = 'PostgreSQL Asset Store';
+            }
           }
+        } catch {
+          // Keep validated client asset URL
         }
-      } catch {
-        // Keep validated client asset URL
+        uploadedUrls.push(finalUrl);
       }
 
-      setProductForm((prev) => ({
-        ...prev,
-        imageUrl: finalUrl,
-        galleryUrls: Array.from(new Set([finalUrl, ...(prev.galleryUrls || [])])),
-      }));
-      setStatusBanner(
-        `Uploaded "${file.name}" to ${providerLabel}. Click "Save Product" below to publish.`
-      );
+      if (uploadedUrls.length > 0) {
+        setProductForm((prev) => {
+          const nextPrimary = prev.imageUrl || uploadedUrls[0];
+          const mergedGallery = Array.from(
+            new Set([nextPrimary, ...uploadedUrls, ...(prev.galleryUrls || [])].filter(Boolean))
+          );
+          return {
+            ...prev,
+            imageUrl: nextPrimary,
+            galleryUrls: mergedGallery,
+          };
+        });
+        setStatusBanner(
+          files.length > 1
+            ? `Uploaded ${files.length} photos to ${providerLabel} and added all to product gallery. Click "Save Product" below to publish.`
+            : `Uploaded "${files[0].name}" to ${providerLabel}. Click "Save Product" below to publish.`
+        );
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Could not upload product image.');
+      setErrorMsg(err.message || 'Could not upload product image(s).');
     } finally {
       setUploadingImage(false);
+      e.target.value = '';
     }
+  };
+
+  const handleAddGalleryUrlToProduct = () => {
+    const raw = newGalleryUrlInput.trim();
+    if (!raw) return;
+    const urls = raw
+      .split(/[\n,]+/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (urls.length === 0) return;
+    setProductForm((prev) => {
+      const nextPrimary = prev.imageUrl || urls[0];
+      const nextGallery = Array.from(
+        new Set([nextPrimary, ...(prev.galleryUrls || []), ...urls].filter(Boolean))
+      );
+      return {
+        ...prev,
+        imageUrl: nextPrimary,
+        galleryUrls: nextGallery,
+      };
+    });
+    setNewGalleryUrlInput('');
+    setStatusBanner(
+      `Added ${urls.length} photo${urls.length > 1 ? 's' : ''} to product gallery. Click a thumbnail to set as primary cover.`
+    );
   };
 
   // Generate product image via AI on the server
@@ -1165,12 +1208,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Attach a Web Photo to either the current Product Form or a specific Product
-  const handleAttachWebPhoto = async (photoUrl: string, targetProdId?: number) => {
-    setProductForm((prev) => ({
-      ...prev,
-      imageUrl: photoUrl,
-      galleryUrls: Array.from(new Set([photoUrl, ...(prev.galleryUrls || [])])),
-    }));
+  const handleAttachWebPhoto = async (
+    photoUrl: string,
+    targetProdId?: number,
+    setAsPrimary: boolean = true
+  ) => {
+    setProductForm((prev) => {
+      const nextPrimary = setAsPrimary ? photoUrl : prev.imageUrl || photoUrl;
+      const nextGallery = Array.from(
+        new Set(
+          setAsPrimary
+            ? [photoUrl, ...(prev.galleryUrls || [])]
+            : [...(prev.galleryUrls || []), prev.imageUrl, photoUrl].filter(Boolean)
+        )
+      );
+      return {
+        ...prev,
+        imageUrl: nextPrimary,
+        galleryUrls: nextGallery,
+      };
+    });
 
     const pid = targetProdId || editingProductId;
     if (pid) {
@@ -1181,7 +1238,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           body: JSON.stringify({
             imageUrl: photoUrl,
             newImageUrls: [photoUrl],
-            setAsPrimary: true,
+            setAsPrimary,
           }),
         });
       } catch {
@@ -1192,8 +1249,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           Number(p.id) === Number(pid)
             ? {
                 ...p,
-                imageUrl: photoUrl,
-                galleryUrls: Array.from(new Set([photoUrl, ...(p.galleryUrls || [])])),
+                imageUrl: setAsPrimary ? photoUrl : p.imageUrl || photoUrl,
+                galleryUrls: Array.from(
+                  new Set(
+                    setAsPrimary
+                      ? [photoUrl, ...(p.galleryUrls || [])]
+                      : [...(p.galleryUrls || []), p.imageUrl, photoUrl].filter(Boolean)
+                  )
+                ),
               }
             : p
         );
@@ -1206,7 +1269,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       onRefreshStorefront();
     }
-    setStatusBanner('Web photo attached! It is now live on the product.');
+    setStatusBanner(
+      setAsPrimary
+        ? 'Web photo set as primary cover & added to gallery!'
+        : 'Web photo added to product multi-photo gallery!'
+    );
   };
 
   // Remove Photo from a Product or the Product Form
@@ -3547,30 +3614,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
 
                             {productForm.galleryUrls && productForm.galleryUrls.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-2 pt-1">
-                                {productForm.galleryUrls.map((gUrl, idx) => (
-                                  <div
-                                    key={`${gUrl}-${idx}`}
-                                    className="relative w-14 h-12 rounded-lg border border-slate-300 overflow-hidden bg-white group"
-                                  >
-                                    <img
-                                      src={gUrl}
-                                      alt="Gallery thumb"
-                                      className="w-full h-full object-cover cursor-pointer"
-                                      onClick={() =>
-                                        setProductForm((prev) => ({ ...prev, imageUrl: gUrl }))
-                                      }
-                                    />
-                                    <button
-                                      type="button"
-                                      title="Remove this photo"
-                                      onClick={() => handleRemoveProductPhoto(undefined, gUrl)}
-                                      className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] cursor-pointer"
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                ))}
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
+                                  <span>
+                                    Product Photo Gallery ({productForm.galleryUrls.length}{' '}
+                                    {productForm.galleryUrls.length === 1 ? 'photo' : 'photos'})
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    Click any thumb to set primary
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {productForm.galleryUrls.map((gUrl, idx) => {
+                                    const isPrimary = productForm.imageUrl === gUrl;
+                                    return (
+                                      <div
+                                        key={`${gUrl}-${idx}`}
+                                        className={`relative w-16 h-14 rounded-lg border overflow-hidden bg-white group transition-all ${
+                                          isPrimary
+                                            ? 'border-2 border-emerald-600 ring-2 ring-emerald-500/30'
+                                            : 'border-slate-300 hover:border-slate-500'
+                                        }`}
+                                      >
+                                        <img
+                                          src={gUrl}
+                                          alt={`Gallery photo ${idx + 1}`}
+                                          className="w-full h-full object-cover cursor-pointer"
+                                          onClick={() =>
+                                            setProductForm((prev) => ({ ...prev, imageUrl: gUrl }))
+                                          }
+                                        />
+                                        {isPrimary && (
+                                          <span className="absolute bottom-0 inset-x-0 bg-emerald-700/90 text-white text-[8px] font-bold text-center py-0.5 uppercase tracking-wider">
+                                            Cover
+                                          </span>
+                                        )}
+                                        <button
+                                          type="button"
+                                          title="Remove this photo"
+                                          onClick={() => handleRemoveProductPhoto(undefined, gUrl)}
+                                          className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] cursor-pointer shadow"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -3578,23 +3668,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="lg:col-span-8 space-y-4 text-xs">
                             <div>
                               <h3 className="text-sm font-bold text-slate-900">
-                                Product Image Options: Upload Photo, Search Web Photos, or Generate with AI
+                                Multi-Photo Product Studio: Upload Multiple Photos, Search Web, or Generate with AI
                               </h3>
                               <p className="text-slate-600 mt-0.5">
-                                Upload from your device, search and attach real product photos from the web, generate with Gemini AI, or remove any photo in 1 click.
+                                Select multiple images at once from your device, paste multiple image URLs, or attach multiple web photos to build a rich product gallery.
                               </p>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2.5">
-                              {/* Option 1: Upload from Device */}
+                              {/* Option 1: Upload Single or Multiple Photos from Device */}
                               <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer">
                                 <ImageIcon className="w-4 h-4" />
                                 <span>
-                                  {uploadingImage ? 'Uploading...' : '1. Upload Photo'}
+                                  {uploadingImage
+                                    ? 'Uploading Photo(s)...'
+                                    : '1. Upload Photo(s) (Multiple Supported)'}
                                 </span>
                                 <input
                                   type="file"
                                   accept="image/*"
+                                  multiple
                                   onChange={handleFileUploadChange}
                                   className="hidden"
                                 />
@@ -3637,9 +3730,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   className="inline-flex items-center gap-1 px-3.5 py-2 bg-red-50 border border-red-200 text-red-700 font-semibold rounded-full hover:bg-red-100 cursor-pointer"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Remove Photo</span>
+                                  <span>Clear All Photos</span>
                                 </button>
                               )}
+                            </div>
+
+                            {/* Add Multiple Image URLs to Gallery */}
+                            <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-2">
+                              <label className="block font-semibold text-slate-800">
+                                Add Multiple Photo URLs to Product Gallery (comma or newline separated)
+                              </label>
+                              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={newGalleryUrlInput}
+                                  onChange={(e) => setNewGalleryUrlInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddGalleryUrlToProduct();
+                                    }
+                                  }}
+                                  placeholder="Paste 1 or more image URLs (https://...) to add to this product's gallery..."
+                                  className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-full text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddGalleryUrlToProduct}
+                                  className="px-4 py-2 bg-emerald-700 text-white font-semibold rounded-full hover:bg-emerald-800 cursor-pointer shrink-0"
+                                >
+                                  + Add Photo(s) to Gallery
+                                </button>
+                              </div>
                             </div>
 
                             {/* Web Photo Search Input */}
@@ -3671,7 +3793,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                               <div>
                                 <label className="block font-medium text-slate-700 mb-1">
-                                  Or Paste Direct Web Image URL
+                                  Primary Cover Image URL
                                 </label>
                                 <input
                                   type="text"
@@ -3680,9 +3802,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       ? ''
                                       : productForm.imageUrl
                                   }
-                                  onChange={(e) =>
-                                    setProductForm({ ...productForm, imageUrl: e.target.value })
-                                  }
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setProductForm((prev) => ({
+                                      ...prev,
+                                      imageUrl: val,
+                                      galleryUrls: val
+                                        ? Array.from(new Set([val, ...(prev.galleryUrls || [])]))
+                                        : prev.galleryUrls,
+                                    }));
+                                  }}
                                   placeholder="https://example.com/product-photo.jpg"
                                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
                                 />
@@ -3718,7 +3847,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="pt-3 border-t border-slate-200 space-y-2.5">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-slate-900">
-                                Web Product Photos — Click any photo to attach to this product
+                                Web Product Photos — Set as Primary Cover or Add Multiple Photos to Gallery
                               </span>
                               <button
                                 type="button"
@@ -3730,38 +3859,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                               {webPhotosResults.map((wp, idx) => {
-                                const isSelected = productForm.imageUrl === wp.url;
+                                const isPrimary = productForm.imageUrl === wp.url;
+                                const isInGallery = (productForm.galleryUrls || []).includes(wp.url);
                                 return (
                                   <div
                                     key={`${wp.url}-${idx}`}
                                     className={`rounded-xl border overflow-hidden bg-white flex flex-col justify-between transition-all ${
-                                      isSelected
+                                      isPrimary
                                         ? 'border-2 border-emerald-600 ring-2 ring-emerald-500/20'
+                                        : isInGallery
+                                        ? 'border-2 border-slate-900'
                                         : 'border-slate-200 hover:border-slate-400'
                                     }`}
                                   >
-                                    <div className="aspect-4/3 bg-slate-100 overflow-hidden">
+                                    <div className="aspect-4/3 bg-slate-100 overflow-hidden relative">
                                       <img
                                         src={wp.url}
                                         alt={wp.title}
                                         className="w-full h-full object-cover"
                                       />
+                                      {isInGallery && (
+                                        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-slate-900/90 text-white text-[9px] font-bold rounded-full">
+                                          {isPrimary ? 'Cover' : 'In Gallery'}
+                                        </span>
+                                      )}
                                     </div>
-                                    <div className="p-2 space-y-1.5">
+                                    <div className="p-2 space-y-1">
                                       <p className="text-[10px] font-medium text-slate-700 line-clamp-1">
                                         {wp.title}
                                       </p>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAttachWebPhoto(wp.url)}
-                                        className={`w-full py-1 rounded-full text-[10px] font-bold cursor-pointer ${
-                                          isSelected
-                                            ? 'bg-emerald-700 text-white'
-                                            : 'bg-slate-900 hover:bg-slate-800 text-white'
-                                        }`}
-                                      >
-                                        {isSelected ? '✓ Active Photo' : '+ Use Web Photo'}
-                                      </button>
+                                      <div className="grid grid-cols-2 gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAttachWebPhoto(wp.url, undefined, true)}
+                                          className={`py-1 rounded-full text-[9px] font-bold cursor-pointer ${
+                                            isPrimary
+                                              ? 'bg-emerald-700 text-white'
+                                              : 'bg-slate-900 hover:bg-slate-800 text-white'
+                                          }`}
+                                        >
+                                          {isPrimary ? '✓ Cover' : 'Set Cover'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAttachWebPhoto(wp.url, undefined, false)}
+                                          className={`py-1 rounded-full text-[9px] font-bold border cursor-pointer ${
+                                            isInGallery
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                              : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+                                          }`}
+                                        >
+                                          {isInGallery ? '+ Added' : '+ Gallery'}
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 );

@@ -85,6 +85,9 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
     status: 'PUBLISHED',
   });
   const [uploadingCatImg, setUploadingCatImg] = useState(false);
+  const [catGalleryUrls, setCatGalleryUrls] = useState<string[]>([]);
+  const [brandGalleryUrls, setBrandGalleryUrls] = useState<string[]>([]);
+  const [bannerGalleryUrls, setBannerGalleryUrls] = useState<string[]>([]);
 
   // 2. Brand Form State
   const [localBrands, setLocalBrands] = useState<any[]>(() => {
@@ -263,6 +266,8 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
   });
 
   const [saving, setSaving] = useState(false);
+  const [showLiveBuilderCanvas, setShowLiveBuilderCanvas] = useState(true);
+  const [builderViewport, setBuilderViewport] = useState<'desktop' | 'mobile'>('desktop');
 
   // Handlers
   const handleSaveCategory = async (e: React.FormEvent) => {
@@ -812,26 +817,40 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Sub-navigation bar for Store CMS */}
-      <div className="bg-white border border-[#141413] p-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-[#E5E0D8]">
+      {/* Sub-navigation bar for Store CMS & Website Builder */}
+      <div className="bg-white border border-[#141413] p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E5E0D8]">
           <div>
             <span className="text-[11px] font-mono uppercase tracking-widest text-[#D9381E] font-bold">
-              DYNAMIC STOREFRONT CMS & CONTENT ENGINE
+              WEBSITE BUILDER &amp; LIVE STOREFRONT STUDIO
             </span>
             <h3 className="text-lg font-bold tracking-tight">
-              Customize Every Section of Gayatri Stationers Without Code
+              Customize &amp; Preview Every Section of Gayatri Stationers in Real Time
             </h3>
           </div>
-          {onPreviewStorefront && (
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
             <button
               type="button"
-              onClick={() => onPreviewStorefront({ view: 'home' })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF7F2] border border-[#141413] text-xs font-bold hover:bg-[#141413] hover:text-white transition-colors self-start sm:self-auto"
+              onClick={() => setShowLiveBuilderCanvas((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold transition-colors cursor-pointer ${
+                showLiveBuilderCanvas
+                  ? 'bg-[#141413] text-white border-[#141413]'
+                  : 'bg-[#FAF7F2] text-[#141413] border-[#141413]'
+              }`}
             >
-              <Eye className="w-3.5 h-3.5" /> Live Storefront Preview
+              <Eye className="w-3.5 h-3.5" />
+              <span>{showLiveBuilderCanvas ? 'Hide Live Website Preview' : 'Show Live Website Preview'}</span>
             </button>
-          )}
+            {onPreviewStorefront && (
+              <button
+                type="button"
+                onClick={() => onPreviewStorefront({ view: 'home' })}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#D9381E] text-white border border-[#141413] text-xs font-bold hover:bg-[#141413] transition-colors cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open Full Storefront
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -840,7 +859,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               key={btn.id}
               type="button"
               onClick={() => setActiveSubTab(btn.id)}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border transition-colors cursor-pointer ${
                 activeSubTab === btn.id
                   ? 'bg-[#141413] text-[#FAF7F2] border-[#141413]'
                   : 'bg-[#FAF7F2] text-[#141413] border-[#D6D1C7] hover:border-[#141413]'
@@ -861,6 +880,358 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
           ))}
         </div>
       </div>
+
+      {/* INTERACTIVE LIVE WEBSITE BUILDER CANVAS PREVIEW (Updates as you edit any tab!) */}
+      {showLiveBuilderCanvas && (() => {
+        const activeHeroBanner =
+          bannerForm.title.trim()
+            ? bannerForm
+            : banners.find((b) => b.placement === 'HERO_MAIN' && b.status !== 'HIDDEN') ||
+              banners[0] || {
+                badgeText: 'FESTIVE & ACADEMIC ESSENTIALS',
+                title: 'Premium Stationery, Art Supplies & Exam Kits',
+                subtitle: '₹0 Counter Pickup in Kanpur or Pan-India Shiprocket Doorstep Delivery.',
+                ctaText: 'Shop Catalogue',
+                secondaryCtaText: 'School Combo Kits',
+                backgroundColor: '#141413',
+                textColor: '#FAF7F2',
+                accentColor: '#D9381E',
+                desktopImageUrl: '',
+              };
+
+        const previewNavList = [
+          ...navItems.filter((n) => n.isActive !== false),
+          ...(navForm.label.trim() && !navForm.id
+            ? [
+                {
+                  id: 'draft-nav',
+                  label: navForm.label,
+                  highlightBadge: navForm.highlightBadge || 'DRAFT',
+                  showOnDesktop: navForm.showOnDesktop,
+                  showOnMobile: navForm.showOnMobile,
+                  isDraft: true,
+                },
+              ]
+            : []),
+        ];
+
+        const previewCategories = [
+          ...(catForm.name.trim() && !catForm.id
+            ? [
+                {
+                  id: 'draft-cat',
+                  name: catForm.name,
+                  description: catForm.description || 'Live draft category preview',
+                  imageUrl: catForm.imageUrl,
+                  isDraft: true,
+                },
+              ]
+            : []),
+          ...categories.filter((c) => c.showOnHomepage !== false && c.isActive !== false),
+        ].slice(0, 4);
+
+        const previewSections = [
+          ...(sectionForm.title.trim() && !sectionForm.id
+            ? [
+                {
+                  id: 'draft-sec',
+                  title: sectionForm.title,
+                  subtitle: sectionForm.subtitle || 'Live draft section preview',
+                  badgeText: sectionForm.badgeText || 'LIVE DRAFT',
+                  sectionType: sectionForm.sectionType,
+                  isDraft: true,
+                },
+              ]
+            : []),
+          ...homepageSections.filter((s) => s.status === 'PUBLISHED' && s.isActive !== false),
+        ].slice(0, 3);
+
+        return (
+          <div className="bg-white border-2 border-[#141413] shadow-sm overflow-hidden">
+            {/* Browser Top Chrome Bar */}
+            <div className="px-4 py-2.5 bg-[#141413] text-[#FAF7F2] flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#D9381E]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                <span className="ml-2 text-[11px] font-mono uppercase tracking-wider text-amber-300 font-bold">
+                  LIVE INTERACTIVE STOREFRONT PREVIEW ({builderViewport.toUpperCase()})
+                </span>
+                <span className="hidden md:inline text-[11px] text-stone-400">
+                  — Click any block below to jump to its editor
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBuilderViewport('desktop')}
+                  className={`px-2.5 py-1 text-[11px] font-mono font-bold border flex items-center gap-1 cursor-pointer ${
+                    builderViewport === 'desktop'
+                      ? 'bg-[#D9381E] text-white border-[#D9381E]'
+                      : 'bg-white/10 text-stone-300 border-white/20 hover:text-white'
+                  }`}
+                >
+                  <Monitor className="w-3 h-3" /> Desktop
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBuilderViewport('mobile')}
+                  className={`px-2.5 py-1 text-[11px] font-mono font-bold border flex items-center gap-1 cursor-pointer ${
+                    builderViewport === 'mobile'
+                      ? 'bg-[#D9381E] text-white border-[#D9381E]'
+                      : 'bg-white/10 text-stone-300 border-white/20 hover:text-white'
+                  }`}
+                >
+                  <Smartphone className="w-3 h-3" /> Mobile
+                </button>
+              </div>
+            </div>
+
+            {/* Viewport Container */}
+            <div className="p-3 sm:p-5 bg-stone-200/70 flex justify-center">
+              <div
+                className={`w-full transition-all border border-[#141413] shadow-md overflow-hidden ${
+                  builderViewport === 'mobile' ? 'max-w-[375px]' : 'max-w-full'
+                }`}
+                style={{ backgroundColor: themeForm.backgroundColor || '#FAF7F2' }}
+              >
+                {/* 1. Announcement Bar Preview */}
+                {themeForm.announcementEnabled && (
+                  <div
+                    onClick={() => setActiveSubTab('appearance')}
+                    title="Click to edit Announcement Bar in Theme & Branding"
+                    className="px-3 py-1.5 text-center text-[10px] font-mono uppercase tracking-wider font-bold cursor-pointer hover:opacity-90 transition-opacity"
+                    style={{
+                      backgroundColor: themeForm.announcementBgColor || '#141413',
+                      color: themeForm.announcementTextColor || '#FAF7F2',
+                    }}
+                  >
+                    {themeForm.announcementText}
+                  </div>
+                )}
+
+                {/* 2. Store Header & Navigation Preview */}
+                <div
+                  onClick={() => setActiveSubTab('navigation')}
+                  title="Click to edit Store Header & Navigation"
+                  className="px-4 py-3 bg-white border-b border-[#E5E0D8] cursor-pointer hover:bg-stone-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div
+                        className="font-bold text-sm sm:text-base tracking-tight"
+                        style={{ color: themeForm.secondaryColor || '#141413' }}
+                      >
+                        {themeForm.storeName || 'Gayatri Stationers'}
+                      </div>
+                      <div className="text-[10px] text-[#57534E] line-clamp-1">
+                        {themeForm.tagline}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="px-2 py-0.5 text-[10px] font-mono text-white font-bold"
+                        style={{ backgroundColor: themeForm.primaryColor || '#D9381E' }}
+                      >
+                        Header &amp; Nav Preview
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Navigation pills */}
+                  <div className="mt-2.5 pt-2 border-t border-[#E5E0D8] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    {previewNavList.map((item: any) => (
+                      <span
+                        key={item.id}
+                        className={`px-2 py-0.5 text-[10px] font-bold whitespace-nowrap inline-flex items-center gap-1 border ${
+                          item.isDraft
+                            ? 'bg-amber-50 border-[#D9381E] text-[#D9381E]'
+                            : 'bg-[#FAF7F2] border-[#D6D1C7] text-[#141413]'
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {item.highlightBadge && (
+                          <span
+                            className="px-1 text-[8px] font-mono text-white"
+                            style={{ backgroundColor: themeForm.primaryColor || '#D9381E' }}
+                          >
+                            {item.highlightBadge}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Hero Banner Preview */}
+                <div
+                  onClick={() => setActiveSubTab('banners')}
+                  title="Click to edit Hero Banner"
+                  className="p-4 sm:p-6 border-b border-[#141413] cursor-pointer relative overflow-hidden group"
+                  style={{
+                    backgroundColor: activeHeroBanner.backgroundColor || '#141413',
+                    color: activeHeroBanner.textColor || '#FAF7F2',
+                  }}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                    <div className={activeHeroBanner.desktopImageUrl ? 'sm:col-span-8 space-y-2' : 'sm:col-span-12 space-y-2'}>
+                      <span
+                        className="inline-block text-[9px] font-mono uppercase px-2 py-0.5 font-bold"
+                        style={{
+                          backgroundColor: activeHeroBanner.accentColor || '#D9381E',
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        {activeHeroBanner.badgeText || 'HERO BANNER'}
+                      </span>
+                      <h4 className="text-base sm:text-xl font-bold tracking-tight leading-snug">
+                        {activeHeroBanner.title}
+                      </h4>
+                      <p className="text-xs opacity-85 line-clamp-2 max-w-xl">
+                        {activeHeroBanner.subtitle}
+                      </p>
+                      <div className="pt-1 flex flex-wrap items-center gap-2">
+                        <span
+                          className="px-3 py-1 text-[11px] font-bold"
+                          style={{
+                            backgroundColor: activeHeroBanner.accentColor || '#D9381E',
+                            color: '#FFFFFF',
+                          }}
+                        >
+                          {activeHeroBanner.ctaText || 'Shop Now'} →
+                        </span>
+                        {activeHeroBanner.secondaryCtaText && (
+                          <span className="px-3 py-1 text-[11px] font-bold border border-current opacity-90">
+                            {activeHeroBanner.secondaryCtaText}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {activeHeroBanner.desktopImageUrl && (
+                      <div className="sm:col-span-4 flex justify-end">
+                        <img
+                          src={activeHeroBanner.desktopImageUrl}
+                          alt={activeHeroBanner.title}
+                          className="w-full max-h-28 object-cover border border-white/20"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Categories Grid Preview */}
+                <div
+                  onClick={() => setActiveSubTab('categories')}
+                  title="Click to edit Categories"
+                  className="p-4 border-b border-[#E5E0D8] cursor-pointer hover:bg-white/60 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#57534E] font-bold">
+                      SHOP BY CATEGORY ({categories.length})
+                    </span>
+                    <span className="text-[10px] font-mono text-[#D9381E] font-bold">
+                      Edit Categories →
+                    </span>
+                  </div>
+                  <div
+                    className={`grid gap-2 ${
+                      builderViewport === 'mobile' ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
+                    }`}
+                  >
+                    {previewCategories.map((c: any) => (
+                      <div
+                        key={c.id}
+                        className={`p-2.5 bg-white border flex items-center gap-2 ${
+                          c.isDraft ? 'border-[#D9381E] bg-amber-50/40' : 'border-[#D6D1C7]'
+                        }`}
+                      >
+                        {c.imageUrl ? (
+                          <img
+                            src={c.imageUrl}
+                            alt={c.name}
+                            className="w-8 h-8 object-cover border border-[#E5E0D8] shrink-0"
+                          />
+                        ) : (
+                          <div
+                            className="w-8 h-8 flex items-center justify-center text-[10px] font-mono font-bold text-white shrink-0"
+                            style={{ backgroundColor: themeForm.secondaryColor || '#141413' }}
+                          >
+                            {String(c.name || 'CA').slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-[#141413] truncate">{c.name}</div>
+                          <div className="text-[10px] text-[#57534E] truncate">
+                            {c.isDraft ? 'Unsaved Draft' : `${c.productCount ?? 0} items`}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 5. Homepage Sections Preview */}
+                <div
+                  onClick={() => setActiveSubTab('homepage')}
+                  title="Click to edit Homepage Sections"
+                  className="p-4 border-b border-[#E5E0D8] cursor-pointer hover:bg-white/60 transition-colors space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#57534E] font-bold">
+                      HOMEPAGE SECTIONS ({homepageSections.length})
+                    </span>
+                    <span className="text-[10px] font-mono text-[#D9381E] font-bold">
+                      Edit Sections →
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {previewSections.map((sec: any) => (
+                      <div
+                        key={sec.id}
+                        className={`p-2.5 bg-white border ${
+                          sec.isDraft ? 'border-[#D9381E] bg-amber-50/40' : 'border-[#D6D1C7]'
+                        }`}
+                      >
+                        <div className="text-[9px] font-mono uppercase text-[#D9381E] font-bold">
+                          {sec.badgeText || sec.sectionType}
+                        </div>
+                        <div className="text-xs font-bold text-[#141413] truncate">{sec.title}</div>
+                        <div className="text-[10px] text-[#57534E] truncate">
+                          {sec.subtitle || 'Active homepage block'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 6. Store Footer Preview */}
+                <div
+                  onClick={() => setActiveSubTab('appearance')}
+                  title="Click to edit Footer & Branding"
+                  className="px-4 py-3 text-xs cursor-pointer"
+                  style={{
+                    backgroundColor: themeForm.secondaryColor || '#141413',
+                    color: '#FAF7F2',
+                  }}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="max-w-md">
+                      <div className="font-bold text-xs">{themeForm.storeName}</div>
+                      <p className="text-[10px] opacity-75 line-clamp-1 mt-0.5">
+                        {footerForm.brandSummary}
+                      </p>
+                    </div>
+                    <div className="text-[10px] font-mono opacity-70">
+                      {footerForm.copyrightText}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 1. CATEGORIES & SUBCATEGORIES MANAGER */}
       {activeSubTab === 'categories' && (
@@ -1011,41 +1382,95 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
             <div>
               <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
-                Category Image (Upload to Firebase or Image URL)
+                Category Image(s) (Upload Single or Multiple Photos / Paste URL)
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="https://... or upload image"
+                  placeholder="https://... or upload image(s)"
                   value={catForm.imageUrl}
-                  onChange={(e) => setCatForm({ ...catForm, imageUrl: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCatForm({ ...catForm, imageUrl: val });
+                    if (val.trim()) {
+                      setCatGalleryUrls((prev) => Array.from(new Set([val.trim(), ...prev])));
+                    }
+                  }}
                   className="flex-1 px-3 py-2 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
                 />
                 <label className="px-3 py-2 bg-[#141413] text-white text-xs font-bold cursor-pointer hover:bg-[#D9381E] transition-colors shrink-0">
-                  {uploadingCatImg ? 'Uploading...' : 'Upload'}
+                  {uploadingCatImg ? 'Uploading...' : 'Upload Photo(s)'}
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
+                      const files = Array.from(e.target.files || []) as File[];
+                      if (files.length === 0) return;
                       setUploadingCatImg(true);
                       try {
-                        const res = await uploadImageToSupabaseStorage(file, {
-                          productSku: `CAT-${catForm.slug || 'IMG'}`,
-                        });
-                        setCatForm((prev) => ({ ...prev, imageUrl: res.downloadUrl }));
-                        notify('Category image uploaded.');
+                        const uploaded: string[] = [];
+                        for (const file of files) {
+                          const res = await uploadImageToSupabaseStorage(file, {
+                            productSku: `CAT-${catForm.slug || 'IMG'}`,
+                          });
+                          uploaded.push(res.downloadUrl);
+                        }
+                        if (uploaded.length > 0) {
+                          setCatForm((prev) => ({
+                            ...prev,
+                            imageUrl: prev.imageUrl || uploaded[0],
+                          }));
+                          setCatGalleryUrls((prev) =>
+                            Array.from(new Set([...uploaded, ...prev]))
+                          );
+                          notify(
+                            uploaded.length > 1
+                              ? `Uploaded ${uploaded.length} category photos. Click any thumbnail to set primary.`
+                              : 'Category image uploaded.'
+                          );
+                        }
                       } catch (err: any) {
                         notify(err.message || 'Upload failed', 'error');
                       } finally {
                         setUploadingCatImg(false);
+                        e.target.value = '';
                       }
                     }}
                   />
                 </label>
               </div>
+              {catGalleryUrls.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                  {catGalleryUrls.map((url, idx) => (
+                    <div
+                      key={`${url}-${idx}`}
+                      className={`relative w-12 h-10 border overflow-hidden cursor-pointer ${
+                        catForm.imageUrl === url
+                          ? 'border-2 border-[#D9381E]'
+                          : 'border-[#D6D1C7]'
+                      }`}
+                    >
+                      <img
+                        src={url}
+                        alt={`Category photo ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                        onClick={() => setCatForm((prev) => ({ ...prev, imageUrl: url }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCatGalleryUrls((prev) => prev.filter((item) => item !== url))
+                        }
+                        className="absolute top-0 right-0 bg-red-600 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Placement Checkboxes */}
@@ -1110,21 +1535,35 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
             </div>
 
             {/* Live Card Preview */}
-            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2]">
-              <div className="text-[10px] font-mono uppercase text-[#57534E] mb-1.5">
-                LIVE HOMEPAGE & MENU PREVIEW
+            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                <span>LIVE CATEGORY CARD &amp; MENU PREVIEW</span>
+                <span className="text-[#D9381E] font-bold">/{catForm.slug || 'category-slug'}</span>
               </div>
-              <div className="flex items-center justify-between bg-white border border-[#141413] p-2.5">
-                <div>
-                  <span className="text-[10px] font-mono uppercase text-[#D9381E] font-bold">
-                    {catForm.status}
-                  </span>
-                  <div className="font-bold text-sm">{catForm.name || 'Category Title'}</div>
-                  <div className="text-xs text-[#57534E] line-clamp-1">
-                    {catForm.description || 'Category description preview...'}
+              <div className="flex items-center justify-between bg-white border border-[#141413] p-3 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {catForm.imageUrl ? (
+                    <img
+                      src={catForm.imageUrl}
+                      alt={catForm.name || 'Category preview'}
+                      className="w-12 h-12 object-cover border border-[#D6D1C7] shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-[#141413] text-[#FAF7F2] flex items-center justify-center font-mono text-xs font-bold shrink-0">
+                      {(catForm.name || 'CA').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-mono uppercase text-[#D9381E] font-bold">
+                      {catForm.status}
+                    </span>
+                    <div className="font-bold text-sm truncate">{catForm.name || 'Category Title'}</div>
+                    <div className="text-xs text-[#57534E] line-clamp-1">
+                      {catForm.description || 'Category description preview...'}
+                    </div>
                   </div>
                 </div>
-                <span className="text-xs font-mono underline font-bold">Explore →</span>
+                <span className="text-xs font-mono underline font-bold shrink-0">Explore →</span>
               </div>
             </div>
 
@@ -1357,41 +1796,96 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
             <div>
               <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
-                Brand Logo URL or Upload
+                Brand Logo & Photos (Upload Single or Multiple Photos / Paste URL)
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   placeholder="Paste logo URL or upload..."
                   value={brandForm.logoUrl}
-                  onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBrandForm({ ...brandForm, logoUrl: val });
+                    if (val.trim()) {
+                      setBrandGalleryUrls((prev) => Array.from(new Set([val.trim(), ...prev])));
+                    }
+                  }}
                   className="flex-1 px-3 py-2 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
                 />
                 <label className="px-3 py-2 bg-[#141413] text-white text-xs font-bold cursor-pointer hover:bg-[#D9381E] transition-colors">
-                  {uploadingBrandLogo ? 'Uploading...' : 'Upload Logo'}
+                  {uploadingBrandLogo ? 'Uploading...' : 'Upload Photo(s)'}
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
+                      const files = Array.from(e.target.files || []) as File[];
+                      if (files.length === 0) return;
                       setUploadingBrandLogo(true);
                       try {
-                        const res = await uploadImageToSupabaseStorage(file, {
-                          productSku: `BRAND-${brandForm.slug || 'LOGO'}`,
-                        });
-                        setBrandForm((prev) => ({ ...prev, logoUrl: res.downloadUrl }));
-                        notify('Brand logo uploaded.');
+                        const uploaded: string[] = [];
+                        for (const file of files) {
+                          const res = await uploadImageToSupabaseStorage(file, {
+                            productSku: `BRAND-${brandForm.slug || 'LOGO'}`,
+                          });
+                          uploaded.push(res.downloadUrl);
+                        }
+                        if (uploaded.length > 0) {
+                          setBrandForm((prev) => ({
+                            ...prev,
+                            logoUrl: prev.logoUrl || uploaded[0],
+                            bannerUrl: uploaded[1] || prev.bannerUrl,
+                          }));
+                          setBrandGalleryUrls((prev) =>
+                            Array.from(new Set([...uploaded, ...prev]))
+                          );
+                          notify(
+                            uploaded.length > 1
+                              ? `Uploaded ${uploaded.length} brand photos.`
+                              : 'Brand logo uploaded.'
+                          );
+                        }
                       } catch (err: any) {
                         notify(err.message || 'Upload failed', 'error');
                       } finally {
                         setUploadingBrandLogo(false);
+                        e.target.value = '';
                       }
                     }}
                   />
                 </label>
               </div>
+              {brandGalleryUrls.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                  {brandGalleryUrls.map((url, idx) => (
+                    <div
+                      key={`${url}-${idx}`}
+                      className={`relative w-12 h-10 border overflow-hidden cursor-pointer bg-white ${
+                        brandForm.logoUrl === url
+                          ? 'border-2 border-[#D9381E]'
+                          : 'border-[#D6D1C7]'
+                      }`}
+                    >
+                      <img
+                        src={url}
+                        alt={`Brand photo ${idx + 1}`}
+                        className="w-full h-full object-contain"
+                        onClick={() => setBrandForm((prev) => ({ ...prev, logoUrl: url }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBrandGalleryUrls((prev) => prev.filter((item) => item !== url))
+                        }
+                        className="absolute top-0 right-0 bg-red-600 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2 pt-1">
@@ -1432,6 +1926,42 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               </div>
             </div>
 
+            {/* Live Brand Showcase Preview */}
+            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                <span>LIVE BRAND SHOWCASE CARD PREVIEW</span>
+                <span className="text-[#D9381E] font-bold">
+                  {brandForm.isFeatured ? '★ Featured Brand' : 'Catalogue Brand'}
+                </span>
+              </div>
+              <div className="p-3 bg-white border border-[#141413] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {brandForm.logoUrl ? (
+                    <img
+                      src={brandForm.logoUrl}
+                      alt={brandForm.name || 'Brand Logo'}
+                      className="w-11 h-11 object-contain bg-white border border-[#D6D1C7] p-1 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 bg-[#141413] text-[#FAF7F2] flex items-center justify-center font-bold text-xs font-mono shrink-0">
+                      {(brandForm.name || 'BR').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-[#141413] truncate">
+                      {brandForm.name || 'Stationery Brand Name'}
+                    </div>
+                    <div className="text-xs text-[#57534E] line-clamp-1">
+                      {brandForm.description || 'Authorized retail & institutional stationery line'}
+                    </div>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 bg-[#FAF7F2] border border-[#141413] text-[10px] font-mono font-bold shrink-0">
+                  Shop Brand →
+                </span>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={saving}
@@ -1456,93 +1986,102 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[640px] overflow-y-auto">
-              {localBrands.map((b) => (
-                <div
-                  key={b.id}
-                  className="p-3.5 border border-[#D6D1C7] bg-[#FAF7F2] flex flex-col justify-between gap-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      {b.logoUrl ? (
-                        <img
-                          src={b.logoUrl}
-                          alt={b.name}
-                          className="w-10 h-10 object-contain bg-white border border-[#D6D1C7] p-1"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 bg-[#141413] text-[#FAF7F2] flex items-center justify-center font-bold text-xs font-mono">
-                          {b.name.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <div className="font-bold text-sm text-[#141413]">{b.name}</div>
-                        <div className="text-[10px] font-mono text-[#57534E]">
-                          {b.productCount ?? 0} Products · #{b.sortOrder || 1}
+              {localBrands.map((b) => {
+                const matchingBrandProductsCount = products.filter(
+                  (p) =>
+                    p.isActive !== false &&
+                    (p.brandSlug === b.slug ||
+                      String(p.brandName || '').toLowerCase() === String(b.name || '').toLowerCase())
+                ).length;
+                return (
+                  <div
+                    key={b.id}
+                    className="p-3.5 border border-[#D6D1C7] bg-[#FAF7F2] flex flex-col justify-between gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        {b.logoUrl ? (
+                          <img
+                            src={b.logoUrl}
+                            alt={b.name}
+                            className="w-10 h-10 object-contain bg-white border border-[#D6D1C7] p-1"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-[#141413] text-[#FAF7F2] flex items-center justify-center font-bold text-xs font-mono">
+                            {b.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-bold text-sm text-[#141413]">{b.name}</div>
+                          <div className="text-[10px] font-mono text-[#57534E]">
+                            {matchingBrandProductsCount || b.productCount || 0} Products · #{b.sortOrder || 1}
+                          </div>
                         </div>
                       </div>
+                      <span
+                        className={`text-[10px] font-mono uppercase px-1.5 py-0.5 font-bold ${
+                          b.status === 'PUBLISHED' && b.isActive
+                            ? 'bg-emerald-100 text-emerald-900'
+                            : 'bg-stone-200 text-stone-700'
+                        }`}
+                      >
+                        {b.status || 'PUBLISHED'}
+                      </span>
                     </div>
-                    <span
-                      className={`text-[10px] font-mono uppercase px-1.5 py-0.5 font-bold ${
-                        b.status === 'PUBLISHED' && b.isActive
-                          ? 'bg-emerald-100 text-emerald-900'
-                          : 'bg-stone-200 text-stone-700'
-                      }`}
-                    >
-                      {b.status || 'PUBLISHED'}
-                    </span>
-                  </div>
 
-                  <p className="text-xs text-[#57534E] line-clamp-2">
-                    {b.description || `Official ${b.name} stationery products`}
-                  </p>
+                    <p className="text-xs text-[#57534E] line-clamp-2">
+                      {b.description || `Official ${b.name} stationery products`}
+                    </p>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-[#E5E0D8]">
-                    <span className="text-[10px] font-mono text-[#D9381E] font-bold">
-                      {b.isFeatured ? '★ Featured on Homepage' : 'Standard Listing'}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      {onPreviewStorefront && (
+                    <div className="flex items-center justify-between pt-2 border-t border-[#E5E0D8] flex-wrap gap-2">
+                      {onPreviewStorefront ? (
                         <button
                           type="button"
                           onClick={() => onPreviewStorefront({ view: 'catalogue', brandSlug: b.slug })}
-                          className="px-2 py-1 border border-[#D6D1C7] bg-white text-[11px] font-mono hover:border-[#141413]"
+                          className="text-[11px] font-mono font-bold text-[#D9381E] hover:underline cursor-pointer"
                         >
-                          View Items
+                          See All {b.name} Products ({matchingBrandProductsCount || b.productCount || 0}) →
                         </button>
+                      ) : (
+                        <span className="text-[10px] font-mono text-[#D9381E] font-bold">
+                          {b.isFeatured ? '★ Featured on Homepage' : 'Standard Listing'}
+                        </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBrandForm({
-                            id: b.id,
-                            name: b.name || '',
-                            slug: b.slug || '',
-                            description: b.description || '',
-                            logoUrl: b.logoUrl || '',
-                            bannerUrl: b.bannerUrl || '',
-                            isFeatured: b.isFeatured !== false,
-                            showInNav: b.showInNav !== false,
-                            sortOrder: b.sortOrder || 1,
-                            seoTitle: b.seoTitle || '',
-                            seoDescription: b.seoDescription || '',
-                            status: b.status || 'PUBLISHED',
-                          })
-                        }
-                        className="px-2.5 py-1 border border-[#141413] bg-white text-xs font-bold hover:bg-[#141413] hover:text-white"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteOrArchiveBrand(b.id, b.name)}
-                        className="p-1 text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBrandForm({
+                              id: b.id,
+                              name: b.name || '',
+                              slug: b.slug || '',
+                              description: b.description || '',
+                              logoUrl: b.logoUrl || '',
+                              bannerUrl: b.bannerUrl || '',
+                              isFeatured: b.isFeatured !== false,
+                              showInNav: b.showInNav !== false,
+                              sortOrder: b.sortOrder || 1,
+                              seoTitle: b.seoTitle || '',
+                              seoDescription: b.seoDescription || '',
+                              status: b.status || 'PUBLISHED',
+                            })
+                          }
+                          className="px-2.5 py-1 border border-[#141413] bg-white text-xs font-bold hover:bg-[#141413] hover:text-white"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOrArchiveBrand(b.id, b.name)}
+                          className="p-1 text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -2073,6 +2612,114 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               </div>
             </div>
 
+            {/* Live Homepage Section Visual Preview */}
+            {(() => {
+              const matchedPreviewProducts = products
+                .filter((p) => {
+                  if (p.isActive === false) return false;
+                  if (sectionForm.sourceType === 'CATEGORY' && sectionForm.sourceCategoryId) {
+                    return Number(p.categoryId) === Number(sectionForm.sourceCategoryId);
+                  }
+                  if (sectionForm.sourceType === 'BRAND' && sectionForm.sourceBrandId) {
+                    return Number(p.brandId) === Number(sectionForm.sourceBrandId);
+                  }
+                  if (sectionForm.sourceType === 'BESTSELLERS') return Boolean(p.isBestseller);
+                  if (sectionForm.sourceType === 'NEW_ARRIVALS') return Boolean(p.isNewArrival);
+                  return true;
+                })
+                .slice(0, Math.min(4, Number(sectionForm.maxItems) || 4));
+
+              return (
+                <div className="p-3.5 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                    <span>LIVE HOMEPAGE SECTION PREVIEW</span>
+                    <span className="text-[#D9381E] font-bold">{sectionForm.sectionType}</span>
+                  </div>
+                  <div className="p-3 bg-white border border-[#141413] space-y-2.5">
+                    <div className="flex items-start justify-between gap-2 border-b border-[#E5E0D8] pb-2">
+                      <div>
+                        {sectionForm.badgeText && (
+                          <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 bg-[#D9381E] text-white font-bold">
+                            {sectionForm.badgeText}
+                          </span>
+                        )}
+                        <h5 className="font-bold text-sm text-[#141413] mt-0.5">
+                          {sectionForm.title || 'Section Title Preview'}
+                        </h5>
+                        <p className="text-[11px] text-[#57534E]">
+                          {sectionForm.subtitle || 'Editorial subtitle for this homepage block...'}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-mono underline font-bold shrink-0">
+                        {sectionForm.ctaText || 'Explore'} →
+                      </span>
+                    </div>
+
+                    {sectionForm.sectionType === 'PRODUCT_CAROUSEL' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {matchedPreviewProducts.length === 0 ? (
+                          <div className="col-span-2 text-[11px] text-[#57534E] py-2">
+                            Matching catalogue products will appear in a {sectionForm.maxItems}-item grid.
+                          </div>
+                        ) : (
+                          matchedPreviewProducts.map((prod) => (
+                            <div
+                              key={prod.id}
+                              className="p-2 bg-[#FAF7F2] border border-[#E5E0D8] flex items-center gap-2"
+                            >
+                              {prod.imageUrl ? (
+                                <img
+                                  src={prod.imageUrl}
+                                  alt={prod.name}
+                                  className="w-8 h-8 object-cover border border-[#D6D1C7] bg-white shrink-0"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 bg-[#141413] text-white text-[9px] font-mono flex items-center justify-center shrink-0">
+                                  SKU
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-bold truncate">{prod.name}</div>
+                                <div className="text-[10px] font-mono text-[#D9381E] font-bold">
+                                  ₹{Math.round(Number(prod.sellingPricePaise || 0) / 100)}
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {sectionForm.sectionType === 'CATEGORY_GRID' && (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {categories.slice(0, 4).map((c) => (
+                          <div
+                            key={c.id}
+                            className="px-2 py-1.5 bg-[#FAF7F2] border border-[#E5E0D8] text-[11px] font-bold truncate"
+                          >
+                            {c.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {sectionForm.sectionType === 'BRAND_SHOWCASE' && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {localBrands.slice(0, 5).map((b) => (
+                          <span
+                            key={b.id}
+                            className="px-2 py-1 bg-[#FAF7F2] border border-[#D6D1C7] text-[10px] font-mono font-bold"
+                          >
+                            {b.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <button
               type="submit"
               disabled={saving}
@@ -2280,41 +2927,97 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
             <div>
               <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                Banner Image (Optional — Upload to Firebase Storage)
+                Banner Image(s) (Upload Single or Multiple Photos / Paste URL)
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="https://... or upload banner graphic"
+                  placeholder="https://... or upload banner graphic(s)"
                   value={bannerForm.desktopImageUrl}
-                  onChange={(e) => setBannerForm({ ...bannerForm, desktopImageUrl: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setBannerForm({ ...bannerForm, desktopImageUrl: val });
+                    if (val.trim()) {
+                      setBannerGalleryUrls((prev) => Array.from(new Set([val.trim(), ...prev])));
+                    }
+                  }}
                   className="flex-1 px-2.5 py-1.5 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
                 />
                 <label className="px-3 py-1.5 bg-[#141413] text-white text-xs font-bold cursor-pointer">
-                  {uploadingBannerImg ? 'Uploading...' : 'Upload'}
+                  {uploadingBannerImg ? 'Uploading...' : 'Upload Photo(s)'}
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
+                      const files = Array.from(e.target.files || []) as File[];
+                      if (files.length === 0) return;
                       setUploadingBannerImg(true);
                       try {
-                        const res = await uploadImageToSupabaseStorage(file, {
-                          productSku: 'BANNER-HERO',
-                        });
-                        setBannerForm((prev) => ({ ...prev, desktopImageUrl: res.downloadUrl }));
-                        notify('Banner image uploaded.');
+                        const uploaded: string[] = [];
+                        for (const file of files) {
+                          const res = await uploadImageToSupabaseStorage(file, {
+                            productSku: 'BANNER-HERO',
+                          });
+                          uploaded.push(res.downloadUrl);
+                        }
+                        if (uploaded.length > 0) {
+                          setBannerForm((prev) => ({
+                            ...prev,
+                            desktopImageUrl: prev.desktopImageUrl || uploaded[0],
+                          }));
+                          setBannerGalleryUrls((prev) =>
+                            Array.from(new Set([...uploaded, ...prev]))
+                          );
+                          notify(
+                            uploaded.length > 1
+                              ? `Uploaded ${uploaded.length} banner photos. Click any thumbnail to switch active banner graphic.`
+                              : 'Banner image uploaded.'
+                          );
+                        }
                       } catch (err: any) {
                         notify(err.message || 'Upload failed', 'error');
                       } finally {
                         setUploadingBannerImg(false);
+                        e.target.value = '';
                       }
                     }}
                   />
                 </label>
               </div>
+              {bannerGalleryUrls.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                  {bannerGalleryUrls.map((url, idx) => (
+                    <div
+                      key={`${url}-${idx}`}
+                      className={`relative w-14 h-10 border overflow-hidden cursor-pointer ${
+                        bannerForm.desktopImageUrl === url
+                          ? 'border-2 border-[#D9381E]'
+                          : 'border-[#D6D1C7]'
+                      }`}
+                    >
+                      <img
+                        src={url}
+                        alt={`Banner graphic ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                        onClick={() =>
+                          setBannerForm((prev) => ({ ...prev, desktopImageUrl: url }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBannerGalleryUrls((prev) => prev.filter((item) => item !== url))
+                        }
+                        className="absolute top-0 right-0 bg-red-600 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -2350,6 +3053,57 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
                   onChange={(e) => setBannerForm({ ...bannerForm, accentColor: e.target.value })}
                   className="w-full h-8 border border-[#141413] cursor-pointer"
                 />
+              </div>
+            </div>
+
+            {/* Live Banner Preview Inside Form */}
+            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                <span>LIVE BANNER PREVIEW ({bannerForm.placement})</span>
+                <span className="font-bold text-[#D9381E]">Real-Time Colors &amp; Copy</span>
+              </div>
+              <div
+                className="p-4 border border-[#141413] space-y-2 transition-colors"
+                style={{
+                  backgroundColor: bannerForm.backgroundColor || '#141413',
+                  color: bannerForm.textColor || '#FAF7F2',
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className="text-[9px] font-mono uppercase px-2 py-0.5 font-bold"
+                    style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
+                  >
+                    {bannerForm.badgeText || 'PROMO BANNER'}
+                  </span>
+                  <span className="text-[10px] font-mono opacity-75">{bannerForm.status}</span>
+                </div>
+                <h5 className="text-base font-bold tracking-tight">
+                  {bannerForm.title || 'Your Banner Headline Will Appear Here'}
+                </h5>
+                <p className="text-xs opacity-85 line-clamp-2">
+                  {bannerForm.subtitle || 'Subtitle and promotional offer details preview...'}
+                </p>
+                {bannerForm.desktopImageUrl && (
+                  <img
+                    src={bannerForm.desktopImageUrl}
+                    alt="Banner preview"
+                    className="w-full h-24 object-cover border border-white/20 my-1.5"
+                  />
+                )}
+                <div className="pt-1 flex items-center gap-2">
+                  <span
+                    className="px-3 py-1 text-[11px] font-bold"
+                    style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
+                  >
+                    {bannerForm.ctaText || 'Shop Now'} →
+                  </span>
+                  {bannerForm.secondaryCtaText && (
+                    <span className="px-2.5 py-1 text-[11px] font-bold border border-current">
+                      {bannerForm.secondaryCtaText}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2738,6 +3492,42 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               />
             </div>
 
+            {/* Live Combo Kit Card Preview */}
+            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                <span>LIVE COMBO BUNDLE CARD PREVIEW</span>
+                <span className="text-emerald-800 font-bold">
+                  SAVE ₹{bundleForm.savingsRupees || '0'}
+                </span>
+              </div>
+              <div className="p-3.5 bg-white border border-[#141413] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="px-2 py-0.5 bg-[#FAF7F2] border border-[#D6D1C7] text-[10px] font-mono font-bold">
+                    {bundleForm.targetGroup || 'All Students'}
+                  </span>
+                  <span className="font-mono text-sm font-bold text-[#D9381E]">
+                    ₹{bundleForm.bundlePriceRupees || '0'}
+                  </span>
+                </div>
+                <div className="font-bold text-sm text-[#141413]">
+                  {bundleForm.name || 'Combo Bundle Title'}
+                </div>
+                {bundleForm.description && (
+                  <p className="text-xs text-[#57534E] line-clamp-2">{bundleForm.description}</p>
+                )}
+                <ul className="text-[11px] font-mono text-[#141413] space-y-0.5 pt-1 border-t border-[#E5E0D8]">
+                  {bundleForm.itemsText
+                    .split('\n')
+                    .map((l) => l.trim())
+                    .filter(Boolean)
+                    .slice(0, 5)
+                    .map((line, i) => (
+                      <li key={i}>✓ {line}</li>
+                    ))}
+                </ul>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={saving}
@@ -2937,18 +3727,87 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
             </button>
           </form>
 
-          {/* CMS Revision History Log */}
-          <div className="lg:col-span-5 bg-white border border-[#141413] p-5 space-y-3">
-            <div className="flex items-center gap-2 border-b border-[#E5E0D8] pb-3">
-              <History className="w-4 h-4 text-[#D9381E]" />
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-[#57534E]">
-                  AUDIT & PUBLICATION TRAIL
+          {/* Live Theme & Footer Swatch Preview + CMS Revision History Log */}
+          <div className="lg:col-span-5 space-y-5">
+            <div className="bg-white border border-[#141413] p-5 space-y-3">
+              <div className="border-b border-[#E5E0D8] pb-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#D9381E] font-bold">
+                  LIVE THEME &amp; BRANDING PREVIEW
                 </span>
-                <h4 className="text-base font-bold">Recent CMS Changes</h4>
+                <h4 className="text-base font-bold">Real-Time Store Swatch</h4>
+              </div>
+
+              <div
+                className="border border-[#141413] overflow-hidden"
+                style={{ backgroundColor: themeForm.backgroundColor || '#FAF7F2' }}
+              >
+                {themeForm.announcementEnabled && (
+                  <div
+                    className="px-3 py-1 text-[9px] font-mono uppercase text-center font-bold"
+                    style={{
+                      backgroundColor: themeForm.announcementBgColor || '#141413',
+                      color: themeForm.announcementTextColor || '#FAF7F2',
+                    }}
+                  >
+                    {themeForm.announcementText}
+                  </div>
+                )}
+                <div className="p-3 bg-white border-b border-[#E5E0D8] flex items-center justify-between">
+                  <div>
+                    <div
+                      className="font-bold text-sm"
+                      style={{ color: themeForm.secondaryColor || '#141413' }}
+                    >
+                      {themeForm.storeName}
+                    </div>
+                    <div className="text-[10px] text-[#57534E]">{themeForm.tagline}</div>
+                  </div>
+                  <span
+                    className="px-2.5 py-1 text-[10px] font-bold text-white"
+                    style={{ backgroundColor: themeForm.primaryColor || '#D9381E' }}
+                  >
+                    Primary CTA
+                  </span>
+                </div>
+                <div className="p-3">
+                  <div className="p-2.5 bg-white border border-[#D6D1C7] flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-[#141413]">Sample Product Card</div>
+                      <div className="text-[10px] text-[#57534E]">Warm paper canvas surface</div>
+                    </div>
+                    <span
+                      className="px-2 py-1 text-[10px] font-mono font-bold text-white"
+                      style={{ backgroundColor: themeForm.primaryColor || '#D9381E' }}
+                    >
+                      + Add ₹120
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className="p-3 text-[10px] space-y-1"
+                  style={{
+                    backgroundColor: themeForm.secondaryColor || '#141413',
+                    color: '#FAF7F2',
+                  }}
+                >
+                  <div className="font-bold">{themeForm.storeName}</div>
+                  <div className="opacity-80 line-clamp-2">{footerForm.brandSummary}</div>
+                  <div className="opacity-60 font-mono pt-1">{footerForm.copyrightText}</div>
+                </div>
               </div>
             </div>
-            <div className="divide-y divide-[#E5E0D8] max-h-[420px] overflow-y-auto">
+
+            <div className="bg-white border border-[#141413] p-5 space-y-3">
+              <div className="flex items-center gap-2 border-b border-[#E5E0D8] pb-3">
+                <History className="w-4 h-4 text-[#D9381E]" />
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#57534E]">
+                    AUDIT &amp; PUBLICATION TRAIL
+                  </span>
+                  <h4 className="text-base font-bold">Recent CMS Changes</h4>
+                </div>
+              </div>
+              <div className="divide-y divide-[#E5E0D8] max-h-[320px] overflow-y-auto">
               {revisions.length === 0 ? (
                 <div className="py-6 text-xs text-[#57534E] text-center">
                   All category, brand, banner, and page edits will be logged here.
@@ -2971,6 +3830,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
                   </div>
                 ))
               )}
+              </div>
             </div>
           </div>
         </div>

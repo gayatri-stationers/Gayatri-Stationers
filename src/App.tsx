@@ -1926,12 +1926,44 @@ const DEFAULT_PRODUCTS = [
     setActiveView('storefront');
   };
 
+  // Navigate directly to all products of a specific stationery brand
+  const handleViewBrandProducts = (brandSlugOrName?: string, brandDisplayName?: string) => {
+    const raw = String(brandSlugOrName || brandDisplayName || '').trim();
+    if (!raw) return;
+    const lower = raw.toLowerCase();
+    const matchedBrand = brands.find(
+      (b) =>
+        String(b.slug || '').toLowerCase() === lower ||
+        String(b.name || '').toLowerCase() === lower
+    );
+    const resolvedSlug =
+      matchedBrand?.slug ||
+      lower.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    setSelectedBrandSlug(resolvedSlug);
+    setSelectedCategorySlug('ALL');
+    setSearchQuery('');
+    setMaxPriceFilterPaise(0);
+    setInStockOnly(false);
+    setActiveView('storefront');
+    setTimeout(() => {
+      document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 80);
+  };
+
   // Filtered and Sorted Products
   const filteredProducts = useMemo(() => {
     const selectedCatObj = categories.find((c) => c.slug === selectedCategorySlug);
     const childCatSlugs = selectedCatObj
       ? categories.filter((c) => c.parentId === selectedCatObj.id).map((c) => c.slug)
       : [];
+    const selectedBrandObj =
+      selectedBrandSlug !== 'ALL'
+        ? brands.find(
+            (b) =>
+              String(b.slug || '').toLowerCase() === selectedBrandSlug.toLowerCase() ||
+              String(b.name || '').toLowerCase() === selectedBrandSlug.toLowerCase()
+          )
+        : null;
 
     return products
       .filter((p) => {
@@ -1948,8 +1980,25 @@ const DEFAULT_PRODUCTS = [
             return false;
           }
         }
-        if (selectedBrandSlug !== 'ALL' && p.brandSlug !== selectedBrandSlug) {
-          return false;
+        if (selectedBrandSlug !== 'ALL') {
+          const targetSlug = selectedBrandSlug.toLowerCase();
+          const targetName = String(selectedBrandObj?.name || selectedBrandSlug).toLowerCase();
+          const prodBrandSlug = String(p.brandSlug || '')
+            .toLowerCase()
+            .trim();
+          const prodBrandName = String(p.brandName || '')
+            .toLowerCase()
+            .trim();
+          const prodBrandDerivedSlug = prodBrandName
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+          if (
+            prodBrandSlug !== targetSlug &&
+            prodBrandDerivedSlug !== targetSlug &&
+            prodBrandName !== targetName
+          ) {
+            return false;
+          }
         }
         if (inStockOnly && p.totalStock <= 0) {
           return false;
@@ -3466,121 +3515,204 @@ const DEFAULT_PRODUCTS = [
                                         className="w-full h-full"
                                       />
                                     </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
-                                        {item.name}
-                                      </p>
-                                      <p className="text-[11px] text-stone-500 truncate">
-                                        {item.brandName} · {item.categoryName}
-                                      </p>
-                                    </div>
-                                  </button>
-                                  <div className="flex items-center gap-2.5 shrink-0">
-                                    <span className="font-mono-tabular text-xs font-bold text-stone-900">
-                                      {formatPaiseToINR(itemPrice)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      disabled={itemStock <= 0}
-                                      onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
-                                      className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
-                                    >
-                                      + Add
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
+                                          {item.name}
+                                        </p>
+                                        <p className="text-[11px] text-stone-500 truncate">
+                                          <span
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleViewBrandProducts(item.brandSlug, item.brandName);
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.stopPropagation();
+                                                handleViewBrandProducts(item.brandSlug, item.brandName);
+                                              }
+                                            }}
+                                            className="font-semibold text-[#B42318] hover:underline cursor-pointer"
+                                          >
+                                            {item.brandName}
+                                          </span>{' '}
+                                          · {item.categoryName}
+                                        </p>
+                                      </div>
                                     </button>
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                      <span className="font-mono-tabular text-xs font-bold text-stone-900">
+                                        {formatPaiseToINR(itemPrice)}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={itemStock <= 0}
+                                        onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
+                                        className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
+                                      >
+                                        + Add
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-
-                      {/* New Arrivals & DIY Highlights Card */}
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-4">
-                        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                              FRESH COUNTER ARRIVALS
-                            </span>
-                            <h2 className="font-serif-display text-lg font-bold text-stone-900">
-                              New Arrivals & DIY Craft Kits
-                            </h2>
+                                );
+                              })}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSortBy('newest');
-                              document
-                                .getElementById('catalogue-section')
-                                ?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900 cursor-pointer"
-                          >
-                            View All →
-                          </button>
                         </div>
-                        <div className="divide-y divide-stone-100">
-                          {products
-                            .filter(
-                              (p) =>
-                                p.isActive !== false &&
-                                (p.isNewArrival || p.categorySlug === 'diy-and-crafts')
-                            )
-                            .slice(0, 3)
-                            .map((item) => {
-                              const v = item.variants?.[0];
-                              const itemPrice = v?.sellingPricePaise || item.sellingPricePaise;
-                              const itemStock = v?.stockQuantity ?? item.totalStock;
-                              return (
-                                <div
-                                  key={`na-${item.id}`}
-                                  className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => openProductDetail(item)}
-                                    className="apple-row-btn flex items-center gap-3 text-left group cursor-pointer min-w-0"
+
+                        {/* New Arrivals & DIY Highlights Card */}
+                        <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-4">
+                          <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+                            <div>
+                              <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+                                FRESH COUNTER ARRIVALS
+                              </span>
+                              <h2 className="font-serif-display text-lg font-bold text-stone-900">
+                                New Arrivals & DIY Craft Kits
+                              </h2>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSortBy('newest');
+                                document
+                                  .getElementById('catalogue-section')
+                                  ?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900 cursor-pointer"
+                            >
+                              View All →
+                            </button>
+                          </div>
+                          <div className="divide-y divide-stone-100">
+                            {products
+                              .filter(
+                                (p) =>
+                                  p.isActive !== false &&
+                                  (p.isNewArrival || p.categorySlug === 'diy-and-crafts')
+                              )
+                              .slice(0, 3)
+                              .map((item) => {
+                                const v = item.variants?.[0];
+                                const itemPrice = v?.sellingPricePaise || item.sellingPricePaise;
+                                const itemStock = v?.stockQuantity ?? item.totalStock;
+                                return (
+                                  <div
+                                    key={`na-${item.id}`}
+                                    className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
                                   >
-                                    <div className="w-14 h-12 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
-                                      <ProductIllustration
-                                        type={item.illustrationType}
-                                        imageUrl={item.imageUrl}
-                                        alt={item.name}
-                                        className="w-full h-full"
-                                      />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
-                                        {item.name}
-                                      </p>
-                                      <p className="text-[11px] text-stone-500 truncate">
-                                        {item.brandName} · {item.categoryName}
-                                      </p>
-                                    </div>
-                                  </button>
-                                  <div className="flex items-center gap-2.5 shrink-0">
-                                    <span className="font-mono-tabular text-xs font-bold text-stone-900">
-                                      {formatPaiseToINR(itemPrice)}
-                                    </span>
                                     <button
                                       type="button"
-                                      disabled={itemStock <= 0}
-                                      onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
-                                      className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
+                                      onClick={() => openProductDetail(item)}
+                                      className="apple-row-btn flex items-center gap-3 text-left group cursor-pointer min-w-0"
                                     >
-                                      + Add
+                                      <div className="w-14 h-12 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
+                                        <ProductIllustration
+                                          type={item.illustrationType}
+                                          imageUrl={item.imageUrl}
+                                          alt={item.name}
+                                          className="w-full h-full"
+                                        />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
+                                          {item.name}
+                                        </p>
+                                        <p className="text-[11px] text-stone-500 truncate">
+                                          <span
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleViewBrandProducts(item.brandSlug, item.brandName);
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.stopPropagation();
+                                                handleViewBrandProducts(item.brandSlug, item.brandName);
+                                              }
+                                            }}
+                                            className="font-semibold text-[#B42318] hover:underline cursor-pointer"
+                                          >
+                                            {item.brandName}
+                                          </span>{' '}
+                                          · {item.categoryName}
+                                        </p>
+                                      </div>
                                     </button>
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                      <span className="font-mono-tabular text-xs font-bold text-stone-900">
+                                        {formatPaiseToINR(itemPrice)}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={itemStock <= 0}
+                                        onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
+                                        className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
+                                      >
+                                        + Add
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </section>
-                )}
+                    </section>
+                  )}
 
                 {/* Catalogue Filter & Product Grid Section */}
                 <section id="catalogue-section" className="space-y-6">
+                  {/* Active Brand Showcase Banner when filtering by a Brand */}
+                  {selectedBrandSlug !== 'ALL' && (() => {
+                    const activeBrandObj = brands.find(
+                      (b) =>
+                        String(b.slug || '').toLowerCase() === selectedBrandSlug.toLowerCase() ||
+                        String(b.name || '').toLowerCase() === selectedBrandSlug.toLowerCase()
+                    );
+                    const brandTitle =
+                      activeBrandObj?.name ||
+                      filteredProducts[0]?.brandName ||
+                      selectedBrandSlug.replace(/-/g, ' ');
+                    return (
+                      <div className="p-4 sm:p-5 bg-white border-2 border-stone-900 rounded-[28px] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                          {activeBrandObj?.logoUrl ? (
+                            <img
+                              src={activeBrandObj.logoUrl}
+                              alt={brandTitle}
+                              className="w-12 h-12 rounded-2xl object-contain border border-stone-200 bg-white p-1 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-2xl bg-stone-900 text-white flex items-center justify-center font-bold text-sm font-mono shrink-0">
+                              {String(brandTitle).slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+                              OFFICIAL BRAND STOREFRONT
+                            </div>
+                            <h3 className="font-serif-display text-lg font-bold text-stone-900">
+                              All {brandTitle} Stationery Products ({filteredProducts.length})
+                            </h3>
+                            <p className="text-xs text-stone-600">
+                              {activeBrandObj?.description ||
+                                `Showing all verified ${brandTitle} products available at Gayatri Stationers.`}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBrandSlug('ALL')}
+                          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-900 text-xs font-semibold rounded-full shrink-0 cursor-pointer"
+                        >
+                          × Show All Brands
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-stone-200 pb-4">
                     <div>
                       <h2 className="font-serif-display text-2xl font-bold text-stone-900">
@@ -3732,9 +3864,18 @@ const DEFAULT_PRODUCTS = [
                               {/* Clean Unboxed Metadata & Product Title */}
                               <div className="p-3 sm:p-5 space-y-1 sm:space-y-2">
                                 <div className="text-[10px] sm:text-xs text-slate-500 flex items-center flex-wrap gap-1">
-                                  <span className="uppercase tracking-wider font-semibold text-slate-600 truncate max-w-[80px] sm:max-w-none">
-                                    {product.brandName}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    title={`See all ${product.brandName} products`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewBrandProducts(product.brandSlug, product.brandName);
+                                    }}
+                                    className="uppercase tracking-wider font-bold text-[#B42318] hover:underline truncate max-w-[110px] sm:max-w-none cursor-pointer inline-flex items-center gap-0.5"
+                                  >
+                                    <span>{product.brandName}</span>
+                                    <span className="hidden sm:inline text-[9px] font-normal">→</span>
+                                  </button>
                                   <span aria-hidden="true">·</span>
                                   <span className="truncate max-w-[80px] sm:max-w-none">{product.categoryName}</span>
                                 </div>
@@ -3985,73 +4126,121 @@ const DEFAULT_PRODUCTS = [
                 </button>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start bg-white border border-stone-200/80 rounded-[36px] shadow-xs p-6 lg:p-10">
-                    {/* Left: Sticky Product Gallery */}
+                  {/* Left: Sticky Product Gallery */}
                   <div className="lg:col-span-6 space-y-4">
-                    <div className="relative aspect-4/3 border border-stone-200/80 rounded-[28px] overflow-hidden">
-                      <ProductIllustration
-                        type={activePdpProduct.illustrationType}
-                        imageUrl={pdpSelectedImageUrl || activePdpProduct.imageUrl}
-                        alt={activePdpProduct.name}
-                        colorTint={pdpSelectedColor}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleToggleWishlist(activePdpProduct.id)}
-                        aria-label={
-                          wishlistProductIds.includes(activePdpProduct.id)
-                            ? 'Remove from Wishlist'
-                            : 'Save to Wishlist'
-                        }
-                        className="absolute top-3.5 right-3.5 w-10 h-10 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center justify-center hover:bg-white transition-transform active:scale-95 cursor-pointer"
-                      >
-                        <Heart
-                          className={`w-5 h-5 ${
-                            wishlistProductIds.includes(activePdpProduct.id)
-                              ? 'fill-[#B42318] text-[#B42318]'
-                              : 'text-stone-600'
-                          }`}
-                        />
-                      </button>
-                      {pdpSelectedColor && (
-                        <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
-                          <span
-                            className="w-3.5 h-3.5 rounded-full shrink-0"
-                            style={{
-                              background: getColorSwatchStyle(pdpSelectedColor).swatch,
-                              border: `1px solid ${getColorSwatchStyle(pdpSelectedColor).border}`,
-                            }}
-                          />
-                          <span>Selected: {pdpSelectedColor}</span>
-                        </div>
-                      )}
-                    </div>
-                    {Array.isArray(activePdpProduct.galleryUrls) &&
-                      activePdpProduct.galleryUrls.length > 1 && (
-                        <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
-                          {activePdpProduct.galleryUrls.map((gUrl: string, idx: number) => {
-                            const isCurrent =
-                              (pdpSelectedImageUrl || activePdpProduct.imageUrl) === gUrl;
-                            return (
-                              <button
-                                key={`${idx}-${gUrl.slice(-16)}`}
-                                type="button"
-                                onClick={() => setPdpSelectedImageUrl(gUrl)}
-                                className={`apple-row-btn w-16 h-12 rounded-2xl border overflow-hidden shrink-0 cursor-pointer transition-all ${
-                                  isCurrent
-                                    ? 'border-stone-900 ring-2 ring-stone-900'
-                                    : 'border-stone-300 opacity-75 hover:opacity-100'
+                    {(() => {
+                      const allPdpImages = Array.from(
+                        new Set(
+                          [
+                            activePdpProduct.imageUrl,
+                            ...(Array.isArray(activePdpProduct.galleryUrls)
+                              ? activePdpProduct.galleryUrls
+                              : []),
+                          ].filter(Boolean)
+                        )
+                      );
+                      const currentImg = pdpSelectedImageUrl || activePdpProduct.imageUrl;
+                      const currentIdx = Math.max(0, allPdpImages.indexOf(currentImg));
+
+                      return (
+                        <>
+                          <div className="relative aspect-4/3 border border-stone-200/80 rounded-[28px] overflow-hidden group">
+                            <ProductIllustration
+                              type={activePdpProduct.illustrationType}
+                              imageUrl={currentImg}
+                              alt={activePdpProduct.name}
+                              colorTint={pdpSelectedColor}
+                            />
+                            {allPdpImages.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  aria-label="Previous photo"
+                                  onClick={() => {
+                                    const prevIdx =
+                                      (currentIdx - 1 + allPdpImages.length) % allPdpImages.length;
+                                    setPdpSelectedImageUrl(allPdpImages[prevIdx]);
+                                  }}
+                                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-900 font-bold cursor-pointer"
+                                >
+                                  ‹
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Next photo"
+                                  onClick={() => {
+                                    const nextIdx = (currentIdx + 1) % allPdpImages.length;
+                                    setPdpSelectedImageUrl(allPdpImages[nextIdx]);
+                                  }}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-900 font-bold cursor-pointer"
+                                >
+                                  ›
+                                </button>
+                                <span className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-stone-900/85 text-white text-[10px] font-mono">
+                                  Photo {currentIdx + 1} of {allPdpImages.length}
+                                </span>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleWishlist(activePdpProduct.id)}
+                              aria-label={
+                                wishlistProductIds.includes(activePdpProduct.id)
+                                  ? 'Remove from Wishlist'
+                                  : 'Save to Wishlist'
+                              }
+                              className="absolute top-3.5 right-3.5 w-10 h-10 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center justify-center hover:bg-white transition-transform active:scale-95 cursor-pointer"
+                            >
+                              <Heart
+                                className={`w-5 h-5 ${
+                                  wishlistProductIds.includes(activePdpProduct.id)
+                                    ? 'fill-[#B42318] text-[#B42318]'
+                                    : 'text-stone-600'
                                 }`}
-                              >
-                                <img
-                                  src={gUrl}
-                                  alt={`${activePdpProduct.name} view ${idx + 1}`}
-                                  className="w-full h-full object-cover"
+                              />
+                            </button>
+                            {pdpSelectedColor && (
+                              <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full shrink-0"
+                                  style={{
+                                    background: getColorSwatchStyle(pdpSelectedColor).swatch,
+                                    border: `1px solid ${getColorSwatchStyle(pdpSelectedColor).border}`,
+                                  }}
                                 />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                                <span>Selected: {pdpSelectedColor}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {allPdpImages.length > 1 && (
+                            <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
+                              {allPdpImages.map((gUrl: string, idx: number) => {
+                                const isCurrent = currentImg === gUrl;
+                                return (
+                                  <button
+                                    key={`${idx}-${gUrl.slice(-16)}`}
+                                    type="button"
+                                    onClick={() => setPdpSelectedImageUrl(gUrl)}
+                                    className={`apple-row-btn w-16 h-12 rounded-2xl border overflow-hidden shrink-0 cursor-pointer transition-all ${
+                                      isCurrent
+                                        ? 'border-stone-900 ring-2 ring-stone-900'
+                                        : 'border-stone-300 opacity-75 hover:opacity-100'
+                                    }`}
+                                  >
+                                    <img
+                                      src={gUrl}
+                                      alt={`${activePdpProduct.name} view ${idx + 1}`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <p className="text-xs text-stone-500">
                       SKU: <span className="font-mono-tabular">{activePdpVariant?.sku || activePdpProduct.sku}</span> · Verified Gayatri Stationers Catalogue Item
                     </p>
@@ -4121,15 +4310,101 @@ const DEFAULT_PRODUCTS = [
                         </div>
                       );
                     })()}
+
+                    {/* More Products from the Same Brand */}
+                    {(() => {
+                      const sameBrandProducts = products.filter(
+                        (p) =>
+                          p.isActive !== false &&
+                          (p.brandSlug === activePdpProduct.brandSlug ||
+                            String(p.brandName || '').toLowerCase() ===
+                              String(activePdpProduct.brandName || '').toLowerCase())
+                      );
+                      return (
+                        <div className="p-4 bg-amber-50/60 border border-amber-200/90 rounded-[24px] space-y-2.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-[#B42318] font-bold block">
+                                OFFICIAL BRAND COLLECTION
+                              </span>
+                              <span className="text-xs font-bold text-stone-900">
+                                More from {activePdpProduct.brandName} ({sameBrandProducts.length} items)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleViewBrandProducts(
+                                  activePdpProduct.brandSlug,
+                                  activePdpProduct.brandName
+                                )
+                              }
+                              className="px-3.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer"
+                            >
+                              See All {activePdpProduct.brandName} Products →
+                            </button>
+                          </div>
+                          {sameBrandProducts.length > 1 && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                              {sameBrandProducts
+                                .filter((bp) => bp.id !== activePdpProduct.id)
+                                .slice(0, 3)
+                                .map((bp) => (
+                                  <button
+                                    key={`brand-rel-${bp.id}`}
+                                    type="button"
+                                    onClick={() => openProductDetail(bp)}
+                                    className="p-2 rounded-2xl bg-white border border-stone-200 hover:border-stone-500 text-left flex items-center gap-2 cursor-pointer"
+                                  >
+                                    <div className="w-10 h-9 rounded-lg overflow-hidden border border-stone-200 bg-slate-50 shrink-0">
+                                      <ProductIllustration
+                                        type={bp.illustrationType}
+                                        imageUrl={bp.imageUrl}
+                                        alt={bp.name}
+                                        className="w-full h-full"
+                                      />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] font-bold text-stone-900 line-clamp-1">
+                                        {bp.name}
+                                      </p>
+                                      <p className="text-[10px] font-mono-tabular text-stone-600">
+                                        {formatPaiseToINR(
+                                          bp.variants?.[0]?.sellingPricePaise || bp.sellingPricePaise
+                                        )}
+                                      </p>
+                                    </div>
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right: Contiguous Purchase Module */}
                   <div className="lg:col-span-6 space-y-5">
                     <div className="space-y-2 border-b border-stone-200 pb-4">
-                      <p className="text-xs text-stone-500">
-                        {activePdpProduct.brandName} · {activePdpProduct.categoryName} · GST{' '}
-                        {activePdpProduct.taxRatePercent}% Inclusive
-                      </p>
+                      <div className="flex items-center flex-wrap gap-2 text-xs text-stone-500">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleViewBrandProducts(
+                              activePdpProduct.brandSlug,
+                              activePdpProduct.brandName
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 rounded-full text-xs font-bold text-[#B42318] cursor-pointer transition-colors"
+                        >
+                          <span>Brand: {activePdpProduct.brandName}</span>
+                          <span className="underline">See all products →</span>
+                        </button>
+                        <span>·</span>
+                        <span>{activePdpProduct.categoryName}</span>
+                        <span>·</span>
+                        <span>GST {activePdpProduct.taxRatePercent}% Inclusive</span>
+                      </div>
                       <h1 className="font-serif-display text-2xl font-bold text-stone-900">
                         {activePdpProduct.name}
                       </h1>
@@ -5276,9 +5551,23 @@ const DEFAULT_PRODUCTS = [
                                     colorTint={savedCol}
                                   />
                                 </div>
-                                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-                                  {p.brandName} · {p.categoryName}
-                                </p>
+                              </button>
+                              <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewBrandProducts(p.brandSlug, p.brandName)}
+                                  className="text-[#B42318] hover:underline font-bold cursor-pointer"
+                                >
+                                  {p.brandName} →
+                                </button>
+                                <span>·</span>
+                                <span>{p.categoryName}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openProductDetail(p)}
+                                className="w-full text-left cursor-pointer group"
+                              >
                                 <h3 className="font-semibold text-sm text-stone-900 group-hover:underline mt-0.5 line-clamp-2">
                                   {p.name}
                                 </h3>
