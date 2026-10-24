@@ -877,7 +877,7 @@ const DEFAULT_PRODUCTS = [
     }
     return '';
   });
-  const [pickupWindow, setPickupWindow] = useState('Today — Within 2 Hours of Ready Notification');
+  const [pickupWindow, setPickupWindow] = useState('Direct Counter Collection (Mon–Sat: 10:00 AM – 8:00 PM)');
   const [shippingAddress, setShippingAddress] = useState(() => {
     try {
       const savedProf = localStorage.getItem('gs_user_profile_v1');
@@ -5069,17 +5069,17 @@ const DEFAULT_PRODUCTS = [
               </div>
             )}
 
-            {/* VIEW 5: ACCOUNT-BOUND ORDER TRACKING & STORE PICKUP PASS */}
+            {/* VIEW 5: MY ORDERS, SHIPROCKET HOME DELIVERY TRACKING & STORE PICKUP PASS */}
             {activeView === 'track' && (
               <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
                 {/* Responsive Header */}
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-200 pb-4">
                   <div>
                     <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-stone-900">
-                      My Account Orders & Live Order Tracking
+                      My Orders · Shiprocket Delivery Tracker &amp; Store Counter Pass
                     </h1>
                     <p className="text-xs sm:text-sm text-stone-600 mt-1">
-                      View your complete order history, live fulfilment status, and Store Pickup counter pass.
+                      Track <strong>Home Delivery</strong> parcels live via <strong>Shiprocket</strong>, or view your <strong>Get at Store</strong> counter pass (no tracking needed — just visit &amp; collect).
                     </p>
                   </div>
                   {dbUser || supabaseUser ? (
@@ -5116,14 +5116,14 @@ const DEFAULT_PRODUCTS = [
                           type="text"
                           value={trackOrderNumberInput}
                           onChange={(e) => setTrackOrderNumberInput(e.target.value.toUpperCase())}
-                          placeholder="Enter Your Order Number (e.g. GS-261017-6294)"
+                          placeholder="Enter Order # for Shiprocket Tracking or Store Pass (e.g. GS-...)"
                           className="flex-1 px-4 py-2 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
                         />
                         <button
                           type="submit"
                           className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] whitespace-nowrap cursor-pointer"
                         >
-                          Track Order #
+                          Look Up Order #
                         </button>
                       </form>
 
@@ -5373,10 +5373,24 @@ const DEFAULT_PRODUCTS = [
                                         {entry.order.customerName} · {entry.order.customerPhone}
                                       </p>
                                       <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
-                                        <span>{entry.order.fulfilmentMethod.replace('_', ' ')}</span>
+                                        <span
+                                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                            entry.order.fulfilmentMethod === 'STORE_PICKUP'
+                                              ? 'bg-amber-100 text-amber-900'
+                                              : 'bg-emerald-100 text-emerald-900'
+                                          }`}
+                                        >
+                                          {entry.order.fulfilmentMethod === 'STORE_PICKUP'
+                                            ? 'Get at Store · No Tracking'
+                                            : 'Home Delivery · Shiprocket'}
+                                        </span>
                                         <span>·</span>
                                         <strong className="text-slate-800">
-                                          {entry.order.orderStatus.replace(/_/g, ' ')}
+                                          {entry.order.fulfilmentMethod === 'STORE_PICKUP'
+                                            ? entry.order.orderStatus === 'COLLECTED'
+                                              ? 'COLLECTED AT STORE'
+                                              : 'VISIT & COLLECT'
+                                            : entry.order.orderStatus.replace(/_/g, ' ')}
                                         </strong>
                                         {formattedDate && (
                                           <>
@@ -5412,7 +5426,7 @@ const DEFAULT_PRODUCTS = [
                         })()}
                       </div>
 
-                      {/* Right Column: Full Visual Order Tracking Timeline */}
+                      {/* Right Column: Shiprocket Order Tracking OR Direct Store Pickup Pass */}
                       <div className="lg:col-span-8">
                         {trackedOrderResult ? (
                           <OrderTrackingTimeline
@@ -5435,7 +5449,7 @@ const DEFAULT_PRODUCTS = [
                               Select an order from your account list on the left
                             </p>
                             <p className="text-xs text-stone-600 max-w-md mx-auto">
-                              View the live multi-stage fulfilment progress bar, Store Pickup verification code, and Home Delivery courier tracking details.
+                              For <strong>Home Delivery</strong> orders, view live <strong>Shiprocket</strong> AWB courier tracking. For <strong>Get at Store</strong> orders, no tracking is needed — simply view your Pickup Pass and collect your items at the counter.
                             </p>
                           </div>
                         )}
@@ -5794,10 +5808,10 @@ const DEFAULT_PRODUCTS = [
                         </label>
                       </div>
 
-                      {/* STEP 2: Fulfilment Method (Store Pickup vs Home Delivery) */}
+                      {/* STEP 2: Fulfilment Method (Get at Store vs Home Delivery via Shiprocket) */}
                       <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
                         <h2 className="text-sm font-bold text-stone-900">
-                          02. Choose Fulfilment Method
+                          02. Choose Fulfilment Method (Get at Store or Shiprocket Home Delivery)
                         </h2>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -5812,7 +5826,7 @@ const DEFAULT_PRODUCTS = [
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold uppercase tracking-wider">
-                                Option A: Store Pickup
+                                Option A: Get at Store
                               </span>
                               <span className="font-mono-tabular text-xs font-semibold">FREE</span>
                             </div>
@@ -5823,7 +5837,7 @@ const DEFAULT_PRODUCTS = [
                                   : 'text-stone-600'
                               }`}
                             >
-                              Collect from Gayatri Stationers counter once marked Ready for Pickup.
+                              No order tracking — just place your order, visit our Kanpur store counter &amp; get it immediately!
                             </p>
                           </button>
 
@@ -5838,7 +5852,7 @@ const DEFAULT_PRODUCTS = [
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold uppercase tracking-wider">
-                                Option B: Home Delivery
+                                Option B: Home Delivery (Shiprocket)
                               </span>
                               <span className="font-mono-tabular text-xs font-semibold">
                                 {calculation.shippingPaise === 0
@@ -5853,49 +5867,45 @@ const DEFAULT_PRODUCTS = [
                                   : 'text-stone-600'
                               }`}
                             >
-                              Pan-India doorstep courier dispatch via Shiprocket with live tracking.
+                              Pan-India doorstep courier dispatch &amp; live AWB order tracking powered by Shiprocket.
                             </p>
                           </button>
                         </div>
 
-                        {fulfilmentMethod === 'STORE_PICKUP' && (
-                          <div className="p-5 bg-slate-50 border border-slate-200/80 rounded-[24px] space-y-3 text-xs">
-                            <div>
-                              <p className="font-semibold text-stone-900">
-                                Visit Us · Pickup Counter Information:
+                        {fulfilmentMethod === 'STORE_PICKUP' ? (
+                          <div className="p-5 bg-amber-50/80 border border-amber-200 rounded-[24px] space-y-2.5 text-xs">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <p className="font-bold text-amber-950 text-sm">
+                                ✓ Just Order &amp; Get It at Store (No Order Tracking Required)
                               </p>
-                              <p className="text-stone-800 font-medium mt-0.5">
+                              <span className="px-2.5 py-0.5 rounded-full bg-white border border-amber-300 text-[10px] font-mono uppercase font-bold text-amber-900">
+                                Direct Counter Collection
+                              </span>
+                            </div>
+                            <p className="text-amber-900 leading-relaxed">
+                              Place your order online and walk directly into our retail counter to collect your items — no shipping wait or multi-step order tracking needed.
+                            </p>
+                            <div className="p-3.5 bg-white border border-amber-200/80 rounded-2xl space-y-1">
+                              <p className="font-bold text-stone-900">
+                                Gayatri Stationers — Retail Pickup Counter
+                              </p>
+                              <p className="text-stone-800 font-medium">
                                 Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021
                               </p>
-                              <p className="text-stone-700 mt-0.5">
-                                {storeSettings?.store_profile?.pickupCounterLabel}
-                              </p>
-                              <p className="text-stone-500 mt-0.5">
-                                Hours: {storeSettings?.store_profile?.businessHoursNote}
+                              <p className="text-stone-500">
+                                Store Hours: {storeSettings?.store_profile?.businessHoursNote || 'Mon–Sat: 10:00 AM – 8:00 PM IST'}
                               </p>
                             </div>
+                          </div>
+                        ) : (
+                          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-[24px] flex items-center justify-between gap-3 text-xs text-emerald-950">
                             <div>
-                              <label className="block font-medium text-stone-700 mb-1">
-                                Preferred Collection Window
-                              </label>
-                              <select
-                                value={pickupWindow}
-                                onChange={(e) => setPickupWindow(e.target.value)}
-                                className="w-full px-4 py-2 bg-white border border-stone-300 rounded-full text-stone-900"
-                              >
-                                {(
-                                  storeSettings?.fulfilment_rules?.scheduledPickupWindows || [
-                                    'Today — Within 2 Hours of Ready Notification',
-                                    'Morning Counter Slot (10:30 AM – 1:30 PM)',
-                                    'Afternoon Counter Slot (2:00 PM – 5:00 PM)',
-                                    'Evening Counter Slot (5:00 PM – 7:30 PM)',
-                                  ]
-                                ).map((slot: string) => (
-                                  <option key={slot} value={slot}>
-                                    {slot}
-                                  </option>
-                                ))}
-                              </select>
+                              <p className="font-bold text-sm">
+                                🚚 Doorstep Delivery &amp; Live AWB Tracking via Shiprocket
+                              </p>
+                              <p className="text-emerald-900 mt-0.5">
+                                Your order will be shipped via our Shiprocket courier partners (Delhivery, BlueDart, Xpressbees) with real-time AWB tracking.
+                              </p>
                             </div>
                           </div>
                         )}
@@ -6236,7 +6246,9 @@ const DEFAULT_PRODUCTS = [
                     </div>
                     <div className="text-right font-mono-tabular text-xs">
                       <p className="font-bold text-stone-900">
-                        Order Status: {confirmedOrderData.order.orderStatus.replace(/_/g, ' ')}
+                        {confirmedOrderData.order.fulfilmentMethod === 'STORE_PICKUP'
+                          ? 'Fulfilment: Get at Store (Direct Collect)'
+                          : `Shiprocket Status: ${confirmedOrderData.order.orderStatus.replace(/_/g, ' ')}`}
                       </p>
                       <p className="text-stone-600 mt-0.5">
                         Payment: {confirmedOrderData.order.paymentStatus} (
@@ -6245,34 +6257,43 @@ const DEFAULT_PRODUCTS = [
                     </div>
                   </div>
 
-                  {confirmedOrderData.pickupDetails && (
-                    <div className="p-5 bg-amber-50 border border-amber-200 rounded-[24px] space-y-1.5 text-xs">
-                      <p className="font-bold text-amber-950 text-sm">
-                        Store Pickup Code:{' '}
-                        <span className="font-mono-tabular">
-                          {confirmedOrderData.pickupDetails.pickupCode}
-                        </span>
-                      </p>
-                      <p className="text-amber-900">
-                        Preferred Window: {confirmedOrderData.pickupDetails.preferredWindow}
-                      </p>
-                      <p className="text-amber-800">
-                        {confirmedOrderData.pickupDetails.storeLocationNote}
-                      </p>
-                    </div>
-                  )}
-
-                  {confirmedOrderData.shipmentDetails && (
-                    <div className="p-5 bg-stone-50 border border-stone-200 rounded-[24px] space-y-1 text-xs">
-                      <p className="font-bold text-stone-900">Home Delivery Destination:</p>
-                      <p className="text-stone-700">
-                        {confirmedOrderData.shipmentDetails.recipientName},{' '}
-                        {confirmedOrderData.shipmentDetails.addressLine1},{' '}
-                        {confirmedOrderData.shipmentDetails.city},{' '}
-                        {confirmedOrderData.shipmentDetails.state} -{' '}
-                        {confirmedOrderData.shipmentDetails.pincode}
+                  {confirmedOrderData.order.fulfilmentMethod === 'STORE_PICKUP' ? (
+                    <div className="p-5 bg-amber-50 border border-amber-200 rounded-[24px] space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <p className="font-bold text-amber-950 text-sm">
+                          ✓ Get at Store — Just Visit Counter &amp; Collect (No Order Tracking Needed)
+                        </p>
+                        {confirmedOrderData.pickupDetails?.pickupCode && (
+                          <span className="px-3 py-1 bg-white border border-amber-300 rounded-full font-mono-tabular font-bold text-stone-900">
+                            Pickup Code: {confirmedOrderData.pickupDetails.pickupCode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-amber-900 leading-relaxed">
+                        Your items are reserved at our store counter. No order tracking is required — simply visit <strong>Gayatri Stationers (Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021)</strong> during store hours and show Order <strong>#{confirmedOrderData.order.orderNumber}</strong> or your Pickup Code to get your order immediately.
                       </p>
                     </div>
+                  ) : (
+                    confirmedOrderData.shipmentDetails && (
+                      <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-[24px] space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="font-bold text-emerald-950 text-sm">
+                            🚚 Home Delivery via Shiprocket (Live Tracking Enabled)
+                          </p>
+                          <span className="px-2.5 py-0.5 bg-white border border-emerald-300 rounded-full font-mono-tabular font-semibold text-emerald-900">
+                            Courier: {confirmedOrderData.shipmentDetails.courierName || 'Shiprocket Express'}
+                          </span>
+                        </div>
+                        <p className="text-stone-800">
+                          <strong>Delivery Destination:</strong>{' '}
+                          {confirmedOrderData.shipmentDetails.recipientName},{' '}
+                          {confirmedOrderData.shipmentDetails.addressLine1},{' '}
+                          {confirmedOrderData.shipmentDetails.city},{' '}
+                          {confirmedOrderData.shipmentDetails.state} -{' '}
+                          {confirmedOrderData.shipmentDetails.pincode}
+                        </p>
+                      </div>
+                    )
                   )}
 
                   {confirmedOrderData.order.paymentMethod === 'CASHFREE_ONLINE' && (
@@ -6334,19 +6355,21 @@ const DEFAULT_PRODUCTS = [
                   </div>
 
                   <div className="flex flex-wrap gap-3 pt-2">
-                    <button
-                      onClick={() => {
-                        setTrackOrderNumberInput(confirmedOrderData.order.orderNumber);
-                        setTrackedOrderResult(null);
-                        setActiveView('track');
-                      }}
-                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full"
-                    >
-                      Track Order Status
-                    </button>
+                    {confirmedOrderData.order.fulfilmentMethod === 'HOME_DELIVERY' && (
+                      <button
+                        onClick={() => {
+                          setTrackOrderNumberInput(confirmedOrderData.order.orderNumber);
+                          setTrackedOrderResult(confirmedOrderData);
+                          setActiveView('track');
+                        }}
+                        className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full cursor-pointer"
+                      >
+                        Track Delivery via Shiprocket
+                      </button>
+                    )}
                     <button
                       onClick={() => setActiveView('storefront')}
-                      className="px-5 py-2.5 bg-stone-100 text-stone-800 text-xs font-medium rounded-full hover:bg-stone-200"
+                      className="px-5 py-2.5 bg-stone-100 text-stone-800 text-xs font-medium rounded-full hover:bg-stone-200 cursor-pointer"
                     >
                       Continue Shopping
                     </button>
@@ -7014,35 +7037,49 @@ const DEFAULT_PRODUCTS = [
                         </div>
                       ) : (
                         <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                          {myOrdersList.slice(0, 5).map((o: any, idx: number) => (
-                            <div
-                              key={o?.order?.orderNumber || idx}
-                              className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3 text-xs"
-                            >
-                              <div>
-                                <div className="font-mono font-bold text-slate-900">
-                                  {o?.order?.orderNumber}
-                                </div>
-                                <div className="text-[11px] text-stone-500">
-                                  {formatPaiseToINR(o?.order?.totalPaise || 0)} ·{' '}
-                                  {o?.order?.paymentMethod === 'CASHFREE_ONLINE'
-                                    ? 'Online Payment'
-                                    : o?.order?.paymentMethod || 'COD'}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setTrackedOrderResult(o);
-                                  setActiveView('track');
-                                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                className="px-3 py-1.5 bg-white border border-stone-300 rounded-full text-[11px] font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer shrink-0"
+                          {myOrdersList.slice(0, 5).map((o: any, idx: number) => {
+                            const isStoreOrder = o?.order?.fulfilmentMethod === 'STORE_PICKUP';
+                            return (
+                              <div
+                                key={o?.order?.orderNumber || idx}
+                                className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3 text-xs"
                               >
-                                Track Order
-                              </button>
-                            </div>
-                          ))}
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono font-bold text-slate-900">
+                                      {o?.order?.orderNumber}
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                        isStoreOrder
+                                          ? 'bg-amber-100 text-amber-900'
+                                          : 'bg-emerald-100 text-emerald-900'
+                                      }`}
+                                    >
+                                      {isStoreOrder ? 'Get at Store' : 'Shiprocket'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-stone-500 mt-0.5">
+                                    {formatPaiseToINR(o?.order?.totalPaise || 0)} ·{' '}
+                                    {o?.order?.paymentMethod === 'CASHFREE_ONLINE'
+                                      ? 'Online Payment'
+                                      : o?.order?.paymentMethod || 'COD'}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTrackedOrderResult(o);
+                                    setActiveView('track');
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }}
+                                  className="px-3 py-1.5 bg-white border border-stone-300 rounded-full text-[11px] font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer shrink-0"
+                                >
+                                  {isStoreOrder ? 'Store Pass' : 'Track Shiprocket'}
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

@@ -3208,6 +3208,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <div className="divide-y divide-slate-200">
                           {dashboardData.orders.slice(0, 6).map((entry: any) => {
                             const o = entry.order;
+                            const isStorePickup = o.fulfilmentMethod === 'STORE_PICKUP';
                             return (
                               <div
                                 key={o.id}
@@ -3224,43 +3225,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {o.orderNumber}
                                   </button>
                                   <p className="text-xs text-slate-500">
-                                    {o.customerName} · {o.fulfilmentMethod.replace('_', ' ')} ·{' '}
-                                    <strong>{o.orderStatus.replace(/_/g, ' ')}</strong>
+                                    {o.customerName} ·{' '}
+                                    {isStorePickup
+                                      ? 'Get at Store (No Tracking)'
+                                      : 'Home Delivery (Shiprocket)'}{' '}
+                                    ·{' '}
+                                    <strong>
+                                      {isStorePickup
+                                        ? o.orderStatus === 'COLLECTED'
+                                          ? 'COLLECTED AT STORE'
+                                          : 'VISIT & COLLECT'
+                                        : o.orderStatus.replace(/_/g, ' ')}
+                                    </strong>
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  {o.orderStatus === 'ORDER_PLACED' && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleQuickOrderWorkflowUpdate(
-                                          o.id,
-                                          'CONFIRMED',
-                                          undefined,
-                                          'Confirmed via 1-click Overview action'
-                                        )
-                                      }
-                                      className="px-2 py-1 bg-slate-900 text-white text-[11px] font-semibold rounded hover:bg-slate-800 cursor-pointer"
-                                    >
-                                      Confirm
-                                    </button>
-                                  )}
-                                  {o.fulfilmentMethod === 'STORE_PICKUP' &&
-                                    (o.orderStatus === 'CONFIRMED' ||
-                                      o.orderStatus === 'PREPARING') && (
+                                  {isStorePickup &&
+                                    o.orderStatus !== 'COLLECTED' &&
+                                    o.orderStatus !== 'CANCELLED' && (
                                       <button
                                         type="button"
                                         onClick={() =>
                                           handleQuickOrderWorkflowUpdate(
                                             o.id,
-                                            'READY_FOR_PICKUP',
-                                            undefined,
-                                            'Marked Ready for Pickup via 1-click Overview action'
+                                            'COLLECTED',
+                                            'PAID',
+                                            'Collected at store counter via 1-click action'
                                           )
                                         }
                                         className="px-2 py-1 bg-amber-600 text-white text-[11px] font-semibold rounded hover:bg-amber-700 cursor-pointer"
                                       >
-                                        Ready Pickup
+                                        ✓ Collected at Store
+                                      </button>
+                                    )}
+                                  {!isStorePickup &&
+                                    o.orderStatus !== 'DISPATCHED' &&
+                                    o.orderStatus !== 'DELIVERED' &&
+                                    o.orderStatus !== 'CANCELLED' && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleQuickOrderWorkflowUpdate(
+                                            o.id,
+                                            'DISPATCHED',
+                                            undefined,
+                                            'Dispatched via Shiprocket'
+                                          )
+                                        }
+                                        className="px-2 py-1 bg-emerald-700 text-white text-[11px] font-semibold rounded hover:bg-emerald-800 cursor-pointer"
+                                      >
+                                        Shiprocket Dispatch
                                       </button>
                                     )}
                                   {o.paymentStatus === 'PENDING' &&
@@ -3275,7 +3289,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             'Payment collected via 1-click Overview action'
                                           )
                                         }
-                                        className="px-2 py-1 bg-emerald-700 text-white text-[11px] font-semibold rounded hover:bg-emerald-800 cursor-pointer"
+                                        className="px-2 py-1 bg-slate-900 text-white text-[11px] font-semibold rounded hover:bg-slate-800 cursor-pointer"
                                       >
                                         Mark Paid
                                       </button>
@@ -3334,15 +3348,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* 2. ORDERS & LIVE TRACKER DESK TAB */}
+              {/* 2. ORDERS, SHIPROCKET TRACKER & STORE COUNTER DESK TAB */}
               {activeTab === 'orders' && (
                 <div className="space-y-6">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                      Owner Order Tracking & Store Pickup Desk
+                      Shiprocket Home Delivery Tracking &amp; Get at Store Counter Desk
                     </h1>
                     <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-                      Select any order below to inspect its live visual tracking timeline, verify Store Pickup codes, record counter/COD payments, and attach courier AWB tracking.
+                      <strong>Get at Store</strong> orders require no tracking — simply verify the Pickup Code and mark Collected at Counter. <strong>Home Delivery</strong> orders use <strong>Shiprocket</strong> for courier dispatch and live AWB tracking.
                     </p>
                   </div>
 
@@ -3352,7 +3366,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={orderSearch}
                       onChange={(e) => setOrderSearch(e.target.value)}
-                      placeholder="Search Order #, Customer Name, Phone, or Pickup Code..."
+                      placeholder="Search Order #, Customer Name, Phone, Shiprocket AWB, or Pickup Code..."
                       className="sm:col-span-6 px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded"
                     />
                     <select
@@ -3361,8 +3375,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       className="sm:col-span-3 px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded bg-white"
                     >
                       <option value="ALL">All Fulfilment Types</option>
-                      <option value="STORE_PICKUP">Store Pickup Only</option>
-                      <option value="HOME_DELIVERY">Home Delivery Only</option>
+                      <option value="STORE_PICKUP">Get at Store (No Tracking)</option>
+                      <option value="HOME_DELIVERY">Home Delivery (Shiprocket)</option>
                     </select>
                     <select
                       value={paymentFilter}
@@ -3381,10 +3395,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[540px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600">
-                          <th className="py-3 px-4">Order # & Pickup Code</th>
-                          <th className="py-3 px-4">Customer & Fulfilment</th>
-                          <th className="py-3 px-4">Current Stage</th>
-                          <th className="py-3 px-4 text-right">Total & Payment</th>
+                          <th className="py-3 px-4">Order # &amp; Code / Shiprocket AWB</th>
+                          <th className="py-3 px-4">Customer &amp; Fulfilment</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Total &amp; Payment</th>
                           <th className="py-3 px-4 text-right">Action</th>
                         </tr>
                       </thead>
@@ -3399,6 +3413,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           filteredOrders.map((entry: any) => {
                             const o = entry.order;
                             const isSelected = selectedOrder?.order.id === o.id;
+                            const isStorePickup = o.fulfilmentMethod === 'STORE_PICKUP';
                             return (
                               <tr
                                 key={o.id}
@@ -3409,21 +3424,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               >
                                 <td className="py-3 px-4 font-mono-tabular font-semibold">
                                   <div>{o.orderNumber}</div>
-                                  {entry.pickupDetails && (
+                                  {isStorePickup && entry.pickupDetails ? (
                                     <div className="text-xs text-amber-800 mt-0.5">
-                                      Pickup Code: {entry.pickupDetails.pickupCode}
+                                      Store Code: {entry.pickupDetails.pickupCode}
                                     </div>
-                                  )}
+                                  ) : entry.shipmentDetails?.trackingNumber ? (
+                                    <div className="text-xs text-emerald-800 mt-0.5">
+                                      Shiprocket AWB: {entry.shipmentDetails.trackingNumber}
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td className="py-3 px-4">
                                   <div className="font-medium text-slate-900">{o.customerName}</div>
                                   <div className="text-xs text-slate-500">
-                                    {o.customerPhone} · {o.fulfilmentMethod.replace('_', ' ')}
+                                    {o.customerPhone} ·{' '}
+                                    {isStorePickup
+                                      ? 'Get at Store (No Tracking)'
+                                      : 'Home Delivery (Shiprocket)'}
                                   </div>
                                 </td>
                                 <td className="py-3 px-4">
                                   <span className="text-xs font-mono-tabular font-bold text-slate-900">
-                                    {o.orderStatus.replace(/_/g, ' ')}
+                                    {isStorePickup
+                                      ? o.orderStatus === 'COLLECTED'
+                                        ? 'COLLECTED AT STORE ✓'
+                                        : 'VISIT & COLLECT'
+                                      : o.orderStatus.replace(/_/g, ' ')}
                                   </span>
                                 </td>
                                 <td className="py-3 px-4 text-right font-mono-tabular">
@@ -3451,7 +3477,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
                                     }`}
                                   >
-                                    {isSelected ? 'Tracking Open' : 'Track & Manage'}
+                                    {isStorePickup
+                                      ? isSelected
+                                        ? 'Store Pass Open'
+                                        : 'Counter Handover'
+                                      : isSelected
+                                      ? 'Shiprocket Open'
+                                      : 'Shiprocket & Track'}
                                   </button>
                                 </td>
                               </tr>
@@ -3462,11 +3494,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </table>
                   </div>
 
-                  {/* Full Visual Order Tracking & Owner Control Panel */}
+                  {/* Full Order Details / Shiprocket Tracking / Store Counter Panel */}
                   {selectedOrder && (
                     <div className="space-y-2">
                       <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
-                        Live Order Tracking View — {selectedOrder.order.orderNumber}
+                        {selectedOrder.order.fulfilmentMethod === 'STORE_PICKUP'
+                          ? `Get at Store Counter Pass — ${selectedOrder.order.orderNumber}`
+                          : `Shiprocket Delivery & Live Tracking — ${selectedOrder.order.orderNumber}`}
                       </h2>
                       <OrderTrackingTimeline
                         orderEntry={selectedOrder}

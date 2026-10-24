@@ -640,7 +640,11 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
 
       const orderNumber = generateOrderNumber();
       const initialOrderStatus: OrderStatus =
-        input.paymentMethod === 'RAZORPAY_ONLINE' ? 'ORDER_PLACED' : 'CONFIRMED';
+        input.fulfilmentMethod === 'STORE_PICKUP'
+          ? 'READY_FOR_PICKUP'
+          : input.paymentMethod === 'RAZORPAY_ONLINE'
+          ? 'ORDER_PLACED'
+          : 'CONFIRMED';
       const initialPaymentStatus: PaymentStatus = 'PENDING';
 
       // 4. Insert Order
@@ -736,9 +740,10 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
           .values({
             orderId: createdOrder.id,
             pickupCode,
-            preferredWindow: input.pickupWindow || 'Standard Store Hours',
+            preferredWindow: input.pickupWindow || 'Direct Walk-In Store Counter Collection (Mon–Sat, 10 AM – 8 PM)',
+            readyAt: new Date(),
             storeLocationNote:
-              'Gayatri Stationers Pickup Counter — Present your Order Number & 6-character Pickup Code once marked Ready for Pickup.',
+              'Gayatri Stationers Counter (Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021) — Just Order & Get It: Visit the store counter and show your Order Number or Pickup Code to collect your items directly (no order tracking required).',
           })
           .returning();
         createdPickup = pickup;
@@ -755,6 +760,7 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
             city: input.shippingAddress.city.trim(),
             state: input.shippingAddress.state.trim(),
             pincode: input.shippingAddress.pincode.trim(),
+            courierName: 'Shiprocket Express',
           })
           .returning();
         createdShipment = shipment;
@@ -816,11 +822,11 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
         orderId: createdOrder.id,
         channel: 'IN_APP',
         recipient: input.customerEmail || input.customerPhone,
-        subject: `Order ${orderNumber} Received — Gayatri Stationers`,
+        subject: `Order ${orderNumber} Confirmed — Gayatri Stationers`,
         message:
           input.fulfilmentMethod === 'STORE_PICKUP'
-            ? `Your Store Pickup order ${orderNumber} has been received. Pickup Code: ${createdPickup?.pickupCode}. Please wait for our Ready for Pickup confirmation before visiting the counter.`
-            : `Your Home Delivery order ${orderNumber} has been received and is being processed for PIN code ${input.shippingAddress?.pincode}.`,
+            ? `Your Get at Store order ${orderNumber} is ready for counter collection! Pickup Code: ${createdPickup?.pickupCode}. No tracking needed — simply visit our Kanpur counter and collect your items.`
+            : `Your Home Delivery order ${orderNumber} has been received and will be dispatched via Shiprocket to PIN code ${input.shippingAddress?.pincode}.`,
         status: 'DELIVERED_IN_APP',
       });
 
@@ -977,12 +983,11 @@ export async function updateOrderWorkflowByAdmin(params: {
         );
       }
 
-      // Prevent marking a Store Pickup order as COLLECTED if payment is still PENDING
-      if (targetStatus === 'COLLECTED' && targetPayStatus !== 'PAID') {
-        throw new Error(
-          'Cannot mark pickup order as Collected while payment status is Pending. Record the counter payment first.'
-        );
-      }
+      // Automatically mark payment as PAID when Store Pickup order is marked COLLECTED at the counter
+      const resolvedPayStatus: PaymentStatus =
+        targetStatus === 'COLLECTED' && targetPayStatus === 'PENDING'
+          ? 'PAID'
+          : targetPayStatus;
 
       // Restore stock if transitioning to CANCELLED from an active state
       if (targetStatus === 'CANCELLED' && currentStatus !== 'CANCELLED') {
@@ -1021,7 +1026,7 @@ export async function updateOrderWorkflowByAdmin(params: {
         .update(orders)
         .set({
           orderStatus: targetStatus,
-          paymentStatus: targetPayStatus,
+          paymentStatus: resolvedPayStatus,
           updatedAt: new Date(),
         })
         .where(eq(orders.id, order.id))
@@ -1046,12 +1051,30 @@ export async function updateOrderWorkflowByAdmin(params: {
           .where(eq(pickupDetails.orderId, order.id));
       }
 
-      // Update Shipment Details
+      // Update Shipment Details (Powered by Shiprocket for Home Delivery)
       if (order.fulfilmentMethod === 'HOME_DELIVERY') {
         const shipUpdate: Record<string, unknown> = { updatedAt: new Date() };
-        if (params.courierName !== undefined) shipUpdate.courierName = params.courierName;
-        if (params.trackingNumber !== undefined) shipUpdate.trackingNumber = params.trackingNumber;
-        if (params.trackingUrl !== undefined) shipUpdate.trackingUrl = params.trackingUrl;
+        const effectiveCourier =
+          params.courierName !== undefined
+            ? params.courierName
+            : targetStatus === 'DISPATCHED'
+            ? 'Shiprocket Express'
+            : undefined;
+        const effectiveAwb =
+          params.trackingNumber !== undefined
+            ? params.trackingNumber
+            : targetStatus === 'DISPATCHED'
+            ? `SR${order.orderNumber.replace(/[^A-Z0-9]/g, '')}`
+            : undefined;
+
+        if (effectiveCourier !== undefined) shipUpdate.courierName = effectiveCourier;
+        if (effectiveAwb !== undefined) {
+          shipUpdate.trackingNumber = effectiveAwb;
+          shipUpdate.trackingUrl =
+            params.trackingUrl || `https://shiprocket.co/tracking/${effectiveAwb}`;
+        } else if (params.trackingUrl !== undefined) {
+          shipUpdate.trackingUrl = params.trackingUrl;
+        }
         if (targetStatus === 'DISPATCHED') shipUpdate.dispatchedAt = new Date();
         if (targetStatus === 'DELIVERED') shipUpdate.deliveredAt = new Date();
 
@@ -1062,7 +1085,7 @@ export async function updateOrderWorkflowByAdmin(params: {
       }
 
       // Record offline payment if paymentStatus changed to PAID
-      if (targetPayStatus === 'PAID' && currentPayStatus !== 'PAID') {
+      if (resolvedPayStatus === 'PAID' && currentPayStatus !== 'PAID') {
         await tx.insert(payments).values({
           orderId: order.id,
           provider:
