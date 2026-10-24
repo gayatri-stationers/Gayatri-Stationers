@@ -385,6 +385,7 @@ export default function App() {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
       if (p === '/admin/login' || p === '/admin') return 'admin';
       if (p === '/profile' || p === '/account') return 'profile';
+      if (p === '/wishlist') return 'wishlist';
       if (p === '/signin' || p === '/login') return 'signin';
       if (p === '/checkout' || p === '/cart') return 'checkout';
       if (POLICY_URL_SLUG_MAP[p]) return 'page';
@@ -816,8 +817,16 @@ const DEFAULT_PRODUCTS = [
   const [cartButtonBouncing, setCartButtonBouncing] = useState(false);
   const cartButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Wishlist state
-  const [wishlistProductIds, setWishlistProductIds] = useState<number[]>([]);
+  // Wishlist state (persisted to localStorage + synced with account when signed in)
+  const [wishlistProductIds, setWishlistProductIds] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem('gs_wishlist_v1');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.map((id) => Number(id)).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Checkout & Customer Profile state (pre-populated from saved profile/session so Full Name & Email are freely editable)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
@@ -956,11 +965,20 @@ const DEFAULT_PRODUCTS = [
     }
   }, [cartItems]);
 
+  // Save wishlist product IDs to localStorage so refresh preserves saved wishlist
+  useEffect(() => {
+    try {
+      localStorage.setItem('gs_wishlist_v1', JSON.stringify(wishlistProductIds));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [wishlistProductIds]);
+
   // Customer Profile Page state
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
 
-  // Sync browser URL popstate for /admin, /profile, /signin, /checkout, and policy pages
+  // Sync browser URL popstate for /admin, /profile, /wishlist, /signin, /checkout, and policy pages
   useEffect(() => {
     const handlePopState = () => {
       const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
@@ -968,6 +986,8 @@ const DEFAULT_PRODUCTS = [
         setActiveView('admin');
       } else if (p === '/profile' || p === '/account') {
         setActiveView('profile');
+      } else if (p === '/wishlist') {
+        setActiveView('wishlist');
       } else if (p === '/signin' || p === '/login') {
         setActiveView('signin');
       } else if (p === '/checkout' || p === '/cart') {
@@ -1179,7 +1199,11 @@ const DEFAULT_PRODUCTS = [
         setCmsPages(mergedPages);
       }
       if (Array.isArray(data.revisions)) setCmsRevisions(data.revisions);
-      if (Array.isArray(data.wishlistProductIds)) setWishlistProductIds(data.wishlistProductIds);
+      if (Array.isArray(data.wishlistProductIds) && data.wishlistProductIds.length > 0) {
+        setWishlistProductIds((prev) =>
+          Array.from(new Set([...prev, ...data.wishlistProductIds.map((id: any) => Number(id))]))
+        );
+      }
       if (data.currentUser) {
         setDbUser(data.currentUser);
       } else {
@@ -1397,13 +1421,13 @@ const DEFAULT_PRODUCTS = [
     );
   };
 
-  // Wishlist handler
+  // Wishlist handler (instant local update + server sync when signed in)
   const handleToggleWishlist = async (productId: number) => {
+    const numericId = Number(productId);
+    setWishlistProductIds((prev) =>
+      prev.includes(numericId) ? prev.filter((id) => id !== numericId) : [...prev, numericId]
+    );
     if (!idToken) {
-      setWishlistProductIds((prev) =>
-        prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
-      );
-      showToast('Saved to session wishlist. Sign in with Google to persist across devices.');
       return;
     }
     try {
@@ -1413,12 +1437,11 @@ const DEFAULT_PRODUCTS = [
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId: numericId }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setWishlistProductIds(data.productIds || []);
-        showToast(data.added ? 'Saved to your wishlist.' : 'Removed from wishlist.');
+      if (res.ok && Array.isArray(data.productIds)) {
+        setWishlistProductIds(data.productIds.map((id: any) => Number(id)));
       }
     } catch (err) {
       console.error('Wishlist error:', err);
@@ -2706,7 +2729,7 @@ const DEFAULT_PRODUCTS = [
                 'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'}
             </p>
             <span className="hidden md:inline opacity-80 whitespace-nowrap shrink-0 text-[11px]">
-              Free Home Delivery on serviceable PIN codes from ₹399
+              Pan-India Home Delivery Powered by Shiprocket · Free Store Pickup
             </span>
           </div>
         </div>
@@ -2818,8 +2841,45 @@ const DEFAULT_PRODUCTS = [
                 ))}
             </nav>
 
-            {/* Right Zone: Oval Profile & Cart Buttons */}
+            {/* Right Zone: Oval Wishlist, Profile & Cart Buttons */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/wishlist');
+                  setActiveView('wishlist');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold rounded-full border transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  activeView === 'wishlist'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 text-slate-800 border-slate-200/90 hover:bg-slate-100'
+                }`}
+                aria-label={`Open Saved Wishlist (${wishlistProductIds.length} items)`}
+                title="Saved Wishlist"
+              >
+                <Heart
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${
+                    wishlistProductIds.length > 0
+                      ? activeView === 'wishlist'
+                        ? 'fill-red-400 text-red-400'
+                        : 'fill-[#B42318] text-[#B42318]'
+                      : ''
+                  }`}
+                />
+                <span className="font-bold hidden lg:inline">Wishlist</span>
+                {wishlistProductIds.length > 0 && (
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono-tabular font-bold ${
+                      activeView === 'wishlist'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-red-100 text-[#B42318]'
+                    }`}
+                  >
+                    {wishlistProductIds.length}
+                  </span>
+                )}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -3235,18 +3295,14 @@ const DEFAULT_PRODUCTS = [
                           <div className="flex items-center gap-2">
                             <Truck className="w-4 h-4 text-stone-900 shrink-0" />
                             <h2 className="text-sm font-bold text-stone-900">
-                              Option 2: Doorstep Home Delivery (PIN-Code Verified)
+                              Option 2: Pan-India Doorstep Delivery (Powered by Shiprocket)
                             </h2>
                           </div>
                           <p className="text-xs text-stone-600 leading-relaxed">
-                            Enter your 6-digit PIN code at checkout for instant serviceability validation, transparent shipping charges, free-delivery thresholds, and dispatch tracking.
+                            Nationwide courier delivery across all Indian 6-digit PIN codes via <strong>Shiprocket</strong>. Enjoy reliable doorstep dispatch, live AWB shipment tracking, and Cash on Delivery or Online Prepaid options.
                           </p>
-                          <p className="text-[11px] text-stone-500 pt-1 font-mono-tabular">
-                            Serviceable PINs:{' '}
-                            {serviceablePincodes
-                              .slice(0, 5)
-                              .map((p) => p.pincode)
-                              .join(', ')}
+                          <p className="text-[11px] text-emerald-800 font-semibold pt-1">
+                            ✓ All Indian PIN Codes Serviceable via Shiprocket Express Partners
                           </p>
                         </div>
                       </div>
@@ -3938,6 +3994,24 @@ const DEFAULT_PRODUCTS = [
                         alt={activePdpProduct.name}
                         colorTint={pdpSelectedColor}
                       />
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWishlist(activePdpProduct.id)}
+                        aria-label={
+                          wishlistProductIds.includes(activePdpProduct.id)
+                            ? 'Remove from Wishlist'
+                            : 'Save to Wishlist'
+                        }
+                        className="absolute top-3.5 right-3.5 w-10 h-10 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center justify-center hover:bg-white transition-transform active:scale-95 cursor-pointer"
+                      >
+                        <Heart
+                          className={`w-5 h-5 ${
+                            wishlistProductIds.includes(activePdpProduct.id)
+                              ? 'fill-[#B42318] text-[#B42318]'
+                              : 'text-stone-600'
+                          }`}
+                        />
+                      </button>
                       {pdpSelectedColor && (
                         <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
                           <span
@@ -4318,6 +4392,29 @@ const DEFAULT_PRODUCTS = [
                         >
                           Buy Now
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleWishlist(activePdpProduct.id)}
+                          className={`py-3 px-4 text-xs font-semibold rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
+                            wishlistProductIds.includes(activePdpProduct.id)
+                              ? 'bg-red-50 text-[#B42318] border-red-200'
+                              : 'bg-white text-stone-800 border-stone-300 hover:bg-stone-50'
+                          }`}
+                        >
+                          <Heart
+                            className={`w-4 h-4 ${
+                              wishlistProductIds.includes(activePdpProduct.id)
+                                ? 'fill-[#B42318] text-[#B42318]'
+                                : 'text-stone-600'
+                            }`}
+                          />
+                          <span className="hidden sm:inline">
+                            {wishlistProductIds.includes(activePdpProduct.id)
+                              ? 'Wishlisted'
+                              : 'Wishlist'}
+                          </span>
+                        </button>
                       </div>
                     </div>
 
@@ -4329,13 +4426,13 @@ const DEFAULT_PRODUCTS = [
                       <p className="text-stone-700">
                         • <strong>Store Pickup:</strong>{' '}
                         {activePdpProduct.pickupEligible
-                          ? 'Available (Pay Online or Pay at Store Counter upon collection)'
+                          ? 'Available at Kanpur Counter (Pay Online or Pay at Store Counter upon collection)'
                           : 'Not available for counter pickup'}
                       </p>
                       <p className="text-stone-700">
-                        • <strong>Home Delivery:</strong>{' '}
+                        • <strong>Home Delivery (Shiprocket):</strong>{' '}
                         {activePdpProduct.deliveryEligible
-                          ? 'Available for serviceable PIN codes'
+                          ? 'Pan-India Doorstep Delivery via Shiprocket (All 6-digit Indian PIN codes supported)'
                           : 'Store pickup only'}
                       </p>
                     </div>
@@ -5076,60 +5173,155 @@ const DEFAULT_PRODUCTS = [
             {/* VIEW 6: WISHLIST */}
             {activeView === 'wishlist' && (
               <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-                <div className="flex items-center justify-between">
-                  <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                    Saved Wishlist ({wishlistProductIds.length})
-                  </h1>
-                  <button
-                    onClick={() => setActiveView('storefront')}
-                    className="px-4 py-2 bg-white border border-stone-300 rounded-full text-xs font-medium hover:border-stone-900"
-                  >
-                    Continue Shopping
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200 pb-4">
+                  <div>
+                    <h1 className="font-serif-display text-2xl font-bold text-stone-900 flex items-center gap-2">
+                      <Heart className="w-6 h-6 fill-[#B42318] text-[#B42318]" />
+                      <span>Saved Wishlist ({wishlistProductIds.length})</span>
+                    </h1>
+                    <p className="text-xs text-stone-600 mt-1">
+                      Your favourite notebooks, pens, and art supplies saved for quick checkout.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {wishlistProductIds.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const wishedProducts = products.filter((p) =>
+                              wishlistProductIds.includes(p.id)
+                            );
+                            for (const prod of wishedProducts) {
+                              handleAddToCart(prod, prod.variants?.[0]?.id, 1, undefined, true);
+                            }
+                            navigateToCheckout();
+                          }}
+                          className="px-4 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white rounded-full text-xs font-semibold shadow-2xs cursor-pointer transition-colors"
+                        >
+                          Move All to Cart ({wishlistProductIds.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWishlistProductIds([])}
+                          className="px-4 py-2 bg-white border border-stone-300 hover:border-red-600 hover:text-red-700 rounded-full text-xs font-medium cursor-pointer transition-colors"
+                        >
+                          Clear Wishlist
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('storefront');
+                      }}
+                      className="px-4 py-2 bg-white border border-stone-300 rounded-full text-xs font-medium hover:border-stone-900 cursor-pointer"
+                    >
+                      Continue Shopping
+                    </button>
+                  </div>
                 </div>
 
                 {wishlistProductIds.length === 0 ? (
-                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-10 text-center text-sm text-stone-600">
-                    Your wishlist is empty. Click the heart icon on any stationery item to save it for later.
+                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-10 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-red-50 text-[#B42318] flex items-center justify-center mx-auto">
+                      <Heart className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-base font-bold text-stone-900">Your wishlist is empty</p>
+                      <p className="text-xs text-stone-600 max-w-md mx-auto">
+                        Tap the heart icon on any stationery product card or product page to save items here for quick access.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('storefront');
+                      }}
+                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full hover:bg-stone-800 cursor-pointer"
+                    >
+                      Explore Stationery Catalogue
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {products
                       .filter((p) => wishlistProductIds.includes(p.id))
-                      .map((p) => (
-                        <div
-                          key={p.id}
-                          className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-5 flex flex-col justify-between space-y-4 overflow-hidden"
-                        >
-                          <div>
-                            <div className="aspect-4/3 mb-3 rounded-[22px] overflow-hidden">
-                              <ProductIllustration
-                                type={p.illustrationType}
-                                imageUrl={p.imageUrl}
-                                alt={p.name}
-                              />
+                      .map((p) => {
+                        const activeVar =
+                          p.variants?.find(
+                            (v: any) => v.id === selectedVariantByProduct[p.id]
+                          ) || p.variants?.[0];
+                        const price = activeVar?.sellingPricePaise || p.sellingPricePaise;
+                        const mrp = activeVar?.mrpPaise || p.mrpPaise;
+                        const savedCol = selectedColorByProduct[p.id];
+                        return (
+                          <div
+                            key={p.id}
+                            className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-5 flex flex-col justify-between space-y-4 overflow-hidden hover:border-stone-300 transition-all"
+                          >
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() => openProductDetail(p)}
+                                className="w-full text-left cursor-pointer group"
+                              >
+                                <div className="aspect-4/3 mb-3 rounded-[22px] overflow-hidden border border-stone-100 bg-slate-50">
+                                  <ProductIllustration
+                                    type={p.illustrationType}
+                                    imageUrl={p.imageUrl}
+                                    alt={p.name}
+                                    colorTint={savedCol}
+                                  />
+                                </div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                                  {p.brandName} · {p.categoryName}
+                                </p>
+                                <h3 className="font-semibold text-sm text-stone-900 group-hover:underline mt-0.5 line-clamp-2">
+                                  {p.name}
+                                </h3>
+                              </button>
+                              <div className="flex items-baseline gap-2 font-mono-tabular mt-2">
+                                <span className="text-sm font-bold text-stone-900">
+                                  {formatPaiseToINR(price)}
+                                </span>
+                                {mrp > price && (
+                                  <span className="text-xs text-stone-400 line-through">
+                                    {formatPaiseToINR(mrp)}
+                                  </span>
+                                )}
+                              </div>
+                              {savedCol && (
+                                <p className="text-[11px] text-stone-600 mt-1">
+                                  Selected Colour: <strong>{savedCol}</strong>
+                                </p>
+                              )}
                             </div>
-                            <h3 className="font-semibold text-sm text-stone-900">{p.name}</h3>
-                            <p className="text-xs text-stone-500 font-mono-tabular mt-1">
-                              {formatPaiseToINR(p.sellingPricePaise)}
-                            </p>
+                            <div className="flex gap-2 pt-2 border-t border-stone-100">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  handleAddToCart(p, activeVar?.id, 1, e, true, savedCol);
+                                  handleToggleWishlist(p.id);
+                                  navigateToCheckout();
+                                }}
+                                className="flex-1 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full active:scale-95 transition-transform cursor-pointer"
+                              >
+                                Move to Cart
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleWishlist(p.id)}
+                                className="px-4 py-2.5 border border-stone-300 text-xs font-medium text-stone-700 rounded-full cursor-pointer hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => handleAddToCart(p, undefined, 1, e)}
-                              className="flex-1 py-2.5 bg-stone-900 text-white text-xs font-medium rounded-full active:scale-95 transition-transform cursor-pointer"
-                            >
-                              Move to Cart
-                            </button>
-                            <button
-                              onClick={() => handleToggleWishlist(p.id)}
-                              className="px-4 py-2.5 border border-stone-300 text-xs rounded-full cursor-pointer hover:bg-stone-50"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -5372,7 +5564,7 @@ const DEFAULT_PRODUCTS = [
                                   : 'text-stone-600'
                               }`}
                             >
-                              Doorstep dispatch to serviceable PIN codes with tracking.
+                              Pan-India doorstep courier dispatch via Shiprocket with live tracking.
                             </p>
                           </button>
                         </div>
@@ -5499,22 +5691,17 @@ const DEFAULT_PRODUCTS = [
                                   />
                                 </div>
                                 <div className="flex items-end">
-                                  {matchedPincodeRule ? (
+                                  {/^\d{6}$/.test(shippingAddress.pincode.trim()) ? (
                                     <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 w-full">
-                                      Serviceable: {matchedPincodeRule.city} (
-                                      {matchedPincodeRule.estimatedDays}) · Free above{' '}
-                                      {formatPaiseToINR(
-                                        matchedPincodeRule.freeDeliveryThresholdPaise
-                                      )}
+                                      ✓ <strong>Shiprocket Pan-India Delivery:</strong> PIN{' '}
+                                      <span className="font-mono-tabular font-bold">
+                                        {shippingAddress.pincode.trim()}
+                                      </span>{' '}
+                                      is serviceable · Courier &amp; COD Enabled
                                     </div>
                                   ) : (
-                                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 w-full">
-                                      PIN not in active list. Try{' '}
-                                      {serviceablePincodes
-                                        .slice(0, 3)
-                                        .map((p) => p.pincode)
-                                        .join(', ')}{' '}
-                                      or select Store Pickup.
+                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 w-full">
+                                      Enter any 6-digit Indian PIN code for Pan-India doorstep delivery via <strong>Shiprocket</strong>.
                                     </div>
                                   )}
                                 </div>
