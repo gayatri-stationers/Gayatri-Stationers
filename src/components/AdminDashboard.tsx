@@ -35,6 +35,11 @@ import {
   AlertTriangle,
   Volume2,
   VolumeX,
+  Globe,
+  Mic,
+  Send,
+  Bot,
+  X,
 } from 'lucide-react';
 import { CmsStudioManager, CmsSubTab } from './CmsStudioManager.tsx';
 
@@ -243,6 +248,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // Ignore
     }
   }, [categories, dashboardData?.categories]);
+
+  const [localProductsList, setLocalProductsList] = useState<any[]>(() => {
+    try {
+      const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
+      const deletedList: any[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+      const storedRaw = localStorage.getItem('gs_fallback_catalogue_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const base = Array.isArray(products) ? products : [];
+      const merged = new Map<string, any>();
+      for (const p of [...(Array.isArray(stored) ? stored : []), ...base]) {
+        if (!p || !p.name) continue;
+        if (
+          deletedList.includes(Number(p.id)) ||
+          deletedList.includes(String(p.sku || '').toLowerCase())
+        ) {
+          continue;
+        }
+        const key = String(p.sku || p.id).toLowerCase();
+        if (!merged.has(key)) merged.set(key, p);
+      }
+      return Array.from(merged.values());
+    } catch {
+      return Array.isArray(products) ? products : [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
+      const deletedList: any[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+      const storedRaw = localStorage.getItem('gs_fallback_catalogue_v1');
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      const dashProds = Array.isArray(dashboardData?.products) ? dashboardData.products : [];
+      const propProds = Array.isArray(products) ? products : [];
+      const merged = new Map<string, any>();
+      for (const p of [
+        ...(Array.isArray(stored) ? stored : []),
+        ...localProductsList,
+        ...dashProds,
+        ...propProds,
+      ]) {
+        if (!p || !p.name) continue;
+        if (
+          deletedList.includes(Number(p.id)) ||
+          deletedList.includes(String(p.sku || '').toLowerCase())
+        ) {
+          continue;
+        }
+        const key = String(p.sku || p.id).toLowerCase();
+        if (!merged.has(key)) merged.set(key, p);
+      }
+      const next = Array.from(merged.values());
+      if (next.length > 0) setLocalProductsList(next);
+    } catch {
+      // Ignore
+    }
+  }, [products, dashboardData?.products]);
+
+  // Gemini AI Admin Copilot & Web Photos State
+  const [aiCopilotPrompt, setAiCopilotPrompt] = useState('');
+  const [aiCopilotLoading, setAiCopilotLoading] = useState(false);
+  const [aiListening, setAiListening] = useState(false);
+  const [aiCopilotReply, setAiCopilotReply] = useState<string | null>(null);
+  const [webPhotosResults, setWebPhotosResults] = useState<
+    Array<{ url: string; title: string; source: string }>
+  >([]);
+  const [webPhotosLoading, setWebPhotosLoading] = useState(false);
+  const [webPhotoQuery, setWebPhotoQuery] = useState('');
+  const [showWebPhotoPicker, setShowWebPhotoPicker] = useState(false);
 
   const [productForm, setProductForm] = useState({
     sku: '',
@@ -1000,6 +1074,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save product');
+      const savedProd = data.product;
+      if (savedProd) {
+        setLocalProductsList((prev) => {
+          const exists = prev.some(
+            (p) =>
+              Number(p.id) === Number(savedProd.id) ||
+              String(p.sku || '').toLowerCase() === String(savedProd.sku || '').toLowerCase()
+          );
+          const next = exists
+            ? prev.map((p) =>
+                Number(p.id) === Number(savedProd.id) ||
+                String(p.sku || '').toLowerCase() === String(savedProd.sku || '').toLowerCase()
+                  ? { ...p, ...savedProd, variants: savedProd.variants || p.variants }
+                  : p
+              )
+            : [savedProd, ...prev];
+          try {
+            localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+          } catch {
+            // Ignore
+          }
+          return next;
+        });
+      }
       setStatusBanner(`Saved product "${data.product.name}" (${data.product.sku}).`);
       handleResetProductForm();
       setShowProductForm(false);
@@ -1007,6 +1105,368 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onRefreshStorefront();
     } catch (err: any) {
       setErrorMsg(err.message);
+    }
+  };
+
+  // Search Real Product Photos from the Web
+  const handleSearchWebPhotos = async (customQuery?: string, targetProd?: any) => {
+    const queryStr = (
+      customQuery ||
+      webPhotoQuery ||
+      targetProd?.name ||
+      productForm.name ||
+      'stationery notebook pen'
+    ).trim();
+    setWebPhotosLoading(true);
+    setShowWebPhotoPicker(true);
+    setErrorMsg(null);
+    try {
+      const selectedCat = localCategoriesList.find((c) => c.id === Number(productForm.categoryId));
+      const selectedBrand = localBrandsList.find((b) => b.id === Number(productForm.brandId));
+      const res = await fetch('/api/admin/products/web-photos', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          query: queryStr,
+          name: targetProd?.name || productForm.name || queryStr,
+          brandName: targetProd?.brandName || selectedBrand?.name,
+          categoryName: targetProd?.categoryName || selectedCat?.name,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data?.photos) && data.photos.length > 0) {
+        setWebPhotosResults(data.photos);
+        setStatusBanner(
+          `Found ${data.photos.length} product photos from the web for "${queryStr}". Click any photo below to add or set as primary.`
+        );
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not search web photos.');
+    } finally {
+      setWebPhotosLoading(false);
+    }
+  };
+
+  // Attach a Web Photo to either the current Product Form or a specific Product
+  const handleAttachWebPhoto = async (photoUrl: string, targetProdId?: number) => {
+    setProductForm((prev) => ({
+      ...prev,
+      imageUrl: photoUrl,
+      galleryUrls: Array.from(new Set([photoUrl, ...(prev.galleryUrls || [])])),
+    }));
+
+    const pid = targetProdId || editingProductId;
+    if (pid) {
+      try {
+        await fetch(`/api/admin/products/${pid}/images`, {
+          method: 'POST',
+          headers: buildAdminHeaders(true),
+          body: JSON.stringify({
+            imageUrl: photoUrl,
+            newImageUrls: [photoUrl],
+            setAsPrimary: true,
+          }),
+        });
+      } catch {
+        // Handled by local sync
+      }
+      setLocalProductsList((prev) => {
+        const next = prev.map((p) =>
+          Number(p.id) === Number(pid)
+            ? {
+                ...p,
+                imageUrl: photoUrl,
+                galleryUrls: Array.from(new Set([photoUrl, ...(p.galleryUrls || [])])),
+              }
+            : p
+        );
+        try {
+          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+        } catch {
+          // Ignore
+        }
+        return next;
+      });
+      onRefreshStorefront();
+    }
+    setStatusBanner('Web photo attached! It is now live on the product.');
+  };
+
+  // Remove Photo from a Product or the Product Form
+  const handleRemoveProductPhoto = async (targetProd?: any, specificUrlToRemove?: string) => {
+    if (!targetProd && !editingProductId) {
+      setProductForm((prev) => ({
+        ...prev,
+        imageUrl: specificUrlToRemove
+          ? prev.imageUrl === specificUrlToRemove
+            ? prev.galleryUrls.filter((u) => u !== specificUrlToRemove)[0] || ''
+            : prev.imageUrl
+          : '',
+        galleryUrls: specificUrlToRemove
+          ? prev.galleryUrls.filter((u) => u !== specificUrlToRemove)
+          : [],
+      }));
+      setStatusBanner('Removed photo from product form.');
+      return;
+    }
+
+    const pid = targetProd?.id || editingProductId;
+    try {
+      await fetch(`/api/admin/products/${pid}/images`, {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify(
+          specificUrlToRemove
+            ? { removeImageUrl: specificUrlToRemove }
+            : { imageUrl: '', galleryUrls: [], setAsPrimary: true }
+        ),
+      });
+    } catch {
+      // Handled locally
+    }
+
+    setProductForm((prev) => ({
+      ...prev,
+      imageUrl: specificUrlToRemove
+        ? prev.imageUrl === specificUrlToRemove
+          ? prev.galleryUrls.filter((u) => u !== specificUrlToRemove)[0] || ''
+          : prev.imageUrl
+        : '',
+      galleryUrls: specificUrlToRemove
+        ? prev.galleryUrls.filter((u) => u !== specificUrlToRemove)
+        : [],
+    }));
+
+    setLocalProductsList((prev) => {
+      const next = prev.map((p) =>
+        Number(p.id) === Number(pid)
+          ? {
+              ...p,
+              imageUrl: specificUrlToRemove
+                ? p.imageUrl === specificUrlToRemove
+                  ? (p.galleryUrls || []).filter((u: string) => u !== specificUrlToRemove)[0] || ''
+                  : p.imageUrl
+                : '',
+              galleryUrls: specificUrlToRemove
+                ? (p.galleryUrls || []).filter((u: string) => u !== specificUrlToRemove)
+                : [],
+            }
+          : p
+      );
+      try {
+        localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+    setStatusBanner(`Removed photo${targetProd?.name ? ` from "${targetProd.name}"` : ''}.`);
+    onRefreshStorefront();
+  };
+
+  // Delete / Remove Product from Catalogue
+  const handleDeleteProduct = async (targetProd: any) => {
+    if (!targetProd) return;
+    setErrorMsg(null);
+    try {
+      await fetch('/api/admin/products/delete', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          productId: targetProd.id,
+          sku: targetProd.sku,
+          name: targetProd.name,
+        }),
+      });
+    } catch {
+      // Handled locally as well
+    }
+
+    try {
+      const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
+      const deletedList: any[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+      if (targetProd.id && !deletedList.includes(Number(targetProd.id))) {
+        deletedList.push(Number(targetProd.id));
+      }
+      if (targetProd.sku && !deletedList.includes(String(targetProd.sku).toLowerCase())) {
+        deletedList.push(String(targetProd.sku).toLowerCase());
+      }
+      localStorage.setItem('gs_deleted_products_v1', JSON.stringify(deletedList));
+    } catch {
+      // Ignore
+    }
+
+    setLocalProductsList((prev) => {
+      const next = prev.filter(
+        (p) =>
+          Number(p.id) !== Number(targetProd.id) &&
+          String(p.sku || '').toLowerCase() !== String(targetProd.sku || '').toLowerCase()
+      );
+      try {
+        localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+
+    if (editingProductId && Number(editingProductId) === Number(targetProd.id)) {
+      handleResetProductForm();
+      setShowProductForm(false);
+    }
+
+    setStatusBanner(`Removed product "${targetProd.name}" (${targetProd.sku}) from catalogue.`);
+    await fetchAdminData();
+    onRefreshStorefront();
+  };
+
+  // Run Gemini AI Admin Copilot ("Tell AI to add product, add web photos, remove photo, or remove product")
+  const handleRunAiAdminCopilot = async (overridePrompt?: string) => {
+    const promptToRun = (overridePrompt ?? aiCopilotPrompt).trim();
+    if (!promptToRun) {
+      setErrorMsg('Please tell the AI what you would like to do (e.g., "Add product Classmate Gel Pen at ₹90").');
+      return;
+    }
+    setAiCopilotLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/api/ai/admin-copilot', {
+        method: 'POST',
+        headers: buildAdminHeaders(true),
+        body: JSON.stringify({
+          prompt: promptToRun,
+          currentProductId: editingProductId || selectedMediaProductId,
+          clientProducts: localProductsList,
+          clientCategories: localCategoriesList,
+          clientBrands: localBrandsList,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'AI Copilot request failed');
+
+      setAiCopilotReply(data.replyMessage || 'Done!');
+      setStatusBanner(data.replyMessage || 'AI Admin Copilot completed your command.');
+      if (!overridePrompt) setAiCopilotPrompt('');
+
+      if (Array.isArray(data.webPhotos) && data.webPhotos.length > 0) {
+        setWebPhotosResults(data.webPhotos);
+        setShowWebPhotoPicker(true);
+      }
+
+      if (data.operation === 'ADD_PRODUCT' && data.product) {
+        const created = {
+          ...data.product,
+          variants:
+            Array.isArray(data.product.variants) && data.product.variants.length > 0
+              ? data.product.variants
+              : [
+                  {
+                    id: Date.now() + 1,
+                    productId: data.product.id || Date.now(),
+                    sku: `${data.product.sku || 'GS-AI'}-STD`,
+                    variantName: 'Standard Pack',
+                    mrpPaise: data.product.mrpPaise || 11000,
+                    sellingPricePaise: data.product.sellingPricePaise || 9500,
+                    stockQuantity: data.product.initialStockQuantity || 35,
+                  },
+                ],
+        };
+        setLocalProductsList((prev) => {
+          const next = [
+            created,
+            ...prev.filter(
+              (p) =>
+                Number(p.id) !== Number(created.id) &&
+                String(p.sku || '').toLowerCase() !== String(created.sku || '').toLowerCase()
+            ),
+          ];
+          try {
+            localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+          } catch {
+            // Ignore
+          }
+          return next;
+        });
+        setActiveTab('products');
+      } else if (data.operation === 'FILL_FORM' && data.productFormDraft) {
+        const d = data.productFormDraft;
+        setProductForm((prev) => ({
+          ...prev,
+          sku: d.sku || prev.sku,
+          name: d.name || prev.name,
+          shortDescription: d.shortDescription || prev.shortDescription,
+          description: d.description || prev.description,
+          mrpRupees: String(Math.round((d.mrpPaise || 11000) / 100)),
+          sellingPriceRupees: String(Math.round((d.sellingPricePaise || 9500) / 100)),
+          imageUrl: d.imageUrl || prev.imageUrl,
+          galleryUrls: Array.isArray(d.galleryUrls) ? d.galleryUrls : prev.galleryUrls,
+        }));
+        setShowProductForm(true);
+        setActiveTab('products');
+      } else if (data.operation === 'ADD_WEB_PHOTOS') {
+        const firstPhoto = data.webPhotos?.[0]?.url || data.product?.imageUrl;
+        if (firstPhoto) {
+          await handleAttachWebPhoto(firstPhoto, data.product?.id || editingProductId);
+        }
+        setActiveTab('products');
+      } else if (data.operation === 'REMOVE_PHOTO') {
+        await handleRemoveProductPhoto(data.product);
+      } else if (data.operation === 'REMOVE_PRODUCT') {
+        const q = String(data.deletedProductName || data.deletedProductSku || '').toLowerCase();
+        const found =
+          localProductsList.find((p) => Number(p.id) === Number(data.deletedProductId)) ||
+          (q &&
+            localProductsList.find(
+              (p) =>
+                String(p.name || '').toLowerCase().includes(q) ||
+                String(p.sku || '').toLowerCase() === q
+            ));
+        if (found) {
+          await handleDeleteProduct(found);
+        }
+      }
+
+      await fetchAdminData();
+      onRefreshStorefront();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'AI Admin Copilot failed.');
+    } finally {
+      setAiCopilotLoading(false);
+    }
+  };
+
+  // Voice Dictation so the Admin can speak commands to Gemini AI Copilot
+  const handleStartVoiceDictation = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      setErrorMsg('Voice input is not supported in this browser. Please type your command in the box.');
+      return;
+    }
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'en-IN';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      setAiListening(true);
+      recognition.onresult = (event: any) => {
+        const transcript = event?.results?.[0]?.[0]?.transcript || '';
+        setAiListening(false);
+        if (transcript) {
+          setAiCopilotPrompt(transcript);
+          handleRunAiAdminCopilot(transcript);
+        }
+      };
+      recognition.onerror = () => {
+        setAiListening(false);
+      };
+      recognition.onend = () => {
+        setAiListening(false);
+      };
+      recognition.start();
+    } catch {
+      setAiListening(false);
     }
   };
 
@@ -1920,6 +2380,114 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Main Workspace */}
         <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full overflow-x-hidden">
+          {/* GEMINI AI ADMIN COPILOT BAR — Tell AI to Add Product, Add Web Photos, or Remove Product / Photo */}
+          <div className="mb-5 bg-gradient-to-r from-slate-900 via-slate-900 to-[#3B0D0C] text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-[#B42318] flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-bold tracking-tight">
+                      Gayatri AI Admin Copilot (Powered by Gemini)
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-mono uppercase tracking-wider text-amber-300">
+                      Voice &amp; Text Commands
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Tell AI to add a product, fetch &amp; attach product photos from the web, remove photos, or remove any product.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleRunAiAdminCopilot(
+                      'Add product Classmate Octane Gel Pen Pack of 10 at ₹90 MRP ₹110 with web photo'
+                    )
+                  }
+                  disabled={aiCopilotLoading}
+                  className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
+                >
+                  + AI Add Product
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleRunAiAdminCopilot('Add photos from the web for Classmate Notebook')
+                  }
+                  disabled={aiCopilotLoading}
+                  className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
+                >
+                  + Add Web Photos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunAiAdminCopilot('Remove photo from current product')}
+                  disabled={aiCopilotLoading}
+                  className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
+                >
+                  Remove Photo
+                </button>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRunAiAdminCopilot();
+              }}
+              className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+            >
+              <div className="relative flex-1 flex items-center bg-white/95 text-slate-900 rounded-full px-3.5 py-1.5">
+                <Bot className="w-4 h-4 text-[#B42318] shrink-0 mr-2" />
+                <input
+                  type="text"
+                  value={aiCopilotPrompt}
+                  onChange={(e) => setAiCopilotPrompt(e.target.value)}
+                  placeholder='Tell AI: "Add DOMS Water Colour 24 Shades at ₹165 with web photo", "Add web photos for Flair Pen", or "Remove product..."'
+                  className="w-full text-xs sm:text-sm bg-transparent focus:outline-none text-slate-900 placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleStartVoiceDictation}
+                  title="Speak to AI Admin Copilot"
+                  className={`p-1.5 rounded-full transition-colors cursor-pointer shrink-0 ${
+                    aiListening
+                      ? 'bg-red-600 text-white animate-pulse'
+                      : 'text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                type="submit"
+                disabled={aiCopilotLoading}
+                className="px-5 py-2.5 rounded-full bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{aiCopilotLoading ? 'AI Working...' : 'Tell AI'}</span>
+              </button>
+            </form>
+
+            {aiCopilotReply && (
+              <div className="p-3 rounded-xl bg-white/10 border border-white/15 text-xs text-slate-100 flex items-start justify-between gap-3">
+                <div className="space-y-1 whitespace-pre-line">{aiCopilotReply}</div>
+                <button
+                  type="button"
+                  onClick={() => setAiCopilotReply(null)}
+                  className="text-slate-300 hover:text-white shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
           {statusBanner && (
             <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs sm:text-sm text-emerald-900 flex items-center justify-between gap-2">
               <span>{statusBanner}</span>
@@ -2682,134 +3250,293 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onSubmit={handleCreateProduct}
                       className="bg-white border border-slate-200 rounded p-4 sm:p-6 space-y-6"
                     >
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
                         <h2 className="text-base font-bold text-slate-900">
                           {editingProductId
                             ? `Edit Product & Photo — ${productForm.name} (${productForm.sku})`
                             : 'Create New Stationery Product'}
                         </h2>
-                        {editingProductId && (
-                          <button
-                            type="button"
-                            onClick={handleResetProductForm}
-                            className="text-xs text-slate-600 underline"
-                          >
-                            Switch to New Product
-                          </button>
-                        )}
-                      </div>
-
-                      {/* PRODUCT PHOTO UPLOAD + AI GENERATOR STUDIO */}
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                        <div className="lg:col-span-4">
-                          <p className="text-xs font-semibold text-slate-700 mb-2">
-                            Live Storefront Card Preview (4:3)
-                          </p>
-                          <div className="aspect-4/3 w-full max-w-[280px] rounded-2xl border border-slate-300 overflow-hidden bg-slate-50">
-                            <ProductIllustration
-                              type={productForm.illustrationType}
-                              imageUrl={productForm.imageUrl}
-                              alt={productForm.name || 'Product Preview'}
-                              className="w-full h-full"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="lg:col-span-8 space-y-4 text-xs">
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-900">
-                              Product Image Options: Upload Photo OR Generate with AI
-                            </h3>
-                            <p className="text-slate-600 mt-0.5">
-                              You can upload a real photo from your phone/computer, generate a studio image using AI, paste an image link, or pick a clean studio vector illustration.
-                            </p>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3">
-                            {/* Option 1: Upload from Device */}
-                            <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white font-semibold rounded hover:bg-slate-800 cursor-pointer">
-                              <ImageIcon className="w-4 h-4" />
-                              <span>
-                                {uploadingImage ? 'Processing Photo...' : '1. Upload Photo from Device'}
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileUploadChange}
-                                className="hidden"
-                              />
-                            </label>
-
-                            {/* Option 2: Generate with AI */}
+                        <div className="flex items-center gap-3">
+                          {editingProductId && (
                             <button
                               type="button"
-                              disabled={aiGeneratingImage}
-                              onClick={handleGenerateAiProductImage}
-                              className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#B42318] text-white font-semibold rounded hover:bg-[#991B1B] disabled:opacity-50 cursor-pointer"
+                              onClick={() => {
+                                const target = localProductsList.find(
+                                  (p) => Number(p.id) === Number(editingProductId)
+                                ) || {
+                                  id: editingProductId,
+                                  sku: productForm.sku,
+                                  name: productForm.name,
+                                };
+                                handleDeleteProduct(target);
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded text-xs font-bold cursor-pointer"
                             >
-                              <Sparkles className="w-4 h-4" />
-                              <span>
-                                {aiGeneratingImage
-                                  ? 'Generating Studio Image...'
-                                  : '2. Generate Image with AI'}
-                              </span>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove Product</span>
                             </button>
+                          )}
+                          {editingProductId && (
+                            <button
+                              type="button"
+                              onClick={handleResetProductForm}
+                              className="text-xs text-slate-600 underline cursor-pointer"
+                            >
+                              Switch to New Product
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
-                            {productForm.imageUrl && (
-                              <button
-                                type="button"
-                                onClick={() => setProductForm({ ...productForm, imageUrl: '' })}
-                                className="inline-flex items-center gap-1 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-100 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Remove Custom Photo</span>
-                              </button>
+                      {/* PRODUCT PHOTO UPLOAD + AI GENERATOR + WEB PHOTO SEARCH STUDIO */}
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                          <div className="lg:col-span-4 space-y-2">
+                            <p className="text-xs font-semibold text-slate-700">
+                              Live Storefront Card Preview (4:3)
+                            </p>
+                            <div className="aspect-4/3 w-full max-w-[280px] rounded-2xl border border-slate-300 overflow-hidden bg-white relative">
+                              <ProductIllustration
+                                type={productForm.illustrationType}
+                                imageUrl={productForm.imageUrl}
+                                alt={productForm.name || 'Product Preview'}
+                                className="w-full h-full"
+                              />
+                              {productForm.imageUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveProductPhoto()}
+                                  className="absolute top-2 right-2 px-2.5 py-1 bg-red-600/95 hover:bg-red-700 text-white text-[11px] font-bold rounded-full shadow flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Remove Photo</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {productForm.galleryUrls && productForm.galleryUrls.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                {productForm.galleryUrls.map((gUrl, idx) => (
+                                  <div
+                                    key={`${gUrl}-${idx}`}
+                                    className="relative w-14 h-12 rounded-lg border border-slate-300 overflow-hidden bg-white group"
+                                  >
+                                    <img
+                                      src={gUrl}
+                                      alt="Gallery thumb"
+                                      className="w-full h-full object-cover cursor-pointer"
+                                      onClick={() =>
+                                        setProductForm((prev) => ({ ...prev, imageUrl: gUrl }))
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      title="Remove this photo"
+                                      onClick={() => handleRemoveProductPhoto(undefined, gUrl)}
+                                      className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] cursor-pointer"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="lg:col-span-8 space-y-4 text-xs">
                             <div>
-                              <label className="block font-medium text-slate-700 mb-1">
-                                Or Paste Direct Image URL
-                              </label>
-                              <input
-                                type="text"
-                                value={
-                                  productForm.imageUrl.startsWith('data:')
-                                    ? ''
-                                    : productForm.imageUrl
-                                }
-                                onChange={(e) =>
-                                  setProductForm({ ...productForm, imageUrl: e.target.value })
-                                }
-                                placeholder="https://example.com/product-photo.jpg"
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
-                              />
+                              <h3 className="text-sm font-bold text-slate-900">
+                                Product Image Options: Upload Photo, Search Web Photos, or Generate with AI
+                              </h3>
+                              <p className="text-slate-600 mt-0.5">
+                                Upload from your device, search and attach real product photos from the web, generate with Gemini AI, or remove any photo in 1 click.
+                              </p>
                             </div>
 
-                            <div>
-                              <label className="block font-medium text-slate-700 mb-1">
-                                Studio Vector Illustration (Fallback / Default)
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              {/* Option 1: Upload from Device */}
+                              <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer">
+                                <ImageIcon className="w-4 h-4" />
+                                <span>
+                                  {uploadingImage ? 'Uploading...' : '1. Upload Photo'}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleFileUploadChange}
+                                  className="hidden"
+                                />
                               </label>
-                              <select
-                                value={productForm.illustrationType}
-                                onChange={(e) =>
-                                  setProductForm({
-                                    ...productForm,
-                                    illustrationType: e.target.value,
-                                  })
-                                }
-                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
+
+                              {/* Option 2: Add Photos from the Web */}
+                              <button
+                                type="button"
+                                disabled={webPhotosLoading}
+                                onClick={() => handleSearchWebPhotos(productForm.name)}
+                                className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 text-white font-semibold rounded-full hover:bg-emerald-800 disabled:opacity-50 cursor-pointer"
                               >
-                                {ILLUSTRATION_PRESETS.map((preset) => (
-                                  <option key={preset.value} value={preset.value}>
-                                    {preset.label}
-                                  </option>
-                                ))}
-                              </select>
+                                <Globe className="w-4 h-4" />
+                                <span>
+                                  {webPhotosLoading
+                                    ? 'Searching Web...'
+                                    : '2. Add Photos from the Web'}
+                                </span>
+                              </button>
+
+                              {/* Option 3: Generate with AI */}
+                              <button
+                                type="button"
+                                disabled={aiGeneratingImage}
+                                onClick={handleGenerateAiProductImage}
+                                className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#B42318] text-white font-semibold rounded-full hover:bg-[#991B1B] disabled:opacity-50 cursor-pointer"
+                              >
+                                <Sparkles className="w-4 h-4" />
+                                <span>
+                                  {aiGeneratingImage
+                                    ? 'Generating AI Image...'
+                                    : '3. Generate AI Studio Photo'}
+                                </span>
+                              </button>
+
+                              {productForm.imageUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveProductPhoto()}
+                                  className="inline-flex items-center gap-1 px-3.5 py-2 bg-red-50 border border-red-200 text-red-700 font-semibold rounded-full hover:bg-red-100 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Remove Photo</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Web Photo Search Input */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                              <input
+                                type="text"
+                                value={webPhotoQuery}
+                                onChange={(e) => setWebPhotoQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSearchWebPhotos(webPhotoQuery || productForm.name);
+                                  }
+                                }}
+                                placeholder="Search web photos (e.g. Classmate Spiral Notebook, DOMS Watercolour, Flair Pen)..."
+                                className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-full text-xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSearchWebPhotos(webPhotoQuery || productForm.name)
+                                }
+                                className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer shrink-0"
+                              >
+                                Search Web Photos
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <label className="block font-medium text-slate-700 mb-1">
+                                  Or Paste Direct Web Image URL
+                                </label>
+                                <input
+                                  type="text"
+                                  value={
+                                    productForm.imageUrl.startsWith('data:')
+                                      ? ''
+                                      : productForm.imageUrl
+                                  }
+                                  onChange={(e) =>
+                                    setProductForm({ ...productForm, imageUrl: e.target.value })
+                                  }
+                                  placeholder="https://example.com/product-photo.jpg"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block font-medium text-slate-700 mb-1">
+                                  Studio Vector Illustration (Fallback / Default)
+                                </label>
+                                <select
+                                  value={productForm.illustrationType}
+                                  onChange={(e) =>
+                                    setProductForm({
+                                      ...productForm,
+                                      illustrationType: e.target.value,
+                                    })
+                                  }
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
+                                >
+                                  {ILLUSTRATION_PRESETS.map((preset) => (
+                                    <option key={preset.value} value={preset.value}>
+                                      {preset.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                           </div>
                         </div>
+
+                        {/* Interactive Web Photo Picker Grid */}
+                        {showWebPhotoPicker && webPhotosResults.length > 0 && (
+                          <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-900">
+                                Web Product Photos — Click any photo to attach to this product
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setShowWebPhotoPicker(false)}
+                                className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                              >
+                                Hide Web Photos
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                              {webPhotosResults.map((wp, idx) => {
+                                const isSelected = productForm.imageUrl === wp.url;
+                                return (
+                                  <div
+                                    key={`${wp.url}-${idx}`}
+                                    className={`rounded-xl border overflow-hidden bg-white flex flex-col justify-between transition-all ${
+                                      isSelected
+                                        ? 'border-2 border-emerald-600 ring-2 ring-emerald-500/20'
+                                        : 'border-slate-200 hover:border-slate-400'
+                                    }`}
+                                  >
+                                    <div className="aspect-4/3 bg-slate-100 overflow-hidden">
+                                      <img
+                                        src={wp.url}
+                                        alt={wp.title}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                    <div className="p-2 space-y-1.5">
+                                      <p className="text-[10px] font-medium text-slate-700 line-clamp-1">
+                                        {wp.title}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAttachWebPhoto(wp.url)}
+                                        className={`w-full py-1 rounded-full text-[10px] font-bold cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-emerald-700 text-white'
+                                            : 'bg-slate-900 hover:bg-slate-800 text-white'
+                                        }`}
+                                      >
+                                        {isSelected ? '✓ Active Photo' : '+ Use Web Photo'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
@@ -3213,9 +3940,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
-                        {(products || []).map((p) =>
-                          (p.variants || []).map((v: any) => (
-                            <tr key={v.id} className="hover:bg-slate-50">
+                        {(localProductsList || []).map((p) =>
+                          (p.variants && p.variants.length > 0
+                            ? p.variants
+                            : [
+                                {
+                                  id: p.id,
+                                  sku: p.sku,
+                                  variantName: 'Standard Pack',
+                                  mrpPaise: p.mrpPaise || 10000,
+                                  sellingPricePaise: p.sellingPricePaise || 9000,
+                                  stockQuantity: p.totalStock ?? 25,
+                                },
+                              ]
+                          ).map((v: any) => (
+                            <tr key={`${p.id}-${v.id}`} className="hover:bg-slate-50">
                               <td className="py-2.5 px-3">
                                 <input
                                   type="checkbox"
@@ -3234,13 +3973,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 />
                               </td>
                               <td className="py-2.5 px-4 w-20">
-                                <div className="w-16 h-12 rounded border border-slate-200 overflow-hidden">
+                                <div className="w-16 h-12 rounded border border-slate-200 overflow-hidden relative group">
                                   <ProductIllustration
                                     type={p.illustrationType}
                                     imageUrl={p.imageUrl}
                                     alt={p.name}
                                     className="w-full h-full"
                                   />
+                                  {p.imageUrl && (
+                                    <button
+                                      type="button"
+                                      title="Remove Photo"
+                                      onClick={() => handleRemoveProductPhoto(p)}
+                                      className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center opacity-90 hover:opacity-100 cursor-pointer"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                               <td className="py-3 px-4">
@@ -3292,13 +4041,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setSelectedMediaProductId(p.id);
-                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                      handleStartEditProduct(p);
+                                      handleSearchWebPhotos(p.name, p);
                                     }}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-300 hover:bg-amber-100 text-amber-950 text-xs font-medium rounded whitespace-nowrap cursor-pointer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 text-emerald-950 text-xs font-medium rounded whitespace-nowrap cursor-pointer"
                                   >
-                                    <ImageIcon className="w-3.5 h-3.5" />
-                                    <span>Upload Photo</span>
+                                    <Globe className="w-3.5 h-3.5" />
+                                    <span>Web Photos</span>
                                   </button>
                                   <button
                                     type="button"
@@ -3310,11 +4059,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDuplicateProduct(p)}
-                                    title="Duplicate Product"
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded whitespace-nowrap cursor-pointer"
+                                    onClick={() => handleDeleteProduct(p)}
+                                    title="Remove Product"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 text-xs font-medium rounded whitespace-nowrap cursor-pointer"
                                   >
-                                    <Copy className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Remove</span>
                                   </button>
                                 </div>
                               </td>

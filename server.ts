@@ -29,6 +29,7 @@ import {
   adjustVariantInventoryByAdmin,
   createOrUpdateProductByAdmin,
   associateProductImagesByAdmin,
+  deleteProductByAdmin,
   importProductsFromCsvByAdmin,
   createBulkOrderEnquiry,
   updateBulkEnquiryByAdmin,
@@ -73,8 +74,13 @@ import {
   testSupabaseServerConnection,
 } from './src/lib/supabase-admin.ts';
 import { generateRecoverableMigrationBackup } from './scripts/migrate_firebase_to_supabase.ts';
+import {
+  searchWebProductPhotos,
+  askCustomerRufusAssistant,
+  parseAdminCopilotCommandWithGemini,
+} from './src/lib/gemini-ai.ts';
 
-dotenv.config({ override: true });
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1041,6 +1047,335 @@ async function startServer() {
     }
   });
 
+  // Delete / Remove Product by ID, SKU, or Name
+  app.post('/api/admin/products/:id/delete', requireStaffOrOwner, async (req: AuthRequest, res) => {
+    try {
+      const productId = Number(req.params.id);
+      const result = await deleteProductByAdmin({
+        productId,
+        sku: req.body?.sku,
+        name: req.body?.name,
+        actorEmail: req.dbUser?.email || 'admin',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to delete product.' });
+    }
+  });
+
+  app.post('/api/admin/products/delete', requireStaffOrOwner, async (req: AuthRequest, res) => {
+    try {
+      const result = await deleteProductByAdmin({
+        productId: req.body?.productId ? Number(req.body.productId) : undefined,
+        sku: req.body?.sku,
+        name: req.body?.name,
+        actorEmail: req.dbUser?.email || 'admin',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to delete product.' });
+    }
+  });
+
+  // Search Real Product Photos from the Web
+  app.post('/api/admin/products/web-photos', requireStaffOrOwner, async (req: AuthRequest, res) => {
+    try {
+      const { query, name, brandName, categoryName } = req.body || {};
+      const photos = await searchWebProductPhotos({
+        query: String(query || name || 'stationery'),
+        brandName,
+        categoryName,
+      });
+      res.json({ photos });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to search web photos.' });
+    }
+  });
+
+  // Customer AI Assistant (Like Amazon Rufus) powered by Gemini
+  app.post('/api/ai/rufus', async (req, res) => {
+    try {
+      const { question, history, currentProduct, catalogue } = req.body || {};
+      if (!question || typeof question !== 'string') {
+        return res.status(400).json({ error: 'Please enter a question for Rufus.' });
+      }
+      let activeCatalogue = Array.isArray(catalogue) && catalogue.length > 0 ? catalogue : [];
+      if (activeCatalogue.length === 0) {
+        try {
+          const boot = await getStoreBootstrapData();
+          activeCatalogue = boot.products || [];
+        } catch {
+          activeCatalogue = [];
+        }
+      }
+      const result = await askCustomerRufusAssistant({
+        question,
+        history,
+        currentProduct,
+        catalogue: activeCatalogue,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Rufus AI assistant error.' });
+    }
+  });
+
+  // Admin AI Copilot — Tell AI to Add Product, Add Photos from the Web, or Remove Product / Photo
+  app.post('/api/ai/admin-copilot', requireStaffOrOwner, async (req: AuthRequest, res) => {
+    try {
+      const { prompt, currentProductId, clientProducts, clientCategories, clientBrands } = req.body || {};
+      if (!prompt || typeof prompt !== 'string') {
+        return res.status(400).json({ error: 'Please tell the AI what you want to do.' });
+      }
+
+      let dbBoot: any = { products: [], categories: [], brands: [] };
+      try {
+        dbBoot = await getStoreBootstrapData();
+      } catch {
+        // Fallback to client-provided catalogue if DB is unreachable
+      }
+
+      const allProducts = dbBoot.products?.length ? dbBoot.products : clientProducts || [];
+      const allCategories = dbBoot.categories?.length ? dbBoot.categories : clientCategories || [];
+      const allBrands = dbBoot.brands?.length ? dbBoot.brands : clientBrands || [];
+
+      const parsed = await parseAdminCopilotCommandWithGemini({
+        prompt,
+        products: allProducts,
+        categories: allCategories,
+        brands: allBrands,
+      });
+
+      const actorEmail = req.dbUser?.email || 'vainhavgupta20052014@gmail.com';
+
+      if (parsed.operation === 'ADD_PRODUCT' || parsed.operation === 'FILL_FORM') {
+        const photos = await searchWebProductPhotos({
+          query: parsed.photoSearchQuery || parsed.productName || prompt,
+          brandName: parsed.brandName,
+          categoryName: parsed.categoryName,
+        });
+        const primaryPhotoUrl = photos[0]?.url || '';
+        const galleryUrls = photos.slice(0, 4).map((p) => p.url);
+
+        const matchedCat =
+          allCategories.find(
+            (c: any) =>
+              c.name?.toLowerCase() === (parsed.categoryName || '').toLowerCase() ||
+              c.name?.toLowerCase().includes((parsed.categoryName || '').toLowerCase())
+          ) || allCategories[0];
+
+        const matchedBrand = allBrands.find(
+          (b: any) =>
+            b.name?.toLowerCase() === (parsed.brandName || '').toLowerCase() ||
+            b.name?.toLowerCase().includes((parsed.brandName || '').toLowerCase())
+        );
+
+        const sellingPriceRupees = Math.max(5, Number(parsed.sellingPriceRupees || 95));
+        const mrpRupees = Math.max(sellingPriceRupees, Number(parsed.mrpRupees || Math.round(sellingPriceRupees * 1.15)));
+
+        const productPayload = {
+          sku:
+            parsed.sku ||
+            `GS-${(parsed.brandName || 'ITEM').slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+          name: parsed.productName || 'New Stationery Item',
+          categoryId: matchedCat?.id || 1,
+          newCategoryName: matchedCat ? undefined : parsed.categoryName || 'Notebooks & Registers',
+          brandId: matchedBrand?.id,
+          newBrandName: matchedBrand ? undefined : parsed.brandName || 'Classmate',
+          shortDescription:
+            parsed.shortDescription ||
+            `${parsed.productName || 'Stationery item'} by ${parsed.brandName || 'Gayatri Stationers'}`,
+          description:
+            parsed.description ||
+            `${parsed.productName || 'Stationery item'} stocked at Gayatri Stationers with ₹0 Store Pickup and Home Delivery.`,
+          mrpPaise: Math.round(mrpRupees * 100),
+          sellingPricePaise: Math.round(sellingPriceRupees * 100),
+          taxRatePercent: 12,
+          imageUrl: primaryPhotoUrl,
+          galleryUrls,
+          illustrationType: 'notebook',
+          pickupEligible: true,
+          deliveryEligible: true,
+          isFeatured: true,
+          isBestseller: false,
+          isNewArrival: true,
+          isActive: true,
+          status: 'PUBLISHED',
+          isSampleData: false,
+          initialStockQuantity: Number(parsed.stockQuantity || 35),
+          actorEmail,
+        };
+
+        if (parsed.operation === 'ADD_PRODUCT') {
+          try {
+            const createdProduct = await createOrUpdateProductByAdmin(productPayload);
+            return res.json({
+              operation: 'ADD_PRODUCT',
+              replyMessage: parsed.replyMessage,
+              product: createdProduct,
+              productFormDraft: productPayload,
+              webPhotos: photos,
+            });
+          } catch {
+            return res.json({
+              operation: 'ADD_PRODUCT',
+              replyMessage: parsed.replyMessage,
+              product: {
+                id: Date.now(),
+                ...productPayload,
+                brandName: parsed.brandName || matchedBrand?.name || 'Classmate',
+                categoryName: parsed.categoryName || matchedCat?.name || 'Notebooks & Registers',
+                variants: [
+                  {
+                    id: Date.now() + 1,
+                    sku: `${productPayload.sku}-STD`,
+                    variantName: 'Standard Unit',
+                    mrpPaise: productPayload.mrpPaise,
+                    sellingPricePaise: productPayload.sellingPricePaise,
+                    stockQuantity: productPayload.initialStockQuantity,
+                  },
+                ],
+              },
+              productFormDraft: productPayload,
+              webPhotos: photos,
+            });
+          }
+        }
+
+        return res.json({
+          operation: 'FILL_FORM',
+          replyMessage: parsed.replyMessage,
+          productFormDraft: productPayload,
+          webPhotos: photos,
+        });
+      }
+
+      if (parsed.operation === 'ADD_WEB_PHOTOS') {
+        const targetQuery = (parsed.targetProductQuery || '').toLowerCase().trim();
+        const targetProd =
+          (currentProductId && allProducts.find((p: any) => Number(p.id) === Number(currentProductId))) ||
+          (targetQuery &&
+            allProducts.find(
+              (p: any) =>
+                p.name?.toLowerCase().includes(targetQuery) ||
+                p.sku?.toLowerCase() === targetQuery
+            )) ||
+          allProducts[0];
+
+        const photos = await searchWebProductPhotos({
+          query: parsed.photoSearchQuery || targetProd?.name || prompt,
+          brandName: targetProd?.brandName || parsed.brandName,
+          categoryName: targetProd?.categoryName || parsed.categoryName,
+        });
+
+        let updatedProd = targetProd;
+        if (targetProd && photos.length > 0) {
+          try {
+            updatedProd = await associateProductImagesByAdmin({
+              productId: Number(targetProd.id),
+              imageUrl: photos[0].url,
+              newImageUrls: photos.slice(0, 4).map((p) => p.url),
+              setAsPrimary: true,
+              actorEmail,
+            });
+          } catch {
+            updatedProd = {
+              ...targetProd,
+              imageUrl: photos[0].url,
+              galleryUrls: photos.slice(0, 4).map((p) => p.url),
+            };
+          }
+        }
+
+        return res.json({
+          operation: 'ADD_WEB_PHOTOS',
+          replyMessage:
+            parsed.replyMessage ||
+            `Added ${photos.length} web photos to "${targetProd?.name || 'product'}".`,
+          product: updatedProd,
+          webPhotos: photos,
+        });
+      }
+
+      if (parsed.operation === 'REMOVE_PHOTO') {
+        const targetQuery = (parsed.targetProductQuery || '').toLowerCase().trim();
+        const targetProd =
+          (currentProductId && allProducts.find((p: any) => Number(p.id) === Number(currentProductId))) ||
+          (targetQuery &&
+            allProducts.find(
+              (p: any) =>
+                p.name?.toLowerCase().includes(targetQuery) ||
+                p.sku?.toLowerCase() === targetQuery
+            )) ||
+          allProducts[0];
+
+        let updatedProd = targetProd;
+        if (targetProd) {
+          try {
+            updatedProd = await associateProductImagesByAdmin({
+              productId: Number(targetProd.id),
+              imageUrl: '',
+              galleryUrls: [],
+              setAsPrimary: true,
+              actorEmail,
+            });
+          } catch {
+            updatedProd = { ...targetProd, imageUrl: '', galleryUrls: [] };
+          }
+        }
+
+        return res.json({
+          operation: 'REMOVE_PHOTO',
+          replyMessage:
+            parsed.replyMessage || `Removed photos from "${targetProd?.name || 'product'}".`,
+          product: updatedProd,
+        });
+      }
+
+      if (parsed.operation === 'REMOVE_PRODUCT') {
+        const targetQuery = (parsed.targetProductQuery || '').toLowerCase().trim();
+        const targetProd =
+          (currentProductId && allProducts.find((p: any) => Number(p.id) === Number(currentProductId))) ||
+          (targetQuery &&
+            allProducts.find(
+              (p: any) =>
+                p.name?.toLowerCase().includes(targetQuery) ||
+                p.sku?.toLowerCase() === targetQuery
+            ));
+
+        if (targetProd) {
+          try {
+            await deleteProductByAdmin({
+              productId: Number(targetProd.id),
+              sku: targetProd.sku,
+              name: targetProd.name,
+              actorEmail,
+            });
+          } catch {
+            // Handled cleanly in fallback
+          }
+        }
+
+        return res.json({
+          operation: 'REMOVE_PRODUCT',
+          replyMessage:
+            parsed.replyMessage ||
+            `Removed "${targetProd?.name || parsed.targetProductQuery || 'product'}" from the catalogue.`,
+          deletedProductId: targetProd?.id,
+          deletedProductSku: targetProd?.sku,
+          deletedProductName: targetProd?.name || parsed.targetProductQuery,
+        });
+      }
+
+      return res.json({
+        operation: 'ADVICE',
+        replyMessage: parsed.replyMessage,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'AI Admin Copilot failed.' });
+    }
+  });
+
   app.post('/api/admin/products/import-csv', requireStaffOrOwner, async (req: AuthRequest, res) => {
     try {
       const { csvText } = req.body;
@@ -1385,13 +1720,29 @@ async function startServer() {
     res.status(500).json({ error: err.message || 'An unexpected server error occurred.' });
   });
 
+  // Bind port 3000 immediately so health checks succeed without waiting for Vite plugin initialization
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Gayatri Stationers server running on http://0.0.0.0:${PORT}`);
+  });
+
   // Vite middleware for development or static serving in production
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
+    const vitePromise = createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
+      },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
@@ -1399,10 +1750,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Gayatri Stationers server running on http://0.0.0.0:${PORT}`);
-  });
 }
 
 startServer();

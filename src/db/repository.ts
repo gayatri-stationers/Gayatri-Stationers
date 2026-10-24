@@ -1935,6 +1935,86 @@ export async function associateProductImagesByAdmin(params: {
   }
 }
 
+export async function deleteProductByAdmin(params: {
+  productId?: number;
+  sku?: string;
+  name?: string;
+  actorEmail: string;
+}) {
+  try {
+    return await db.transaction(async (tx) => {
+      let target: typeof products.$inferSelect | undefined;
+      if (params.productId && !Number.isNaN(Number(params.productId))) {
+        const found = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, Number(params.productId)))
+          .limit(1);
+        target = found[0];
+      }
+      if (!target && params.sku) {
+        const cleanSku = params.sku.trim().toUpperCase();
+        const found = await tx
+          .select()
+          .from(products)
+          .where(eq(products.sku, cleanSku))
+          .limit(1);
+        target = found[0];
+      }
+      if (!target && params.name) {
+        const cleanName = params.name.trim().toLowerCase();
+        const allProds = await tx.select().from(products);
+        target =
+          allProds.find((p) => p.name.toLowerCase() === cleanName) ||
+          allProds.find((p) => p.name.toLowerCase().includes(cleanName));
+      }
+
+      if (!target) {
+        throw new Error('Product not found to remove.');
+      }
+
+      // Check if referenced in historical orders
+      const referencedOrders = await tx
+        .select()
+        .from(orderItems)
+        .where(eq(orderItems.productId, target.id))
+        .limit(1);
+
+      await tx.delete(cartItems).where(eq(cartItems.productId, target.id));
+
+      if (referencedOrders.length > 0) {
+        // Soft-delete / archive so order history remains intact
+        const [archived] = await tx
+          .update(products)
+          .set({
+            isActive: false,
+            status: 'HIDDEN',
+            updatedAt: new Date(),
+          })
+          .where(eq(products.id, target.id))
+          .returning();
+        await tx
+          .update(productVariants)
+          .set({ isActive: false })
+          .where(eq(productVariants.productId, target.id));
+        return { deleted: true, softDeleted: true, product: archived };
+      }
+
+      await tx.delete(inventoryMovements).where(eq(inventoryMovements.productId, target.id));
+      await tx.delete(productVariants).where(eq(productVariants.productId, target.id));
+      const [deletedProd] = await tx
+        .delete(products)
+        .where(eq(products.id, target.id))
+        .returning();
+
+      return { deleted: true, softDeleted: false, product: deletedProd };
+    });
+  } catch (error: any) {
+    console.error('Delete product error:', error);
+    throw sanitizeDbError(error, 'Failed to delete product.');
+  }
+}
+
 export async function importProductsFromCsvByAdmin(csvText: string, actorEmail: string) {
   try {
     const parsed = parseCatalogueCsv(csvText);

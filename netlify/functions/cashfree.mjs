@@ -14,6 +14,19 @@ function sanitizeId(id, fallback) {
   return cleaned || fallback;
 }
 
+async function safeParseJson(res) {
+  try {
+    const text = await res.text();
+    const trimmed = (text || '').trim();
+    if (!trimmed || trimmed.startsWith('<')) {
+      return {};
+    }
+    return JSON.parse(trimmed);
+  } catch {
+    return {};
+  }
+}
+
 export const handler = async (event) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -28,7 +41,17 @@ export const handler = async (event) => {
 
   try {
     const path = event.path || '';
-    const body = event.body ? JSON.parse(event.body) : {};
+    let body = {};
+    if (event.body && typeof event.body === 'string') {
+      const trimmedBody = event.body.trim();
+      if (trimmedBody && !trimmedBody.startsWith('<')) {
+        try {
+          body = JSON.parse(trimmedBody);
+        } catch {
+          body = {};
+        }
+      }
+    }
 
     const appId = (
       body.appId ||
@@ -71,7 +94,7 @@ export const handler = async (event) => {
           'Content-Type': 'application/json',
         },
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       const ok = res.status === 404 || res.status === 200;
       return {
         statusCode: 200,
@@ -119,8 +142,8 @@ export const handler = async (event) => {
         }),
       ]);
 
-      const cfOrder = await orderRes.json();
-      const cfPaymentsRaw = await paymentsRes.json();
+      const cfOrder = await safeParseJson(orderRes);
+      const cfPaymentsRaw = await safeParseJson(paymentsRes);
       const cfPayments = Array.isArray(cfPaymentsRaw) ? cfPaymentsRaw : [];
       const successfulPayment = cfPayments.find((p) => p.payment_status === 'SUCCESS');
       const isOrderPaid = cfOrder?.order_status === 'PAID' || Boolean(successfulPayment);
@@ -187,7 +210,7 @@ export const handler = async (event) => {
       body: JSON.stringify(payload),
     });
 
-    const cfData = await cfRes.json();
+    const cfData = await safeParseJson(cfRes);
     if (!cfRes.ok || !cfData?.payment_session_id) {
       return {
         statusCode: 400,

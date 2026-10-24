@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 import * as schema from './schema.ts';
 
-dotenv.config({ override: true });
+dotenv.config();
 
 declare global {
   var _postgresPool: Pool | undefined;

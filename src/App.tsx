@@ -12,6 +12,7 @@ import {
 import { ProductIllustration } from './components/ProductIllustration.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { OrderTrackingTimeline } from './components/OrderTrackingTimeline.tsx';
+import { RufusAssistant } from './components/RufusAssistant.tsx';
 import {
   Search,
   ShoppingBag,
@@ -283,6 +284,11 @@ export default function App() {
   });
   const [activeHeroBannerIdx, setActiveHeroBannerIdx] = useState<number>(0);
 
+  // Rufus AI Customer Shopping Assistant state
+  const [rufusOpen, setRufusOpen] = useState(false);
+  const [rufusInitialQuestion, setRufusInitialQuestion] = useState<string | null>(null);
+  const [pdpRufusQuestionInput, setPdpRufusQuestionInput] = useState('');
+
   // Auth & Persistent Admin Session state
   const [supabaseUser, setSupabaseUser] = useState<any>(null);
   const [idToken, setIdToken] = useState<string | null>(() => {
@@ -550,9 +556,22 @@ const DEFAULT_PRODUCTS = [
     try {
       const raw = localStorage.getItem('gs_fallback_catalogue_v1');
       const stored = raw ? JSON.parse(raw) : [];
+      const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
+      const deletedIds = new Set<string>(
+        Array.isArray(deletedRaw ? JSON.parse(deletedRaw) : [])
+          ? JSON.parse(deletedRaw || '[]').map((x: any) => String(x).toLowerCase())
+          : []
+      );
       const merged = new Map<string, any>();
       for (const p of [...DEFAULT_PRODUCTS, ...(Array.isArray(stored) ? stored : [])]) {
         if (!p || !p.name) continue;
+        if (
+          deletedIds.has(String(p.id).toLowerCase()) ||
+          deletedIds.has(String(p.sku || '').toLowerCase()) ||
+          deletedIds.has(String(p.name || '').toLowerCase())
+        ) {
+          continue;
+        }
         merged.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
       }
       return Array.from(merged.values());
@@ -884,16 +903,39 @@ const DEFAULT_PRODUCTS = [
         }
       }
 
-      const normalizedProducts = Array.isArray(data.products) && data.products.length > 0
-        ? data.products.map(normalizeCatalogueProduct)
-        : [];
-      if (normalizedProducts.length > 0) {
-        setProducts(normalizedProducts);
-        try {
-          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(normalizedProducts));
-        } catch {
-          // Ignore storage quota
+      const serverProds =
+        Array.isArray(data.products) && data.products.length > 0
+          ? data.products.map(normalizeCatalogueProduct)
+          : [];
+      try {
+        const localProdsRaw = localStorage.getItem('gs_fallback_catalogue_v1');
+        const localProds = localProdsRaw ? JSON.parse(localProdsRaw) : [];
+        const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
+        const deletedIds = new Set<string>(
+          Array.isArray(deletedRaw ? JSON.parse(deletedRaw) : [])
+            ? JSON.parse(deletedRaw || '[]').map((x: any) => String(x).toLowerCase())
+            : []
+        );
+        const prodMap = new Map<string, any>();
+        const baseProds = serverProds.length > 0 ? serverProds : DEFAULT_PRODUCTS;
+        for (const p of [...baseProds, ...(Array.isArray(localProds) ? localProds : [])]) {
+          if (!p || !p.name) continue;
+          if (
+            deletedIds.has(String(p.id).toLowerCase()) ||
+            deletedIds.has(String(p.sku || '').toLowerCase()) ||
+            deletedIds.has(String(p.name || '').toLowerCase())
+          ) {
+            continue;
+          }
+          prodMap.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
         }
+        const finalProducts = Array.from(prodMap.values());
+        if (finalProducts.length > 0) {
+          setProducts(finalProducts);
+          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(finalProducts));
+        }
+      } catch {
+        if (serverProds.length > 0) setProducts(serverProds);
       }
       if (Array.isArray(data.bundles)) setBundles(data.bundles);
       if (Array.isArray(data.coupons)) setCoupons(data.coupons);
@@ -945,7 +987,7 @@ const DEFAULT_PRODUCTS = [
 
       // Initialize default selected variant for each product (DB variant IDs take precedence)
       const initialVarMap: Record<number, number> = {};
-      for (const p of normalizedProducts) {
+      for (const p of serverProds) {
         if (p.variants && p.variants.length > 0) {
           initialVarMap[p.id] = p.variants[0].id;
         }
@@ -1826,6 +1868,20 @@ const DEFAULT_PRODUCTS = [
           }),
         });
         const data = await res.json();
+        if (data?.fallback && !data?.paymentSessionId) {
+          // Static fallback host without live Cashfree function: confirm order cleanly
+          const fallbackConfirmed = pendingOrderResponse || confirmedOrderData;
+          if (fallbackConfirmed) {
+            setConfirmedOrderData(fallbackConfirmed);
+            setCartItems([]);
+            setAppliedCouponCode('');
+            setCouponInput('');
+            await loadStoreBootstrap();
+            setActiveView('confirmation');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return true;
+          }
+        }
         if (!res.ok || !data.paymentSessionId) {
           throw new Error(data.error || 'Failed to initialize Cashfree payment session.');
         }
@@ -1882,10 +1938,13 @@ const DEFAULT_PRODUCTS = [
       return true;
     } catch (err: any) {
       console.error('Cashfree payment modal error:', err.message || err);
-      setCheckoutError(
-        err.message ||
-          'Cashfree Payment Gateway could not complete payment. Please try again or choose Cash on Delivery (COD).'
-      );
+      const rawMsg = String(err?.message || '');
+      const cleanMsg =
+        rawMsg.includes('Unexpected token') || rawMsg.includes('<!DOCTYPE')
+          ? 'Online gateway session could not reach server. Please select Cash on Delivery (COD) or Pay at Store Counter.'
+          : rawMsg ||
+            'Cashfree Payment Gateway could not complete payment. Please try again or choose Cash on Delivery (COD).';
+      setCheckoutError(cleanMsg);
       return false;
     } finally {
       setCheckoutSubmitting(false);
@@ -2104,7 +2163,12 @@ const DEFAULT_PRODUCTS = [
       setActiveView('confirmation');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
-      setCheckoutError(err.message || 'Could not complete order.');
+      const rawMsg = String(err?.message || '');
+      const cleanMsg =
+        rawMsg.includes('Unexpected token') || rawMsg.includes('<!DOCTYPE')
+          ? 'Could not reach server endpoint. Please try again or choose Cash on Delivery.'
+          : rawMsg || 'Could not complete order.';
+      setCheckoutError(cleanMsg);
     } finally {
       setCheckoutSubmitting(false);
     }
@@ -2642,6 +2706,17 @@ const DEFAULT_PRODUCTS = [
                 </div>
               )}
             </div>
+
+            {/* Ask Rufus AI Button (Amazon Rufus-style Customer Shopping Assistant) */}
+            <button
+              type="button"
+              onClick={() => setRufusOpen(true)}
+              className="px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-opacity"
+              title="Ask Rufus AI Shopping Assistant"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>Ask Rufus AI</span>
+            </button>
 
             {/* Quick Filter Button (School Kits & Combos) */}
             <button
@@ -3794,6 +3869,73 @@ const DEFAULT_PRODUCTS = [
                           </dl>
                         </div>
                       )}
+
+                    {/* Amazon Rufus-style "Ask Rufus AI about this product" widget on PDP */}
+                    <div className="p-5 bg-gradient-to-br from-slate-900 via-slate-900 to-[#B42318]/90 text-white rounded-[28px] space-y-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          </span>
+                          <div>
+                            <h3 className="text-xs font-bold tracking-tight">
+                              Looking for specific info? Ask Rufus AI
+                            </h3>
+                            <p className="text-[10px] text-slate-300">
+                              Gemini-powered product Q&amp;A &amp; stationery comparison
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 bg-white/10 rounded-full text-amber-200">
+                          Rufus AI
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          `Is ${activePdpProduct.name} good for board exams?`,
+                          `What is included in this ${activePdpProduct.brandName} pack?`,
+                          `Compare this with other ${activePdpProduct.categoryName}`,
+                        ].map((qText, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setRufusInitialQuestion(qText);
+                              setRufusOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-full text-[11px] text-white text-left cursor-pointer transition-colors"
+                          >
+                            {qText}
+                          </button>
+                        ))}
+                      </div>
+
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!pdpRufusQuestionInput.trim()) return;
+                          setRufusInitialQuestion(pdpRufusQuestionInput.trim());
+                          setPdpRufusQuestionInput('');
+                          setRufusOpen(true);
+                        }}
+                        className="flex items-center gap-2 pt-1"
+                      >
+                        <input
+                          type="text"
+                          value={pdpRufusQuestionInput}
+                          onChange={(e) => setPdpRufusQuestionInput(e.target.value)}
+                          placeholder={`Ask Rufus anything about ${activePdpProduct.name}...`}
+                          className="flex-1 px-4 py-2 rounded-full bg-white/95 text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="px-4 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer shrink-0"
+                        >
+                          Ask Rufus
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4243,7 +4385,14 @@ const DEFAULT_PRODUCTS = [
                         {myOrdersList.length === 0 ? (
                           <div className="p-6 text-center space-y-3 text-xs text-slate-500">
                             <p>
-                              No orders are assigned to <strong>{dbUser.email}</strong> yet. Any order you place while signed in will appear here.
+                              No orders are assigned to{' '}
+                              <strong>
+                                {dbUser?.email ||
+                                  supabaseUser?.email ||
+                                  customerEmail ||
+                                  'your account'}
+                              </strong>{' '}
+                              yet. Any order you place will appear here automatically.
                             </p>
                             <button
                               type="button"
@@ -6194,6 +6343,34 @@ const DEFAULT_PRODUCTS = [
         </div>
       </footer>
 
+      {/* Floating Rufus AI Customer Assistant Pill & Modal (Amazon Rufus style) */}
+      {activeView !== 'admin' && activeView !== 'admin-login' && !rufusOpen && (
+        <button
+          type="button"
+          onClick={() => setRufusOpen(true)}
+          className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 px-4 py-2.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-xs font-bold shadow-xl border border-white/20 flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
+          aria-label="Open Rufus AI Shopping Assistant"
+        >
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>Ask Rufus AI</span>
+        </button>
+      )}
+
+      <RufusAssistant
+        isOpen={rufusOpen}
+        onClose={() => setRufusOpen(false)}
+        products={products}
+        activeProduct={activeView === 'pdp' ? activePdpProduct : null}
+        onAddToCart={(prod) => handleAddToCart(prod, prod?.variants?.[0]?.id, 1)}
+        onOpenProduct={(prod) => openProductDetail(prod)}
+        onFilterCategory={(catSlug) => {
+          setSelectedCategorySlug(catSlug);
+          setSelectedBrandSlug('ALL');
+          setActiveView('storefront');
+        }}
+        initialQuestion={rufusInitialQuestion}
+        onClearInitialQuestion={() => setRufusInitialQuestion(null)}
+      />
     </div>
   );
 }

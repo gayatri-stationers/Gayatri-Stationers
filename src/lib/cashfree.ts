@@ -128,6 +128,17 @@ export function getCashfreeConfig(overrides?: {
   };
 }
 
+async function safeParseResponseJson(response: Response): Promise<any> {
+  try {
+    const text = await response.text();
+    const trimmed = (text || '').trim();
+    if (!trimmed || trimmed.startsWith('<')) return {};
+    return JSON.parse(trimmed);
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Masks App ID for safe public presentation (e.g. CF123...456).
  */
@@ -194,7 +205,7 @@ export async function createCashfreeOrder(
     body: JSON.stringify(requestPayload),
   });
 
-  const responseData: any = await response.json();
+  const responseData: any = await safeParseResponseJson(response);
 
   if (!response.ok) {
     // If order with same ID already exists on Cashfree, fetch it or create a fresh attempt ID
@@ -231,7 +242,7 @@ export async function createCashfreeOrder(
         },
         body: JSON.stringify(retryPayload),
       });
-      const retryData: any = await retryRes.json();
+      const retryData: any = await safeParseResponseJson(retryRes);
       if (retryRes.ok && retryData?.payment_session_id) {
         return retryData as CashfreeOrderResponse;
       }
@@ -271,7 +282,7 @@ export async function getCashfreeOrder(
     },
   });
 
-  const data: any = await response.json();
+  const data: any = await safeParseResponseJson(response);
   if (!response.ok) {
     throw new Error(data?.message || `Failed to fetch Cashfree order ${orderId}`);
   }
@@ -302,7 +313,7 @@ export async function getCashfreeOrderPayments(
     },
   });
 
-  const data: any = await response.json();
+  const data: any = await safeParseResponseJson(response);
   if (!response.ok) {
     throw new Error(data?.message || `Failed to fetch Cashfree payments for order ${orderId}`);
   }
@@ -378,7 +389,7 @@ export async function testCashfreeConnection(overrides?: {
       },
     });
 
-    const data: any = await response.json();
+    const data: any = await safeParseResponseJson(response);
 
     // If HTTP status is 404 (order not found), credentials were authenticated successfully!
     // If HTTP status is 401/403, credentials failed authentication.
