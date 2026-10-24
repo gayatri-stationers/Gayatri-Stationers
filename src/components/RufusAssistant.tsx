@@ -1,5 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, X, ShoppingBag, Mic, ArrowRight, Bot, HelpCircle } from 'lucide-react';
+import {
+  Sparkles,
+  Send,
+  X,
+  ShoppingBag,
+  Mic,
+  Bot,
+  HelpCircle,
+  Globe,
+  ExternalLink,
+  Search,
+  TrendingUp,
+} from 'lucide-react';
 import { formatPaiseToINR } from '../lib/domain-logic.ts';
 import { ProductIllustration } from './ProductIllustration.tsx';
 
@@ -9,6 +21,9 @@ export interface RufusChatMessage {
   text: string;
   recommendedProductIds?: number[];
   followUpQuestions?: string[];
+  searchGrounded?: boolean;
+  groundingSources?: Array<{ uri: string; title: string }>;
+  searchQueries?: string[];
 }
 
 interface RufusAssistantProps {
@@ -24,10 +39,10 @@ interface RufusAssistantProps {
 }
 
 const DEFAULT_STARTER_QUESTIONS = [
-  'Best pens for fast board exam writing?',
-  'Recommend notebooks & geometry kit under ₹300',
-  'What art & craft sets do you have from DOMS?',
-  'How does ₹0 Store Pickup counter collection work?',
+  '2026 stationery market trends & top exam pens in India?',
+  'Compare Classmate vs Navneet notebook prices & reviews',
+  'Customer reviews & ratings for DOMS art & geometry kits',
+  'Best pens for fast board exam writing under ₹150?',
 ];
 
 export function RufusAssistant({
@@ -45,17 +60,19 @@ export function RufusAssistant({
     {
       id: 'welcome-vidya',
       role: 'assistant',
-      text: 'Namaste! I’m **Vidya AI**, your Gayatri Stationers Shopping & Study Guide. Ask me to compare pens, find notebooks under your budget, build a complete school exam kit, or add items directly to your cart!',
+      text: 'Namaste! I’m **Vidya AI**, your Gayatri Stationers Shopping & Study Guide — now powered by **Google Search Grounding** for real-time Indian stationery market trends, live price comparisons across brands, and verified product reviews. Ask me anything or tap a prompt below!',
       recommendedProductIds: products
         .filter((p) => p && p.isActive !== false && p.isBestseller)
         .slice(0, 2)
         .map((p) => Number(p.id)),
       followUpQuestions: DEFAULT_STARTER_QUESTIONS,
+      searchGrounded: true,
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [enableSearchGrounding, setEnableSearchGrounding] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -91,6 +108,19 @@ export function RufusAssistant({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: contextualQuestion,
+          enableSearchGrounding,
+           currentProduct: activeProduct
+            ? {
+                id: activeProduct.id,
+                sku: activeProduct.sku,
+                name: activeProduct.name,
+                brandName: activeProduct.brandName,
+                categoryName: activeProduct.categoryName,
+                sellingPricePaise: activeProduct.sellingPricePaise,
+                mrpPaise: activeProduct.mrpPaise,
+                shortDescription: activeProduct.shortDescription,
+              }
+            : null,
           history: nextHistory.slice(-6).map((m) => ({
             role: m.role,
             text: m.text,
@@ -116,7 +146,7 @@ export function RufusAssistant({
         role: 'assistant',
         text:
           data?.answer ||
-          'Here are our top stationery recommendations available for ₹0 Store Pickup and Home Delivery.',
+          'Here are our top stationery recommendations available for ₹0 Store Pickup and Pan-India Shiprocket Home Delivery.',
         recommendedProductIds: Array.isArray(data?.recommendedProductIds)
           ? data.recommendedProductIds.map((id: any) => Number(id))
           : [],
@@ -124,6 +154,9 @@ export function RufusAssistant({
           Array.isArray(data?.followUpQuestions) && data.followUpQuestions.length > 0
             ? data.followUpQuestions
             : DEFAULT_STARTER_QUESTIONS.slice(0, 3),
+        searchGrounded: Boolean(data?.searchGrounded),
+        groundingSources: Array.isArray(data?.groundingSources) ? data.groundingSources : [],
+        searchQueries: Array.isArray(data?.searchQueries) ? data.searchQueries : [],
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -206,9 +239,9 @@ export function RufusAssistant({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:p-4 bg-slate-950/40 backdrop-blur-xs">
-      <div className="w-full sm:max-w-md h-[86vh] sm:h-[680px] bg-white border border-slate-200 rounded-t-[32px] sm:rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full sm:max-w-md h-[88vh] sm:h-[700px] bg-white border border-slate-200 rounded-t-[28px] sm:rounded-[28px] shadow-2xl flex flex-col overflow-hidden">
         {/* Header — Vidya AI Brand Bar */}
-        <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-slate-900 to-[#B42318] text-white flex items-center justify-between gap-3 shrink-0">
+        <div className="px-5 py-3.5 bg-gradient-to-r from-slate-900 via-slate-900 to-[#B42318] text-white flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-full bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
               <Sparkles className="w-4 h-4 text-amber-300" />
@@ -216,14 +249,14 @@ export function RufusAssistant({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="font-serif-display text-base font-bold tracking-tight truncate">
-                  Vidya AI
+                  Ask Vidya AI
                 </h2>
                 <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider bg-amber-400/20 text-amber-200 border border-amber-300/30 rounded-full font-bold">
-                  Gayatri Stationers Guide
+                  Search Grounded
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 truncate">
-                Ask anything about notebooks, pens, kits, or prices
+                Real-time market trends, price comparisons & reviews
               </p>
             </div>
           </div>
@@ -238,22 +271,99 @@ export function RufusAssistant({
           </button>
         </div>
 
+        {/* Google Search Grounding Bar + Market Trend Quick Prompts */}
+        <div className="px-4 py-2 bg-slate-900/95 text-white border-b border-slate-800 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-200">
+              <Globe className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="font-medium">Google Search Grounding</span>
+              <span className="text-[10px] text-slate-400 hidden sm:inline">
+                (Trends · Pricing · Reviews)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEnableSearchGrounding((prev) => !prev)}
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold border transition-colors cursor-pointer ${
+                enableSearchGrounding
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
+            >
+              {enableSearchGrounding ? 'LIVE WEB: ON' : 'LIVE WEB: OFF'}
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                sendQuestion(
+                  'What are the latest 2026 stationery market trends in India for school & competitive exam students?'
+                )
+              }
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full text-[10px] text-amber-200 whitespace-nowrap inline-flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <TrendingUp className="w-3 h-3" />
+              <span>Market Trends</span>
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                sendQuestion(
+                  activeProduct
+                    ? `Compare the price of ${activeProduct.name} (${formatPaiseToINR(
+                        activeProduct.sellingPricePaise
+                      )}) with market prices across India and similar competing brands.`
+                    : 'Compare prices of Classmate, Navneet, and DOMS stationery items in the Indian market vs Gayatri Stationers store prices.'
+                )
+              }
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full text-[10px] text-emerald-200 whitespace-nowrap inline-flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Search className="w-3 h-3" />
+              <span>Price Comparison</span>
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() =>
+                sendQuestion(
+                  activeProduct
+                    ? `What do real customer reviews say about ${activeProduct.name} (${activeProduct.brandName}) for daily student and office use?`
+                    : 'What are the highest-rated ball & roller pens and geometry boxes in India according to student reviews?'
+                )
+              }
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full text-[10px] text-sky-200 whitespace-nowrap inline-flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Product Reviews</span>
+            </button>
+          </div>
+        </div>
+
         {/* Context Banner if viewing a specific product */}
         {activeProduct && (
           <div className="px-4 py-2 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between gap-2 text-[11px] text-amber-950 shrink-0">
             <span className="truncate">
-              Asking about: <strong>{activeProduct.name}</strong> (
+              Viewing: <strong>{activeProduct.name}</strong> (
               {formatPaiseToINR(activeProduct.sellingPricePaise)})
             </span>
-            <button
-              type="button"
-              onClick={() =>
-                sendQuestion(`Is ${activeProduct.name} good for school and daily exam use?`)
-              }
-              className="px-2.5 py-0.5 bg-amber-900 text-white rounded-full text-[10px] font-semibold shrink-0 cursor-pointer"
-            >
-              Ask Review
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() =>
+                  sendQuestion(
+                    `Compare ${activeProduct.name} price (${formatPaiseToINR(
+                      activeProduct.sellingPricePaise
+                    )}) and reviews with competing brands in India.`
+                  )
+                }
+                className="px-2.5 py-0.5 bg-amber-900 text-white rounded-full text-[10px] font-semibold shrink-0 cursor-pointer"
+              >
+                Compare & Reviews
+              </button>
+            </div>
           </div>
         )}
 
@@ -275,16 +385,24 @@ export function RufusAssistant({
                 } space-y-2`}
               >
                 <div
-                  className={`max-w-[88%] px-4 py-3 rounded-[24px] text-xs leading-relaxed whitespace-pre-line shadow-2xs ${
+                  className={`max-w-[90%] px-4 py-3 rounded-[22px] text-xs leading-relaxed whitespace-pre-line shadow-2xs ${
                     msg.role === 'user'
                       ? 'bg-slate-900 text-white rounded-br-xs'
                       : 'bg-white border border-slate-200/90 text-slate-800 rounded-bl-xs'
                   }`}
                 >
                   {msg.role === 'assistant' && (
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-[#B42318] font-bold mb-1">
-                      <Bot className="w-3.5 h-3.5" />
-                      <span>Vidya AI · Gayatri Stationers Guide</span>
+                    <div className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase tracking-wider text-[#B42318] font-bold mb-1">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Bot className="w-3.5 h-3.5" />
+                        <span>Vidya AI · Gayatri Stationers</span>
+                      </span>
+                      {msg.searchGrounded && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px]">
+                          <Globe className="w-2.5 h-2.5" />
+                          <span>Google Search</span>
+                        </span>
+                      )}
                     </div>
                   )}
                   <div>
@@ -298,6 +416,51 @@ export function RufusAssistant({
                       )
                     )}
                   </div>
+
+                  {/* Google Search Grounding Sources / Citations */}
+                  {msg.role === 'assistant' &&
+                    Array.isArray(msg.groundingSources) &&
+                    msg.groundingSources.length > 0 && (
+                      <div className="mt-3 pt-2.5 border-t border-slate-100">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-semibold mb-1.5 flex items-center gap-1">
+                          <Globe className="w-3 h-3 text-emerald-600" />
+                          <span>Verified Google Search Sources ({msg.groundingSources.length})</span>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.groundingSources.map((src, sIdx) => (
+                            <a
+                              key={`${msg.id}-src-${sIdx}`}
+                              href={src.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200 text-[10px] text-slate-700 hover:text-[#B42318] font-medium transition-colors max-w-full"
+                            >
+                              <span className="truncate max-w-[190px]">{src.title}</span>
+                              <ExternalLink className="w-2.5 h-2.5 shrink-0 opacity-70" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Search Queries Used */}
+                  {msg.role === 'assistant' &&
+                    Array.isArray(msg.searchQueries) &&
+                    msg.searchQueries.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <span className="text-[9px] font-mono uppercase text-slate-400">
+                          Searched:
+                        </span>
+                        {msg.searchQueries.slice(0, 3).map((q, qIdx) => (
+                          <span
+                            key={`${msg.id}-sq-${qIdx}`}
+                            className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded"
+                          >
+                            &ldquo;{q}&rdquo;
+                          </span>
+                        ))}
+                      </div>
+                    )}
                 </div>
 
                 {/* Recommended Product Cards inside Vidya AI Chat */}
@@ -310,7 +473,7 @@ export function RufusAssistant({
                       return (
                         <div
                           key={`vidya-rec-${msg.id}-${prod.id}`}
-                          className="p-3 bg-white border border-slate-200/90 rounded-[22px] shadow-2xs flex items-center justify-between gap-3"
+                          className="p-3 bg-white border border-slate-200/90 rounded-[20px] shadow-2xs flex items-center justify-between gap-3"
                         >
                           <button
                             type="button"
@@ -320,7 +483,7 @@ export function RufusAssistant({
                             }}
                             className="flex items-center gap-2.5 text-left min-w-0 flex-1 cursor-pointer group"
                           >
-                            <div className="w-12 h-12 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
+                            <div className="w-12 h-12 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
                               <ProductIllustration
                                 type={prod.illustrationType}
                                 imageUrl={prod.imageUrl}
@@ -386,9 +549,13 @@ export function RufusAssistant({
           })}
 
           {loading && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-[22px] w-fit text-xs text-slate-600 shadow-2xs">
+            <div className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-[20px] w-fit text-xs text-slate-600 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5 text-[#B42318] animate-spin" />
-              <span>Vidya AI is checking Gayatri Stationers catalogue...</span>
+              <span>
+                {enableSearchGrounding
+                  ? 'Vidya AI is searching Google & checking Gayatri Stationers catalogue...'
+                  : 'Vidya AI is checking Gayatri Stationers catalogue...'}
+              </span>
             </div>
           )}
         </div>
@@ -418,7 +585,7 @@ export function RufusAssistant({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Vidya AI a question or 'Add Classmate notebook'..."
+            placeholder="Ask trends, price comparisons, reviews, or 'Add Classmate'..."
             className="flex-1 px-4 py-2 text-xs bg-slate-100 focus:bg-white border border-slate-200 focus:border-slate-900 rounded-full focus:outline-none text-slate-900"
           />
 
@@ -434,3 +601,4 @@ export function RufusAssistant({
     </div>
   );
 }
+

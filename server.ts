@@ -1092,10 +1092,10 @@ async function startServer() {
     }
   });
 
-  // Customer AI Assistant (Like Amazon Rufus) powered by Gemini
+  // Customer AI Assistant (Like Amazon Rufus) powered by Gemini + Google Search Grounding
   app.post('/api/ai/rufus', async (req, res) => {
     try {
-      const { question, history, currentProduct, catalogue } = req.body || {};
+      const { question, history, currentProduct, catalogue, enableSearchGrounding } = req.body || {};
       if (!question || typeof question !== 'string') {
         return res.status(400).json({ error: 'Please enter a question for Rufus.' });
       }
@@ -1113,6 +1113,7 @@ async function startServer() {
         history,
         currentProduct,
         catalogue: activeCatalogue,
+        enableSearchGrounding: enableSearchGrounding !== false,
       });
       res.json(result);
     } catch (error: any) {
