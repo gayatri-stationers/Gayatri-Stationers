@@ -1747,220 +1747,239 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col">
-      {/* Responsive Admin Top Header with Global Search, Role Switcher & Live Notification Bell */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 sticky top-0 z-40">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-serif-display text-base sm:text-lg font-bold tracking-tight">
-            Gayatri Stationers · Admin Console
-          </span>
-          {currentUser && (
-            <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded text-[11px] text-slate-200 font-mono-tabular">
-              {currentUser.email} · {currentUser.role.toUpperCase()}
-            </span>
-          )}
-        </div>
-
-        {/* Global Admin Quick-Search Input */}
-        <div className="relative flex-1 max-w-md">
-          <div className="flex items-center bg-slate-800 border border-slate-700 rounded focus-within:border-amber-400">
-            <Search className="w-3.5 h-3.5 text-slate-400 ml-3 shrink-0" />
-            <input
-              type="search"
-              value={adminQuickSearch}
-              onFocus={() => setQuickSearchOpen(true)}
-              onBlur={() => setTimeout(() => setQuickSearchOpen(false), 200)}
-              onChange={(e) => {
-                setAdminQuickSearch(e.target.value);
-                setQuickSearchOpen(true);
-              }}
-              placeholder="Quick jump: Order #, Pickup Code, Product, SKU, Brand..."
-              className="w-full px-2.5 py-1.5 text-xs bg-transparent text-white placeholder-slate-400 focus:outline-none"
-            />
-            {adminQuickSearch && (
-              <button
-                type="button"
-                onClick={() => setAdminQuickSearch('')}
-                className="px-2 text-[11px] text-slate-400 hover:text-white"
-              >
-                Clear
-              </button>
+    <div className="liquid-admin-shell text-slate-900 flex flex-col pb-24 lg:pb-10">
+      {/* Standalone Liquid Glass Admin Capsule Header (Distinct from Storefront) */}
+      <div className="sticky top-0 z-40 px-2.5 sm:px-5 pt-2.5 pb-1.5 bg-[#EEF2F6]/75 backdrop-blur-md">
+        <header className="liquid-admin-glass-bar text-white px-4 sm:px-6 py-2.5 sm:py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 max-w-[1440px] mx-auto">
+          <div className="flex flex-wrap items-center justify-between lg:justify-start gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#B42318] to-amber-600 flex items-center justify-center shadow-inner border border-white/25 shrink-0">
+                <Settings className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-serif-display text-sm sm:text-base font-bold tracking-tight text-white">
+                    Gayatri Admin OS
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-mono uppercase tracking-wider text-amber-300">
+                    Kanpur HQ
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300 hidden sm:block">
+                  Standalone Retail &amp; Inventory Command Console · Awas Vikas Market, Naubasta
+                </p>
+              </div>
+            </div>
+            {currentUser && (
+              <span className="px-3 py-1 bg-white/10 border border-white/15 rounded-full text-[11px] text-slate-100 font-mono-tabular">
+                {currentUser.email} · {currentUser.role.toUpperCase()}
+              </span>
             )}
           </div>
 
-          {quickSearchOpen && adminQuickSearch.trim().length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1 bg-white text-slate-900 border border-slate-300 rounded shadow-xl z-50 max-h-80 overflow-y-auto divide-y divide-slate-100 text-xs">
-              {quickSearchResults.orders.length === 0 &&
-              quickSearchResults.products.length === 0 &&
-              quickSearchResults.categories.length === 0 &&
-              quickSearchResults.brands.length === 0 ? (
-                <div className="p-3 text-slate-500">
-                  No matching orders, products, categories, or brands found.
-                </div>
-              ) : (
-                <>
-                  {quickSearchResults.orders.map((entry: any) => (
-                    <button
-                      key={`qs-ord-${entry.order.id}`}
-                      type="button"
-                      onMouseDown={() => {
-                        setSelectedOrder(entry);
-                        setActiveTab('orders');
-                        setAdminQuickSearch('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-mono-tabular font-bold text-slate-900">
-                          Order {entry.order.orderNumber}
-                        </span>
-                        <span className="text-slate-500 ml-2">
-                          {entry.order.customerName} · {entry.order.orderStatus.replace(/_/g, ' ')}
-                        </span>
-                      </div>
-                      <span className="font-mono-tabular font-semibold text-amber-800">
-                        {entry.pickupDetails?.pickupCode
-                          ? `Code: ${entry.pickupDetails.pickupCode}`
-                          : formatPaiseToINR(entry.order.totalPaise)}
-                      </span>
-                    </button>
-                  ))}
-                  {quickSearchResults.products.map((p: any) => (
-                    <button
-                      key={`qs-prod-${p.id}`}
-                      type="button"
-                      onMouseDown={() => {
-                        setActiveTab('products');
-                        handleStartEditProduct(p);
-                        setAdminQuickSearch('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between"
-                    >
-                      <div>
-                        <span className="font-semibold text-slate-900">{p.name}</span>
-                        <span className="text-slate-500 ml-2 font-mono-tabular">SKU: {p.sku}</span>
-                      </div>
-                      <span className="font-mono-tabular text-slate-700">
-                        {p.totalStock ?? p.variants?.[0]?.stockQuantity ?? 0} in stock
-                      </span>
-                    </button>
-                  ))}
-                  {quickSearchResults.categories.map((c: any) => (
-                    <button
-                      key={`qs-cat-${c.id}`}
-                      type="button"
-                      onMouseDown={() => {
-                        setActiveTab('cms');
-                        setCmsSubTab('categories');
-                        setAdminQuickSearch('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between"
-                    >
-                      <span className="font-medium text-slate-900">Category: {c.name}</span>
-                      <span className="text-[11px] text-slate-500">Edit in CMS →</span>
-                    </button>
-                  ))}
-                  {quickSearchResults.brands.map((b: any) => (
-                    <button
-                      key={`qs-brd-${b.id}`}
-                      type="button"
-                      onMouseDown={() => {
-                        setActiveTab('cms');
-                        setCmsSubTab('brands');
-                        setAdminQuickSearch('');
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between"
-                    >
-                      <span className="font-medium text-slate-900">Brand: {b.name}</span>
-                      <span className="text-[11px] text-slate-500">Edit in CMS →</span>
-                    </button>
-                  ))}
-                </>
+          {/* Global Admin Quick-Search Oval Capsule */}
+          <div className="relative flex-1 max-w-md w-full">
+            <div className="flex items-center bg-white/12 hover:bg-white/16 border border-white/20 rounded-full focus-within:bg-white/20 focus-within:border-amber-400 transition-all">
+              <Search className="w-3.5 h-3.5 text-slate-300 ml-3.5 shrink-0" />
+              <input
+                type="search"
+                value={adminQuickSearch}
+                onFocus={() => setQuickSearchOpen(true)}
+                onBlur={() => setTimeout(() => setQuickSearchOpen(false), 200)}
+                onChange={(e) => {
+                  setAdminQuickSearch(e.target.value);
+                  setQuickSearchOpen(true);
+                }}
+                placeholder="Search Admin: Order #, Pickup Code, SKU, Brand..."
+                className="w-full px-2.5 py-1.5 text-xs bg-transparent text-white placeholder-slate-300 focus:outline-none"
+              />
+              {adminQuickSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAdminQuickSearch('')}
+                  className="px-2.5 py-0.5 mr-1 text-[11px] bg-white/15 rounded-full text-slate-200 hover:text-white cursor-pointer"
+                >
+                  Clear
+                </button>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-2.5">
-          {/* Seamless In-Place Role Switcher (keeps exact same interface open) */}
-          {onRoleSwitched && (
-            <div className="flex items-center bg-slate-800 border border-slate-700 rounded p-0.5 text-xs">
-              <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-slate-400">
-                Role:
-              </span>
-              {(['customer', 'staff', 'owner'] as const).map((r) => {
-                const active = (currentUser?.role || 'owner') === r;
-                return (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => onRoleSwitched(r)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-semibold capitalize transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-[#B42318] text-white'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Sound Chime Toggle */}
-          <button
-            type="button"
-            onClick={() => setSoundAlertsEnabled((prev) => !prev)}
-            title={soundAlertsEnabled ? 'Sound alerts enabled' : 'Sound alerts muted'}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 cursor-pointer"
-          >
-            {soundAlertsEnabled ? (
-              <Volume2 className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <VolumeX className="w-4 h-4 text-slate-400" />
+            {quickSearchOpen && adminQuickSearch.trim().length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-2xl text-slate-900 border border-slate-200 rounded-[24px] shadow-2xl z-50 max-h-80 overflow-y-auto divide-y divide-slate-100 text-xs p-1.5">
+                {quickSearchResults.orders.length === 0 &&
+                quickSearchResults.products.length === 0 &&
+                quickSearchResults.categories.length === 0 &&
+                quickSearchResults.brands.length === 0 ? (
+                  <div className="p-3 text-slate-500">
+                    No matching orders, products, categories, or brands found.
+                  </div>
+                ) : (
+                  <>
+                    {quickSearchResults.orders.map((entry: any) => (
+                      <button
+                        key={`qs-ord-${entry.order.id}`}
+                        type="button"
+                        onMouseDown={() => {
+                          setSelectedOrder(entry);
+                          setActiveTab('orders');
+                          setAdminQuickSearch('');
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between cursor-pointer"
+                      >
+                        <div>
+                          <span className="font-mono-tabular font-bold text-slate-900">
+                            Order {entry.order.orderNumber}
+                          </span>
+                          <span className="text-slate-500 ml-2">
+                            {entry.order.customerName} · {entry.order.orderStatus.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <span className="font-mono-tabular font-semibold text-amber-800">
+                          {entry.pickupDetails?.pickupCode
+                            ? `Code: ${entry.pickupDetails.pickupCode}`
+                            : formatPaiseToINR(entry.order.totalPaise)}
+                        </span>
+                      </button>
+                    ))}
+                    {quickSearchResults.products.map((p: any) => (
+                      <button
+                        key={`qs-prod-${p.id}`}
+                        type="button"
+                        onMouseDown={() => {
+                          setActiveTab('products');
+                          handleStartEditProduct(p);
+                          setAdminQuickSearch('');
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between cursor-pointer"
+                      >
+                        <div>
+                          <span className="font-semibold text-slate-900">{p.name}</span>
+                          <span className="text-slate-500 ml-2 font-mono-tabular">SKU: {p.sku}</span>
+                        </div>
+                        <span className="font-mono-tabular text-slate-700">
+                          {p.totalStock ?? p.variants?.[0]?.stockQuantity ?? 0} in stock
+                        </span>
+                      </button>
+                    ))}
+                    {quickSearchResults.categories.map((c: any) => (
+                      <button
+                        key={`qs-cat-${c.id}`}
+                        type="button"
+                        onMouseDown={() => {
+                          setActiveTab('cms');
+                          setCmsSubTab('categories');
+                          setAdminQuickSearch('');
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-medium text-slate-900">Category: {c.name}</span>
+                        <span className="text-[11px] text-slate-500">Edit in CMS →</span>
+                      </button>
+                    ))}
+                    {quickSearchResults.brands.map((b: any) => (
+                      <button
+                        key={`qs-brd-${b.id}`}
+                        type="button"
+                        onMouseDown={() => {
+                          setActiveTab('cms');
+                          setCmsSubTab('brands');
+                          setAdminQuickSearch('');
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-slate-100/80 rounded-2xl flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-medium text-slate-900">Brand: {b.name}</span>
+                        <span className="text-[11px] text-slate-500">Edit in CMS →</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
             )}
-          </button>
+          </div>
 
-          {/* Live Admin Notifications Center Button */}
-          <button
-            type="button"
-            onClick={() => setNotificationsOpen((prev) => !prev)}
-            className="relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded border border-slate-700 transition-colors cursor-pointer"
-          >
-            <Bell className="w-3.5 h-3.5 text-amber-400" />
-            <span>Notifications</span>
-            {actionableAlertsCount > 0 && (
-              <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[10px] font-mono-tabular font-bold rounded">
-                {actionableAlertsCount}
-              </span>
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
+            {/* Seamless In-Place Role Switcher Oval Capsule */}
+            {onRoleSwitched && (
+              <div className="flex items-center bg-white/10 border border-white/15 rounded-full p-0.5 text-xs">
+                <span className="px-2.5 text-[10px] font-mono uppercase tracking-wider text-slate-300">
+                  Role:
+                </span>
+                {(['customer', 'staff', 'owner'] as const).map((r) => {
+                  const active = (currentUser?.role || 'owner') === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => onRoleSwitched(r)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-semibold capitalize transition-all cursor-pointer ${
+                        active
+                          ? 'bg-[#B42318] text-white shadow-xs'
+                          : 'text-slate-300 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
+              </div>
             )}
-          </button>
 
-          <button
-            onClick={onExitAdmin}
-            className="px-3.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-white rounded border border-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            Storefront View
-          </button>
-        </div>
-      </header>
+            {/* Sound Chime Toggle */}
+            <button
+              type="button"
+              onClick={() => setSoundAlertsEnabled((prev) => !prev)}
+              title={soundAlertsEnabled ? 'Sound alerts enabled' : 'Sound alerts muted'}
+              className="p-2 bg-white/10 hover:bg-white/20 text-slate-200 rounded-full border border-white/15 cursor-pointer transition-colors"
+            >
+              {soundAlertsEnabled ? (
+                <Volume2 className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-slate-400" />
+              )}
+            </button>
+
+            {/* Live Admin Notifications Center Oval Button */}
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+              className="relative inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 text-white rounded-full border border-white/15 transition-colors cursor-pointer"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-400" />
+              <span>Alerts</span>
+              {actionableAlertsCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[10px] font-mono-tabular font-bold rounded-full">
+                  {actionableAlertsCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={onExitAdmin}
+              className="px-4 py-1.5 text-xs font-semibold bg-white text-slate-900 hover:bg-slate-100 rounded-full shadow-xs transition-all whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Storefront Website →
+            </button>
+          </div>
+        </header>
+      </div>
 
       {/* Notice if user switched to Customer role while staying on the same Admin interface */}
       {currentUser?.role === 'customer' && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2">
-          <span>
-            <strong>Customer Role Active on Same Interface:</strong> You switched to Customer role while keeping this workspace open. Switch back to <strong>Staff</strong> or <strong>Owner</strong> above to save administrative changes.
-          </span>
-          {onRoleSwitched && (
-            <button
-              type="button"
-              onClick={() => onRoleSwitched('owner')}
-              className="px-3 py-1 bg-slate-900 text-white font-semibold rounded cursor-pointer"
-            >
-              Switch to Owner Role
-            </button>
-          )}
+        <div className="max-w-[1440px] mx-auto w-full px-3 sm:px-6 pt-2">
+          <div className="bg-amber-50/90 backdrop-blur-md border border-amber-200 rounded-full px-4 sm:px-6 py-2 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+            <span>
+              <strong>Customer Role Active on Admin Workspace:</strong> Switch back to <strong>Staff</strong> or <strong>Owner</strong> to save administrative changes.
+            </span>
+            {onRoleSwitched && (
+              <button
+                type="button"
+                onClick={() => onRoleSwitched('owner')}
+                className="px-3.5 py-1 bg-slate-900 text-white font-semibold rounded-full cursor-pointer"
+              >
+                Switch to Owner Role
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2186,14 +2205,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      <div className="flex-1 flex flex-col lg:flex-row">
-        {/* Responsive Sidebar / Mobile Tab Navigation (8 Core Sections + Operational Utilities) */}
-        <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 p-3 sm:p-4 shrink-0">
-          <nav className="flex lg:flex-col gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+      <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto px-2.5 sm:px-5 pt-2 gap-5 items-start">
+        {/* Floating Liquid Glass Sidebar / Mobile Oval Pill Navigation */}
+        <aside className="w-full lg:w-64 liquid-admin-glass-sidebar p-2 sm:p-4 shrink-0 lg:sticky lg:top-20">
+          <nav className="flex lg:flex-col gap-1.5 overflow-x-auto no-scrollbar pb-0.5 lg:pb-0">
             {[
               {
                 key: 'home',
-                label: 'Home',
+                label: 'Overview',
                 icon: ClipboardList,
                 badge: 0,
                 isActive: activeTab === 'overview',
@@ -2201,7 +2220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'orders',
-                label: 'Orders',
+                label: 'Orders & Pickup',
                 icon: Store,
                 badge: dashboardData?.metrics?.pendingOrdersCount || 0,
                 isActive: activeTab === 'orders',
@@ -2209,7 +2228,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'products',
-                label: 'Products',
+                label: 'Products & Stock',
                 icon: Package,
                 badge: dashboardData?.lowStockVariants?.length || 0,
                 isActive: activeTab === 'products',
@@ -2239,7 +2258,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'storefront',
-                label: 'Storefront',
+                label: 'Website Builder',
                 icon: LayoutTemplate,
                 badge: 0,
                 isActive:
@@ -2254,7 +2273,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'pages',
-                label: 'Pages',
+                label: 'Policy Pages',
                 icon: Compass,
                 badge: 0,
                 isActive: activeTab === 'cms' && cmsSubTab === 'pages',
@@ -2265,7 +2284,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'settings',
-                label: 'Settings',
+                label: 'Settings & Gateway',
                 icon: Settings,
                 badge: 0,
                 isActive: activeTab === 'settings',
@@ -2277,10 +2296,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   key={item.key}
                   onClick={item.onClick}
-                  className={`flex items-center justify-between gap-2 px-3 py-2 rounded text-xs sm:text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`flex items-center justify-between gap-2 px-3.5 py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                     item.isActive
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-slate-900 text-white shadow-sm font-semibold'
+                      : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-950'
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -2289,7 +2308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </span>
                   {item.badge > 0 && (
                     <span
-                      className={`px-1.5 py-0.2 rounded text-[10px] font-mono-tabular font-bold ${
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono-tabular font-bold ${
                         item.isActive
                           ? 'bg-amber-400 text-slate-950'
                           : 'bg-slate-200 text-slate-800'
@@ -2304,9 +2323,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </nav>
 
           {/* Storefront Sub-Sections & Operational Tools */}
-          <div className="hidden lg:block mt-5 pt-4 border-t border-slate-200 space-y-1.5">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2 font-bold">
-              STOREFRONT & OPERATIONS
+          <div className="hidden lg:block mt-5 pt-4 border-t border-slate-200/80 space-y-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-3 font-bold">
+              QUICK OPERATIONS
             </div>
             {[
               {
@@ -2366,10 +2385,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 key={q.label}
                 type="button"
                 onClick={q.onClick}
-                className={`w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors cursor-pointer ${
+                className={`w-full text-left px-3.5 py-1.5 rounded-full text-xs transition-all cursor-pointer ${
                   q.active
-                    ? 'bg-red-50 text-red-900 font-bold border border-red-200'
-                    : 'text-slate-600 hover:bg-slate-100'
+                    ? 'bg-[#B42318] text-white font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                 }`}
               >
                 • {q.label}
@@ -2378,10 +2397,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </aside>
 
-        {/* Main Workspace */}
-        <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full overflow-x-hidden">
-          {/* GEMINI AI ADMIN COPILOT BAR — Tell AI to Add Product, Add Web Photos, or Remove Product / Photo */}
-          <div className="mb-5 bg-gradient-to-r from-slate-900 via-slate-900 to-[#3B0D0C] text-white rounded-2xl p-4 sm:p-5 shadow-md border border-slate-800 space-y-3">
+        {/* Main Liquid Admin Workspace */}
+        <main className="flex-1 p-1 sm:p-2 max-w-7xl w-full overflow-x-hidden">
+          {/* GEMINI AI ADMIN COPILOT CAPSULE — Liquid Glass Command Bar */}
+          <div className="mb-5 bg-gradient-to-r from-slate-900 via-slate-900 to-[#3B0D0C] text-white rounded-[32px] p-4 sm:p-6 shadow-lg border border-white/15 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-[#B42318] flex items-center justify-center shrink-0">
@@ -4951,6 +4970,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
         </main>
       </div>
+
+      {/* Standalone Mobile Liquid Glass Admin Bottom Dock (Only Admin Controls — Never Storefront Cart/Shop) */}
+      <nav
+        aria-label="Admin Mobile Bottom Dock"
+        className="lg:hidden fixed bottom-3 left-3 right-3 z-40 liquid-admin-dock px-2 py-1.5 text-white"
+      >
+        <div className="grid grid-cols-5 gap-1 text-[11px] font-medium">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('overview');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeTab === 'overview'
+                ? 'bg-white text-slate-900 font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Overview</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('orders');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeTab === 'orders'
+                ? 'bg-white text-slate-900 font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span>Orders</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('products');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeTab === 'products'
+                ? 'bg-[#B42318] text-white font-bold shadow-xs'
+                : 'bg-white/10 text-white font-semibold'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Products</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('cms');
+              setCmsSubTab('homepage');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeTab === 'cms'
+                ? 'bg-white text-slate-900 font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <LayoutTemplate className="w-4 h-4" />
+            <span>CMS</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('settings');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+              activeTab === 'settings'
+                ? 'bg-white text-slate-900 font-bold shadow-xs'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>Settings</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 };

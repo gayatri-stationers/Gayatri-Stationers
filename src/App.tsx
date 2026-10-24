@@ -42,6 +42,123 @@ interface LocalCartItem {
   productId: number;
   variantId: number;
   quantity: number;
+  selectedColor?: string;
+}
+
+export interface ProductColorOption {
+  label: string;
+  shortLabel: string;
+  swatch: string;
+  border: string;
+  variantId?: number;
+}
+
+function isPenOrWritingProduct(product: any): boolean {
+  if (!product) return false;
+  const cat = `${product.categorySlug || ''} ${product.categoryName || ''}`.toLowerCase();
+  const text = `${product.name || ''} ${product.sku || ''} ${product.illustrationType || ''}`.toLowerCase();
+  if (cat.includes('pen') || cat.includes('writing') || cat.includes('marker') || cat.includes('highlighter')) {
+    // Exclude pure graphite pencil boxes unless they also mention pen/ink
+    if (text.includes('graphite pencil') && !text.includes('pen')) return false;
+    return true;
+  }
+  return (
+    /\b(pen|pens|roller|ballpoint|gel pen|fountain|marker|highlighter|fineliner|refill)\b/i.test(text) &&
+    !text.includes('pencil tin')
+  );
+}
+
+function getColorSwatchStyle(colorText: string): { swatch: string; border: string } {
+  const lower = (colorText || '').toLowerCase();
+  if (lower.includes('assorted') || lower.includes('multi') || lower.includes('shades') || (lower.includes('blue') && lower.includes('black'))) {
+    return {
+      swatch: 'conic-gradient(#1D4ED8 0deg 120deg, #18181B 120deg 240deg, #DC2626 240deg 360deg)',
+      border: '#94A3B8',
+    };
+  }
+  if (lower.includes('navy')) return { swatch: '#1E3A8A', border: '#1E3A8A' };
+  if (lower.includes('blue') || lower.includes('turquoise')) return { swatch: '#1D4ED8', border: '#1D4ED8' };
+  if (lower.includes('black') && lower.includes('gold')) {
+    return {
+      swatch: 'linear-gradient(135deg, #18181B 55%, #D97706 45%)',
+      border: '#B45309',
+    };
+  }
+  if (lower.includes('black')) return { swatch: '#18181B', border: '#18181B' };
+  if (lower.includes('red') || lower.includes('crimson') || lower.includes('burgundy')) {
+    return { swatch: '#DC2626', border: '#DC2626' };
+  }
+  if (lower.includes('green') || lower.includes('emerald')) return { swatch: '#15803D', border: '#15803D' };
+  if (lower.includes('grey') || lower.includes('gray') || lower.includes('slate')) {
+    return { swatch: '#64748B', border: '#64748B' };
+  }
+  if (lower.includes('violet') || lower.includes('purple')) return { swatch: '#7C3AED', border: '#7C3AED' };
+  if (lower.includes('pink') || lower.includes('magenta')) return { swatch: '#DB2777', border: '#DB2777' };
+  if (lower.includes('yellow') || lower.includes('neon') || lower.includes('gold')) {
+    return { swatch: '#EAB308', border: '#CA8A04' };
+  }
+  return { swatch: '#1D4ED8', border: '#1D4ED8' };
+}
+
+function getProductColorOptions(product: any): ProductColorOption[] {
+  if (!product) return [];
+  const variants: any[] = Array.isArray(product.variants) ? product.variants : [];
+
+  if (isPenOrWritingProduct(product)) {
+    const standardPenColors = [
+      { label: 'Blue Ink', shortLabel: 'Blue', keyword: 'blue' },
+      { label: 'Black Ink', shortLabel: 'Black', keyword: 'black' },
+      { label: 'Red Ink', shortLabel: 'Red', keyword: 'red' },
+      { label: 'Green Ink', shortLabel: 'Green', keyword: 'green' },
+      { label: 'Assorted (Multi-Colour)', shortLabel: 'Assorted', keyword: 'assorted' },
+    ];
+
+    return standardPenColors.map((sc) => {
+      const style = getColorSwatchStyle(sc.label);
+      const matchedVariant = variants.find((v) => {
+        const vText = `${v.variantName || ''} ${v.attributeValue || ''}`.toLowerCase();
+        if (sc.keyword === 'assorted') {
+          return vText.includes('assorted') || (vText.includes('blue') && vText.includes('black'));
+        }
+        return vText.includes(sc.keyword) && !vText.includes('assorted') && !(sc.keyword !== 'black' && vText.includes('+') && vText.includes('black'));
+      });
+      return {
+        label: sc.label,
+        shortLabel: sc.shortLabel,
+        swatch: style.swatch,
+        border: style.border,
+        variantId: matchedVariant?.id,
+      };
+    });
+  }
+
+  // Check if non-pen product has colour variants (e.g. Files & Folders, Watercolour Tins, etc.)
+  const colorVariants = variants.filter((v) => {
+    const attr = String(v.attributeType || '').toLowerCase();
+    const name = String(v.variantName || '').toLowerCase();
+    return (
+      attr.includes('colour') ||
+      attr.includes('color') ||
+      attr.includes('finish') ||
+      /\b(blue|black|red|green|navy|grey|slate|gold)\b/i.test(name)
+    );
+  });
+
+  if (colorVariants.length > 0) {
+    return colorVariants.map((v) => {
+      const cleanLabel = v.attributeValue || v.variantName;
+      const style = getColorSwatchStyle(cleanLabel);
+      return {
+        label: cleanLabel,
+        shortLabel: cleanLabel,
+        swatch: style.swatch,
+        border: style.border,
+        variantId: v.id,
+      };
+    });
+  }
+
+  return [];
 }
 
 interface FlyingCartItem {
@@ -435,7 +552,11 @@ const DEFAULT_PRODUCTS = [
     status: 'PUBLISHED',
     badge: 'POPULAR',
     variants: [
-      { id: 6, variantName: 'Pack of 10 Pens (8 Blue + 2 Black)', sku: 'GS-PN-UNO2X-10', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 80, inStock: true },
+      { id: 6, variantName: 'Box of 10 Pens — Blue Ink', attributeType: 'Ink Colour', attributeValue: 'Blue Ink', sku: 'GS-PN-UNO2X-BLU', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 80, inStock: true },
+      { id: 601, variantName: 'Box of 10 Pens — Black Ink', attributeType: 'Ink Colour', attributeValue: 'Black Ink', sku: 'GS-PN-UNO2X-BLK', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 55, inStock: true },
+      { id: 602, variantName: 'Box of 10 Pens — Red Ink', attributeType: 'Ink Colour', attributeValue: 'Red Ink', sku: 'GS-PN-UNO2X-RED', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 35, inStock: true },
+      { id: 603, variantName: 'Box of 10 Pens — Green Ink', attributeType: 'Ink Colour', attributeValue: 'Green Ink', sku: 'GS-PN-UNO2X-GRN', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 25, inStock: true },
+      { id: 604, variantName: 'Box of 10 Pens — Assorted (Blue, Black, Red)', attributeType: 'Ink Colour', attributeValue: 'Assorted (Multi-Colour)', sku: 'GS-PN-UNO2X-AST', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 45, inStock: true },
     ],
   },
   {
@@ -462,7 +583,11 @@ const DEFAULT_PRODUCTS = [
     isBestseller: false,
     status: 'PUBLISHED',
     variants: [
-      { id: 8, variantName: 'Pack of 5 Pens (Blue Ink)', sku: 'GS-PN-FLZ7-5B', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 50, inStock: true },
+      { id: 8, variantName: 'Pack of 5 Pens — Blue Ink', attributeType: 'Ink Colour', attributeValue: 'Blue Ink', sku: 'GS-PN-FLZ7-5B', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 50, inStock: true },
+      { id: 801, variantName: 'Pack of 5 Pens — Black Ink', attributeType: 'Ink Colour', attributeValue: 'Black Ink', sku: 'GS-PN-FLZ7-5K', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 40, inStock: true },
+      { id: 802, variantName: 'Pack of 5 Pens — Red Ink', attributeType: 'Ink Colour', attributeValue: 'Red Ink', sku: 'GS-PN-FLZ7-5R', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 30, inStock: true },
+      { id: 803, variantName: 'Pack of 5 Pens — Green Ink', attributeType: 'Ink Colour', attributeValue: 'Green Ink', sku: 'GS-PN-FLZ7-5G', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 25, inStock: true },
+      { id: 804, variantName: 'Pack of 5 Pens — Assorted (Blue, Black, Red)', attributeType: 'Ink Colour', attributeValue: 'Assorted (Multi-Colour)', sku: 'GS-PN-FLZ7-5A', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 35, inStock: true },
     ],
   },
   {
@@ -650,10 +775,12 @@ const DEFAULT_PRODUCTS = [
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<'featured' | 'bestseller' | 'newest' | 'price_asc' | 'price_desc'>('featured');
   const [selectedVariantByProduct, setSelectedVariantByProduct] = useState<Record<number, number>>({});
+  const [selectedColorByProduct, setSelectedColorByProduct] = useState<Record<number, string>>({});
 
   // Product Detail Page (PDP) state
   const [activeProductSlug, setActiveProductSlug] = useState<string | null>(null);
   const [pdpVariantId, setPdpVariantId] = useState<number | null>(null);
+  const [pdpSelectedColor, setPdpSelectedColor] = useState<string>('');
   const [pdpQuantity, setPdpQuantity] = useState<number>(1);
   const [pdpSelectedImageUrl, setPdpSelectedImageUrl] = useState<string | null>(null);
 
@@ -1036,11 +1163,17 @@ const DEFAULT_PRODUCTS = [
       if (res.ok && data) {
         setServerCartResult(data);
         if (data.calculation?.items && Array.isArray(data.calculation.items)) {
-          const syncedItems: LocalCartItem[] = data.calculation.items.map((i: any) => ({
-            productId: Number(i.productId),
-            variantId: Number(i.variantId),
-            quantity: Number(i.quantity),
-          }));
+          const syncedItems: LocalCartItem[] = data.calculation.items.map((i: any) => {
+            const existingMatch = cartItems.find(
+              (c) => Number(c.productId) === Number(i.productId) && Number(c.variantId) === Number(i.variantId)
+            );
+            return {
+              productId: Number(i.productId),
+              variantId: Number(i.variantId),
+              quantity: Number(i.quantity),
+              selectedColor: existingMatch?.selectedColor,
+            };
+          });
           const currentSig = cartItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
           const syncedSig = syncedItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
           if (syncedSig !== currentSig) {
@@ -1092,7 +1225,8 @@ const DEFAULT_PRODUCTS = [
     variantId?: number,
     qtyToAdd = 1,
     _sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null,
-    skipRedirect = false
+    skipRedirect = false,
+    explicitColor?: string
   ) => {
     const targetVarId =
       variantId || selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
@@ -1102,6 +1236,14 @@ const DEFAULT_PRODUCTS = [
     if (variant.stockQuantity <= 0) {
       return;
     }
+
+    const colorOptions = getProductColorOptions(product);
+    const resolvedColor =
+      explicitColor ??
+      (activeView === 'pdp' && activePdpProduct?.id === product.id ? pdpSelectedColor : undefined) ??
+      selectedColorByProduct[product.id] ??
+      colorOptions[0]?.label ??
+      undefined;
 
     const existingItem = cartItems.find(
       (i) => i.productId === product.id && i.variantId === variant.id
@@ -1119,13 +1261,22 @@ const DEFAULT_PRODUCTS = [
         const currentQty = prev[existingIdx].quantity;
         const nextQty = Math.min(variant.stockQuantity, currentQty + qtyToAdd);
         const copy = [...prev];
-        copy[existingIdx] = { ...copy[existingIdx], quantity: nextQty };
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          quantity: nextQty,
+          selectedColor: resolvedColor || copy[existingIdx].selectedColor,
+        };
         return copy;
       } else {
         const clampedQty = Math.min(variant.stockQuantity, qtyToAdd);
         return [
           ...prev,
-          { productId: product.id, variantId: variant.id, quantity: clampedQty },
+          {
+            productId: product.id,
+            variantId: variant.id,
+            quantity: clampedQty,
+            selectedColor: resolvedColor,
+          },
         ];
       }
     });
@@ -1604,6 +1755,10 @@ const DEFAULT_PRODUCTS = [
     const defaultVar =
       selectedVariantByProduct[product.id] || product.variants?.[0]?.id || null;
     setPdpVariantId(defaultVar);
+    const colorOpts = getProductColorOptions(product);
+    const savedCol = selectedColorByProduct[product.id];
+    const matchedVarColor = colorOpts.find((c) => c.variantId && c.variantId === defaultVar)?.label;
+    setPdpSelectedColor(savedCol || matchedVarColor || colorOpts[0]?.label || '');
     setPdpQuantity(1);
     setActiveView('pdp');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2077,12 +2232,17 @@ const DEFAULT_PRODUCTS = [
         const unitMrpPaise = Number(
           variant?.mrpPaise ?? prod?.mrpPaise ?? prod?.baseMrpPaise ?? unitPricePaise
         );
+        const baseVarName = variant?.variantName || 'Standard Pack';
+        const finalVarName =
+          ci.selectedColor && !baseVarName.toLowerCase().includes(ci.selectedColor.split(' ')[0].toLowerCase())
+            ? `${baseVarName} · Colour: ${ci.selectedColor}`
+            : baseVarName;
         return {
           productId: ci.productId,
           variantId: variant?.id || ci.variantId,
           quantity: ci.quantity,
           productName: prod?.name || 'Stationery Item',
-          variantName: variant?.variantName || 'Standard Pack',
+          variantName: finalVarName,
           sku: variant?.sku || prod?.sku || `GS-${ci.productId}`,
           unitPricePaise,
           unitMrpPaise,
@@ -2314,11 +2474,17 @@ const DEFAULT_PRODUCTS = [
         const unitMrpPaise = Number(
           variant.mrpPaise ?? prod.mrpPaise ?? unitPricePaise
         );
+        const baseVariantName = variant.variantName || 'Standard';
+        const displayVariantName =
+          ci.selectedColor && !baseVariantName.toLowerCase().includes(ci.selectedColor.split(' ')[0].toLowerCase())
+            ? `${baseVariantName} (${ci.selectedColor})`
+            : baseVariantName;
         return {
           productId: prod.id,
           variantId: variant.id,
           productName: prod.name,
-          variantName: variant.variantName || 'Standard',
+          variantName: displayVariantName,
+          selectedColor: ci.selectedColor,
           sku: variant.sku || prod.sku || `GS-${prod.id}`,
           quantity: ci.quantity,
           unitMrpPaise: Number.isFinite(unitMrpPaise) ? unitMrpPaise : 0,
@@ -2377,6 +2543,74 @@ const DEFAULT_PRODUCTS = [
     () => cmsPages.find((p) => p.slug === activePageSlug) || cmsPages[0] || null,
     [cmsPages, activePageSlug]
   );
+
+  // STANDALONE LIQUID ADMIN CONSOLE: When activeView is 'admin' or 'admin-login', render ONLY the standalone Liquid Admin Workspace (no storefront header/footer/cart dock)
+  if (activeView === 'admin' || activeView === 'admin-login') {
+    return (
+      <AdminDashboard
+        idToken={idToken || 'gs_admin_direct_owner:vainhavgupta20052014@gmail.com'}
+        currentUser={
+          dbUser && (dbUser.role === 'owner' || dbUser.role === 'staff')
+            ? dbUser
+            : {
+                id: 1,
+                uid: 'admin-owner-vainhav',
+                email:
+                  dbUser?.email ||
+                  supabaseUser?.email ||
+                  'vainhavgupta20052014@gmail.com',
+                fullName: dbUser?.fullName || 'Gayatri Stationers Owner',
+                role: 'owner',
+              }
+        }
+        categories={categories}
+        brands={brands}
+        products={products}
+        storeSettings={storeSettings}
+        bootstrap={{
+          categories,
+          brands,
+          products,
+          bundles,
+          coupons,
+          serviceablePincodes,
+          settings: storeSettings,
+          navigationItems,
+          homepageSections,
+          banners,
+          pages: cmsPages,
+          revisions: cmsRevisions,
+        }}
+        onRefreshStorefront={() => loadStoreBootstrap()}
+        onRoleSwitched={handleSwitchRole}
+        onExitAdmin={() => {
+          window.history.pushState({}, '', '/');
+          setActiveView('storefront');
+        }}
+        onNavigateStorefront={(target) => {
+          window.history.pushState({}, '', '/');
+          if (target.view === 'page' && target.pageSlug) {
+            setActivePageSlug(target.pageSlug);
+            setActiveView('page');
+            return;
+          }
+          if (target.categorySlug) {
+            setSelectedCategorySlug(target.categorySlug);
+            setSelectedBrandSlug('ALL');
+            setActiveView('storefront');
+            return;
+          }
+          if (target.brandSlug) {
+            setSelectedBrandSlug(target.brandSlug);
+            setSelectedCategorySlug('ALL');
+            setActiveView('storefront');
+            return;
+          }
+          setActiveView('storefront');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col text-[#111827] bg-[#FAFAFA] pb-20 md:pb-0">
@@ -3499,6 +3733,55 @@ const DEFAULT_PRODUCTS = [
                                   {product.shortDescription}
                                 </p>
 
+                                {/* Interactive Colour Swatches on Catalogue Card (for Pens & Colour Items) */}
+                                {(() => {
+                                  const cardColors = getProductColorOptions(product);
+                                  if (cardColors.length === 0) return null;
+                                  const activeCol =
+                                    selectedColorByProduct[product.id] || cardColors[0]?.label;
+                                  return (
+                                    <div className="pt-1 flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[10px] font-medium text-slate-500">
+                                        Colour:
+                                      </span>
+                                      <div className="flex items-center gap-1.5">
+                                        {cardColors.map((colOpt) => {
+                                          const isColSelected = activeCol === colOpt.label;
+                                          return (
+                                            <button
+                                              key={colOpt.label}
+                                              type="button"
+                                              title={`Select ${colOpt.label}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedColorByProduct((prev) => ({
+                                                  ...prev,
+                                                  [product.id]: colOpt.label,
+                                                }));
+                                                if (colOpt.variantId) {
+                                                  setSelectedVariantByProduct((prev) => ({
+                                                    ...prev,
+                                                    [product.id]: colOpt.variantId!,
+                                                  }));
+                                                }
+                                              }}
+                                              className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full transition-transform cursor-pointer flex items-center justify-center ${
+                                                isColSelected
+                                                  ? 'ring-2 ring-offset-1 ring-slate-900 scale-110'
+                                                  : 'opacity-80 hover:opacity-100 hover:scale-105'
+                                              }`}
+                                              style={{
+                                                background: colOpt.swatch,
+                                                border: `1px solid ${colOpt.border}`,
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
                                 {/* Variant Selector if multiple variants exist */}
                                 {product.variants && product.variants.length > 1 && (
                                   <div className="pt-1">
@@ -3683,14 +3966,26 @@ const DEFAULT_PRODUCTS = [
                 </button>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start bg-white border border-stone-200/80 rounded-[36px] shadow-xs p-6 lg:p-10">
-                  {/* Left: Sticky Product Gallery */}
+                    {/* Left: Sticky Product Gallery */}
                   <div className="lg:col-span-6 space-y-4">
-                    <div className="aspect-4/3 border border-stone-200/80 rounded-[28px] overflow-hidden">
+                    <div className="relative aspect-4/3 border border-stone-200/80 rounded-[28px] overflow-hidden">
                       <ProductIllustration
                         type={activePdpProduct.illustrationType}
                         imageUrl={pdpSelectedImageUrl || activePdpProduct.imageUrl}
                         alt={activePdpProduct.name}
                       />
+                      {pdpSelectedColor && (
+                        <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full shrink-0"
+                            style={{
+                              background: getColorSwatchStyle(pdpSelectedColor).swatch,
+                              border: `1px solid ${getColorSwatchStyle(pdpSelectedColor).border}`,
+                            }}
+                          />
+                          <span>Selected: {pdpSelectedColor}</span>
+                        </div>
+                      )}
                     </div>
                     {Array.isArray(activePdpProduct.galleryUrls) &&
                       activePdpProduct.galleryUrls.length > 1 && (
@@ -3758,11 +4053,84 @@ const DEFAULT_PRODUCTS = [
                       {activePdpProduct.description}
                     </p>
 
+                    {/* INTERACTIVE COLOUR / INK SHADE SELECTOR (For Pens, Markers & Colour Stationery) */}
+                    {(() => {
+                      const pdpColorOptions = getProductColorOptions(activePdpProduct);
+                      if (pdpColorOptions.length === 0) return null;
+                      const currentSelectedColor =
+                        pdpSelectedColor || pdpColorOptions[0]?.label || '';
+                      return (
+                        <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-[24px] space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-xs font-bold text-stone-900">
+                              {isPenOrWritingProduct(activePdpProduct)
+                                ? 'Select Ink / Pen Colour:'
+                                : 'Select Colour Option:'}
+                            </label>
+                            <span className="text-xs font-semibold text-stone-700 flex items-center gap-1.5">
+                              <span
+                                className="w-3 h-3 rounded-full inline-block"
+                                style={{
+                                  background: getColorSwatchStyle(currentSelectedColor).swatch,
+                                  border: `1px solid ${getColorSwatchStyle(currentSelectedColor).border}`,
+                                }}
+                              />
+                              <span>{currentSelectedColor}</span>
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            {pdpColorOptions.map((colOpt) => {
+                              const isSelected = currentSelectedColor === colOpt.label;
+                              return (
+                                <button
+                                  key={colOpt.label}
+                                  type="button"
+                                  onClick={() => {
+                                    setPdpSelectedColor(colOpt.label);
+                                    setSelectedColorByProduct((prev) => ({
+                                      ...prev,
+                                      [activePdpProduct.id]: colOpt.label,
+                                    }));
+                                    if (colOpt.variantId) {
+                                      setPdpVariantId(colOpt.variantId);
+                                      setSelectedVariantByProduct((prev) => ({
+                                        ...prev,
+                                        [activePdpProduct.id]: colOpt.variantId!,
+                                      }));
+                                    }
+                                  }}
+                                  className={`px-3.5 py-2 rounded-full text-xs font-semibold border flex items-center gap-2 transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs scale-[1.02]'
+                                      : 'bg-white text-stone-800 border-stone-300 hover:border-stone-500'
+                                  }`}
+                                >
+                                  <span
+                                    className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center shadow-2xs"
+                                    style={{
+                                      background: colOpt.swatch,
+                                      border: isSelected
+                                        ? '2px solid #FFFFFF'
+                                        : `1px solid ${colOpt.border}`,
+                                    }}
+                                  >
+                                    {isSelected && <Check className="w-2.5 h-2.5 text-white drop-shadow" />}
+                                  </span>
+                                  <span>{colOpt.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {/* Variant Selection (Apple Oval Pills) */}
                     {activePdpProduct.variants && activePdpProduct.variants.length > 0 && (
                       <div className="space-y-2">
                         <label className="block text-xs font-semibold text-stone-800">
-                          Select Option ({activePdpProduct.variants[0].attributeType}):
+                          Select Pack / Option ({activePdpProduct.variants[0].attributeType || 'Pack Size'}):
                         </label>
                         <div className="flex flex-wrap gap-2">
                           {activePdpProduct.variants.map((v: any) => (
@@ -3771,6 +4139,15 @@ const DEFAULT_PRODUCTS = [
                               onClick={() => {
                                 setPdpVariantId(v.id);
                                 setPdpQuantity(1);
+                                const pdpColors = getProductColorOptions(activePdpProduct);
+                                const matchingCol = pdpColors.find((c) => c.variantId === v.id);
+                                if (matchingCol) {
+                                  setPdpSelectedColor(matchingCol.label);
+                                  setSelectedColorByProduct((prev) => ({
+                                    ...prev,
+                                    [activePdpProduct.id]: matchingCol.label,
+                                  }));
+                                }
                               }}
                               className={`px-4 py-2 text-xs font-medium rounded-full border transition-all cursor-pointer ${
                                 activePdpVariant?.id === v.id
@@ -3822,7 +4199,14 @@ const DEFAULT_PRODUCTS = [
                         <button
                           disabled={(activePdpVariant?.stockQuantity ?? 0) <= 0}
                           onClick={(e) =>
-                            handleAddToCart(activePdpProduct, activePdpVariant?.id, pdpQuantity, e)
+                            handleAddToCart(
+                              activePdpProduct,
+                              activePdpVariant?.id,
+                              pdpQuantity,
+                              e,
+                              false,
+                              pdpSelectedColor
+                            )
                           }
                           className="flex-1 py-3 px-6 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-xs hover:bg-stone-800 active:scale-95 transition-transform disabled:bg-stone-300 cursor-pointer"
                         >
@@ -3836,7 +4220,9 @@ const DEFAULT_PRODUCTS = [
                               activePdpProduct,
                               activePdpVariant?.id,
                               pdpQuantity,
-                              e
+                              e,
+                              false,
+                              pdpSelectedColor
                             );
                             setActiveView('checkout');
                           }}

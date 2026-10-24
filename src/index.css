@@ -154,3 +154,83 @@ iframe[src*="cashfree.com"] {
   z-index: 2147483647 !important;
 }
 
+/* ==========================================================================
+   STANDALONE LIQUID GLASS ADMIN WORKSPACE (.liquid-admin-shell)
+   Distinct from the customer storefront, using frosted liquid glass & oval pills
+   ========================================================================== */
+.liquid-admin-shell {
+  background:
+    radial-gradient(1200px circle at 8% 0%, rgba(226, 232, 240, 0.85) 0%, transparent 55%),
+    radial-gradient(1000px circle at 92% 12%, rgba(254, 226, 226, 0.55) 0%, transparent 50%),
+    radial-gradient(900px circle at 50% 95%, rgba(224, 231, 255, 0.5) 0%, transparent 55%),
+    #EEF2F6;
+  min-height: 100vh;
+}
+
+.liquid-admin-glass-bar {
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 14px 34px -8px rgba(15, 23, 42, 0.28),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+.liquid-admin-glass-sidebar {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(24px) saturate(185%);
+  -webkit-backdrop-filter: blur(24px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 12px 32px -8px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
+  border-radius: 32px;
+}
+
+.liquid-admin-dock {
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 16px 36px -6px rgba(15, 23, 42, 0.35),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+/* Harmonize all cards, buttons, inputs, and badges inside the Liquid Admin Console */
+.liquid-admin-shell button.rounded,
+.liquid-admin-shell a.rounded,
+.liquid-admin-shell span.rounded {
+  border-radius: 9999px;
+}
+
+.liquid-admin-shell input.rounded,
+.liquid-admin-shell select.rounded {
+  border-radius: 9999px;
+  padding-left: 0.95rem;
+  padding-right: 0.95rem;
+}
+
+.liquid-admin-shell textarea.rounded {
+  border-radius: 20px;
+  padding: 0.75rem 1rem;
+}
+
+.liquid-admin-shell div.rounded {
+  border-radius: 26px;
+}
+
+.liquid-admin-shell .bg-white.border {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  border-color: rgba(226, 232, 240, 0.9);
+  box-shadow:
+    0 8px 26px -6px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+}
+
+

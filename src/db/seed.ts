@@ -419,7 +419,7 @@ export async function ensureSeeded() {
             sku: 'GS-PN-001-BLU10',
             variantName: 'Box of 10 Pens — Blue Ink',
             attributeType: 'Ink Colour',
-            attributeValue: 'Blue (Pack of 10)',
+            attributeValue: 'Blue Ink (Pack of 10)',
             mrpPaise: 10000,
             sellingPricePaise: 8500,
             stockQuantity: 90,
@@ -428,10 +428,37 @@ export async function ensureSeeded() {
             sku: 'GS-PN-001-BLK10',
             variantName: 'Box of 10 Pens — Black Ink',
             attributeType: 'Ink Colour',
-            attributeValue: 'Black (Pack of 10)',
+            attributeValue: 'Black Ink (Pack of 10)',
             mrpPaise: 10000,
             sellingPricePaise: 8500,
             stockQuantity: 45,
+          },
+          {
+            sku: 'GS-PN-001-RED10',
+            variantName: 'Box of 10 Pens — Red Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Red Ink (Pack of 10)',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 30,
+          },
+          {
+            sku: 'GS-PN-001-GRN10',
+            variantName: 'Box of 10 Pens — Green Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Green Ink (Pack of 10)',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 25,
+          },
+          {
+            sku: 'GS-PN-001-AST10',
+            variantName: 'Box of 10 Pens — Assorted (Blue, Black, Red)',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Assorted Multi-Colour',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 40,
           },
         ],
       },
@@ -447,6 +474,7 @@ export async function ensureSeeded() {
         specifications: {
           'Tip Type': '0.5 mm Stainless Steel Needle',
           'Ink System': 'Twin-Ball Liquid Regulator',
+          'Available Ink Colours': 'Blue, Black, Red, Green & Assorted',
           'Clip': 'Spring-Loaded Metal Pocket Clip',
         },
         mrpPaise: 20000,
@@ -458,9 +486,45 @@ export async function ensureSeeded() {
         isNewArrival: true,
         variants: [
           {
+            sku: 'GS-PN-002-BLU5',
+            variantName: 'Pack of 5 — Blue Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Blue Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 50,
+          },
+          {
+            sku: 'GS-PN-002-BLK5',
+            variantName: 'Pack of 5 — Black Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Black Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 35,
+          },
+          {
+            sku: 'GS-PN-002-RED5',
+            variantName: 'Pack of 5 — Red Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Red Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 25,
+          },
+          {
+            sku: 'GS-PN-002-GRN5',
+            variantName: 'Pack of 5 — Green Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Green Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 20,
+          },
+          {
             sku: 'GS-PN-002-PK5',
-            variantName: 'Pack of 5 (4 Blue + 1 Black)',
-            attributeType: 'Pack Configuration',
+            variantName: 'Pack of 5 — Assorted (4 Blue + 1 Black)',
+            attributeType: 'Ink Colour',
             attributeValue: 'Assorted Pack of 5',
             mrpPaise: 20000,
             sellingPricePaise: 17500,
@@ -1304,6 +1368,124 @@ export async function ensureCmsAndExtendedCatalogueSeeded() {
         },
       ])
       .onConflictDoNothing();
+
+    // Ensure existing pen products in database have full ink colour variants (Blue, Black, Red, Green, Assorted)
+    const [existingUnomax] = await db
+      .select()
+      .from(products)
+      .where(eq(products.sku, 'GS-PN-001'))
+      .limit(1);
+    if (existingUnomax) {
+      await db
+        .insert(productVariants)
+        .values([
+          {
+            productId: existingUnomax.id,
+            sku: 'GS-PN-001-RED10',
+            variantName: 'Box of 10 Pens — Red Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Red Ink (Pack of 10)',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 30,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+          {
+            productId: existingUnomax.id,
+            sku: 'GS-PN-001-GRN10',
+            variantName: 'Box of 10 Pens — Green Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Green Ink (Pack of 10)',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 25,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+          {
+            productId: existingUnomax.id,
+            sku: 'GS-PN-001-AST10',
+            variantName: 'Box of 10 Pens — Assorted (Blue, Black, Red)',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Assorted Multi-Colour',
+            mrpPaise: 10000,
+            sellingPricePaise: 8500,
+            stockQuantity: 40,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+        ])
+        .onConflictDoNothing();
+    }
+
+    const [existingFlair] = await db
+      .select()
+      .from(products)
+      .where(eq(products.sku, 'GS-PN-002'))
+      .limit(1);
+    if (existingFlair) {
+      await db
+        .insert(productVariants)
+        .values([
+          {
+            productId: existingFlair.id,
+            sku: 'GS-PN-002-BLU5',
+            variantName: 'Pack of 5 — Blue Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Blue Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 50,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+          {
+            productId: existingFlair.id,
+            sku: 'GS-PN-002-BLK5',
+            variantName: 'Pack of 5 — Black Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Black Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 35,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+          {
+            productId: existingFlair.id,
+            sku: 'GS-PN-002-RED5',
+            variantName: 'Pack of 5 — Red Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Red Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 25,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+          {
+            productId: existingFlair.id,
+            sku: 'GS-PN-002-GRN5',
+            variantName: 'Pack of 5 — Green Ink',
+            attributeType: 'Ink Colour',
+            attributeValue: 'Green Ink',
+            mrpPaise: 20000,
+            sellingPricePaise: 17500,
+            stockQuantity: 20,
+            reservedQuantity: 0,
+            lowStockThreshold: 10,
+            isActive: true,
+          },
+        ])
+        .onConflictDoNothing();
+    }
 
     // 4. Seed Dynamic Navigation Menu Items if empty
     const existingNav = await db.select().from(cmsNavigationItems).limit(1);
