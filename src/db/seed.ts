@@ -82,7 +82,10 @@ export async function ensureSeeded() {
             storeName: 'Gayatri Stationers',
             referenceWebsite: 'https://gayatristationers.co.in/',
             verificationStatus: 'VERIFIED_STOREFRONT',
-            pickupCounterLabel: 'Gayatri Stationers — Retail Pickup Counter',
+            pickupCounterLabel:
+              'Gayatri Stationers — Awas Vikas Market, Galla Mandi, Naubasta, Kanpur',
+            storeAddress:
+              'Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021',
             businessHoursNote: 'Mon–Sat: 10:00 AM – 8:00 PM',
             supportContactNote: 'Gayatri Stationers Retail & Institutional Desk',
             gstInvoiceSupported: true,
@@ -114,33 +117,44 @@ export async function ensureSeeded() {
       .insert(serviceablePincodes)
       .values([
         {
-          pincode: '282010',
-          city: 'Agra (Shahganj / Local Zone)',
+          pincode: '208021',
+          city: 'Kanpur (Naubasta / Awas Vikas / Galla Mandi)',
           state: 'Uttar Pradesh',
-          deliveryFeePaise: 3500,
-          freeDeliveryThresholdPaise: 39900,
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
           codAvailable: true,
           estimatedDays: 'Same Day / Next Day Delivery',
           isActive: true,
           isSampleRule: true,
         },
         {
-          pincode: '282001',
-          city: 'Agra Cantt / Civil Lines',
+          pincode: '208001',
+          city: 'Kanpur (Civil Lines / Mall Road)',
           state: 'Uttar Pradesh',
-          deliveryFeePaise: 4500,
-          freeDeliveryThresholdPaise: 49900,
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
           codAvailable: true,
-          estimatedDays: '1–2 Business Days',
+          estimatedDays: 'Same Day / Next Day Delivery',
           isActive: true,
           isSampleRule: true,
         },
         {
-          pincode: '282002',
-          city: 'Agra (Sanjay Place / Commercial Hub)',
+          pincode: '208002',
+          city: 'Kanpur (Swaroop Nagar / Arya Nagar)',
           state: 'Uttar Pradesh',
-          deliveryFeePaise: 4000,
-          freeDeliveryThresholdPaise: 49900,
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: 'Same Day / Next Day Delivery',
+          isActive: true,
+          isSampleRule: true,
+        },
+        {
+          pincode: '208012',
+          city: 'Kanpur (Gumti No. 5 / Kidwai Nagar)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
           codAvailable: true,
           estimatedDays: '1–2 Business Days',
           isActive: true,
@@ -1227,7 +1241,10 @@ export async function ensureCmsAndExtendedCatalogueSeeded() {
           .set({
             valueJson: {
               ...profileJson,
-              pickupCounterLabel: 'Gayatri Stationers — Retail Pickup Counter',
+              pickupCounterLabel:
+                'Gayatri Stationers — Awas Vikas Market, Galla Mandi, Naubasta, Kanpur',
+              storeAddress:
+                'Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021',
               businessHoursNote: 'Mon–Sat: 10:00 AM – 8:00 PM',
               supportContactNote: 'Gayatri Stationers Retail & Institutional Desk',
             },
@@ -1236,6 +1253,57 @@ export async function ensureCmsAndExtendedCatalogueSeeded() {
           .where(eq(storeSettings.key, 'store_profile'));
       }
     }
+
+    // Ensure Kanpur serviceable PIN codes exist in database even if previously seeded
+    await db
+      .insert(serviceablePincodes)
+      .values([
+        {
+          pincode: '208021',
+          city: 'Kanpur (Naubasta / Awas Vikas / Galla Mandi)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: 'Same Day / Next Day Delivery',
+          isActive: true,
+          isSampleRule: false,
+        },
+        {
+          pincode: '208001',
+          city: 'Kanpur (Civil Lines / Mall Road)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: 'Same Day / Next Day Delivery',
+          isActive: true,
+          isSampleRule: false,
+        },
+        {
+          pincode: '208002',
+          city: 'Kanpur (Swaroop Nagar / Arya Nagar)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: 'Same Day / Next Day Delivery',
+          isActive: true,
+          isSampleRule: false,
+        },
+        {
+          pincode: '208012',
+          city: 'Kanpur (Gumti No. 5 / Kidwai Nagar)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: '1–2 Business Days',
+          isActive: true,
+          isSampleRule: false,
+        },
+      ])
+      .onConflictDoNothing();
 
     // 4. Seed Dynamic Navigation Menu Items if empty
     const existingNav = await db.select().from(cmsNavigationItems).limit(1);
@@ -1491,10 +1559,10 @@ export async function ensureCmsAndExtendedCatalogueSeeded() {
             title: 'Contact Us & Store Hours',
             slug: 'contact-us',
             pageType: 'CONTACT',
-            summary: 'Store pickup desk details, business hours, and institutional enquiry support.',
-            contentMarkdown: `### Retail Pickup Counter & Support Desk\nRefer to the verified store address, pickup counter hours, and support phone/WhatsApp configured by the Store Owner in **Store Settings**.\n\n### Institutional & Wholesale Desk\nFor school booklists, examination kits, and corporate office stationery contracts, use the **Bulk Orders** form for priority quotation.`,
+            summary: 'Visit Us at Awas Vikas Market, Galla Mandi, Naubasta, Kanpur — store pickup desk details, business hours, and institutional enquiry support.',
+            contentMarkdown: `### Visit Us · Retail Pickup Counter & Support Desk\n**Gayatri Stationers**\nAwas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021\n\n### Institutional & Wholesale Desk\nFor school booklists, examination kits, and corporate office stationery contracts, use the **Bulk Orders** form for priority quotation.`,
             seoTitle: 'Contact Us | Gayatri Stationers',
-            seoDescription: 'Contact Gayatri Stationers for retail pickup, order support, and bulk enquiries.',
+            seoDescription: 'Visit Gayatri Stationers at Awas Vikas Market, Galla Mandi, Naubasta, Kanpur for retail pickup, order support, and bulk enquiries.',
             showInHeader: false,
             showInFooter: true,
             footerColumn: 'SUPPORT',

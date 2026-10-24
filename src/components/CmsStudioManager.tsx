@@ -229,7 +229,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
   const [themeForm, setThemeForm] = useState({
     storeName: existingTheme.storeName || bootstrap?.settings?.store_profile?.name || 'Gayatri Stationers',
-    tagline: existingTheme.tagline || 'Est. Retail & Institutional Stationery Counter · Pune',
+    tagline: existingTheme.tagline || 'Est. Retail & Institutional Stationery Counter · Kanpur',
     logoUrl: existingTheme.logoUrl || '',
     primaryColor: existingTheme.primaryColor || '#D9381E',
     secondaryColor: existingTheme.secondaryColor || '#141413',
@@ -240,7 +240,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
     announcementText:
       existingTheme.announcementText ||
       bootstrap?.settings?.promo_banner?.text ||
-      'SAME-DAY STORE PICKUP IN PUNE (READY IN 2 HRS) · FREE HOME DELIVERY ON ORDERS ABOVE ₹499',
+      'SAME-DAY STORE PICKUP IN KANPUR (READY IN 2 HRS) · FREE HOME DELIVERY ON ALL ORDERS',
     announcementBgColor: existingTheme.announcementBgColor || '#141413',
     announcementTextColor: existingTheme.announcementTextColor || '#FAF7F2',
   });
@@ -248,7 +248,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
   const [footerForm, setFooterForm] = useState({
     brandSummary:
       existingFooter.brandSummary ||
-      'Authentic retail & institutional stationery supplier in Kothrud, Pune. Serving students, artists, schools, and corporate offices with verified GST billing.',
+      'Authentic retail & institutional stationery supplier in Kanpur, Uttar Pradesh. Serving students, artists, schools, and corporate offices with verified GST billing.',
     copyrightText:
       existingFooter.copyrightText ||
       `© ${new Date().getFullYear()} Gayatri Stationers. All rights reserved.`,

@@ -531,7 +531,7 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
       // 1. Check PIN code serviceability if Home Delivery (fallback to standard delivery rule for any valid PIN)
       let pincodeRule: any = null;
       if (input.fulfilmentMethod === 'HOME_DELIVERY' && input.shippingAddress) {
-        const pin = input.shippingAddress.pincode.trim() || '282010';
+        const pin = input.shippingAddress.pincode.trim() || '208021';
         const foundPins = await tx
           .select()
           .from(serviceablePincodes)
@@ -543,7 +543,7 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
           : {
               id: 999,
               pincode: pin,
-              city: input.shippingAddress.city || 'Agra',
+              city: input.shippingAddress.city || 'Kanpur',
               state: input.shippingAddress.state || 'Uttar Pradesh',
               deliveryFeePaise: 0,
               freeDeliveryThresholdPaise: 0,

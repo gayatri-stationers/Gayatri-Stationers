@@ -279,7 +279,7 @@ export async function askCustomerRufusAssistant(
           )}), Description="${params.currentProduct.description || params.currentProduct.shortDescription || ''}"`
         : 'Customer is browsing the main Gayatri Stationers storefront.';
 
-      const systemPrompt = `You are Vidya AI, the official AI Shopping & Study Guide for Gayatri Stationers (Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, UP - 282010).
+      const systemPrompt = `You are Vidya AI, the official AI Shopping & Study Guide for Gayatri Stationers (Visit Us: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh - 208021).
 Your job is to help customers find the right notebooks, pens, art & craft supplies, geometry sets, calculators, and office files, compare products, build school/exam kits within their budget, explain Store Pickup (₹0 free counter pickup with a 6-digit Pickup Code) vs Home Delivery (₹0 delivery surcharge), and even add items to their cart when asked.
 
 STORE POLICIES & FACTS:
@@ -401,11 +401,11 @@ ${historyText}`;
     )
     .join('\n');
 
-  let answer = `Here is what I found for you at **Gayatri Stationers**:\n\n${bulletLines}\n\nYou can order online with **₹0 Store Pickup** (collect at our Agra counter with a 6-digit pickup code) or **Home Delivery** with ₹0 extra shipping fee.`;
+  let answer = `Here is what I found for you at **Gayatri Stationers**:\n\n${bulletLines}\n\nYou can order online with **₹0 Store Pickup** (collect at our Kanpur counter with a 6-digit pickup code) or **Home Delivery** with ₹0 extra shipping fee.`;
 
   if (qLower.includes('pickup') || qLower.includes('delivery') || qLower.includes('shipping')) {
     answer =
-      'At **Gayatri Stationers**, both **Store Pickup** and **Home Delivery** carry **₹0 extra delivery surcharge**:\n• **Store Pickup (₹0 Fee)**: Place your order online (Pay Online or Pay at Store Counter) and collect your packed stationery bag using your 6-digit Pickup Code.\n• **Home Delivery**: Delivered across Agra & serviceable PIN codes with Cash on Delivery (COD) or Cashfree Online Payment.';
+      'At **Gayatri Stationers**, both **Store Pickup** and **Home Delivery** carry **₹0 extra delivery surcharge**:\n• **Store Pickup (₹0 Fee)**: Place your order online (Pay Online or Pay at Store Counter) and collect your packed stationery bag at our Kanpur store counter using your 6-digit Pickup Code.\n• **Home Delivery**: Delivered across Kanpur & serviceable PIN codes with Cash on Delivery (COD) or Cashfree Online Payment.';
   } else if (params.currentProduct) {
     const cp = params.currentProduct;
     answer = `**${cp.name}** by **${cp.brandName || 'Gayatri Stationers'}** is priced at **₹${Math.round(
@@ -692,7 +692,7 @@ ${prodSummary}`;
       mrpRupees,
       stockQuantity: 35,
       shortDescription: `Genuine ${matchedBrand} ${cleanName} available for Store Pickup & Home Delivery.`,
-      description: `${cleanName} by ${matchedBrand}. Curated retail and school stationery item stocked at Gayatri Stationers, Agra with ₹0 Store Pickup and fast Home Delivery.`,
+      description: `${cleanName} by ${matchedBrand}. Curated retail and school stationery item stocked at Gayatri Stationers, Kanpur with ₹0 Store Pickup and fast Home Delivery.`,
       photoSearchQuery: cleanName,
     };
   }

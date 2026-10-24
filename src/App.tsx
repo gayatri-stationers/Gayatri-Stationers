@@ -127,10 +127,10 @@ const DEFAULT_CMS_PAGES = [
     contentMarkdown: `Merchant & Legal Entity Name: Gayatri Stationers
 Trade / Brand Name: Gayatri Stationers (gayatristationers.co.in)
 
-Registered & Retail Store Address:
+Registered & Retail Store Address (Visit Us):
 Gayatri Stationers — Retail & Institutional Supply Counter
-Shop No. 14, Dayal Bagh / Shahganj Main Market,
-Agra, Uttar Pradesh – 282010, India
+Awas Vikas Market, Galla Mandi, Naubasta,
+Kanpur, Uttar Pradesh – 208021, India
 
 Customer Support & Order Helpline:
 • Telephone / Mobile / WhatsApp: +91 98765 43210
@@ -141,7 +141,7 @@ Customer Support & Order Helpline:
 Grievance Redressal Officer:
 • Name: Vaibhav Gupta (Proprietor & Store Owner)
 • Designation: Grievance Officer — Gayatri Stationers
-• Address: Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+• Address: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
 • Email: vainhavgupta20052014@gmail.com
 • Resolution Timeline: All payment, delivery, or product queries are acknowledged within 24 hours and resolved within 2–5 business days.`,
     isActive: true,
@@ -169,12 +169,12 @@ Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an or
 • All online payments are processed through PCI-DSS compliant payment gateways. Gayatri Stationers does not store your card numbers, CVV, or UPI PINs on its servers.
 
 4. Order Fulfilment, Store Pickup & Home Delivery
-• Store Pickup orders generate a 6-digit Pickup Code and can be collected from our Agra retail counter during business hours once marked Ready for Pickup.
+• Store Pickup orders generate a 6-digit Pickup Code and can be collected from our Kanpur retail counter during business hours once marked Ready for Pickup.
 • Home Delivery orders are dispatched to the customer's shipping address and PIN code within 24–48 business hours.
 
 5. Limitation of Liability & Governing Law
 • Our maximum liability for any claim arising out of an order shall not exceed the total amount paid by the customer in INR for that specific order.
-• These Terms & Conditions are governed by the laws of India, and any disputes shall be subject to the exclusive jurisdiction of the courts in Agra, Uttar Pradesh.`,
+• These Terms & Conditions are governed by the laws of India, and any disputes shall be subject to the exclusive jurisdiction of the courts in Kanpur, Uttar Pradesh.`,
     isActive: true,
     showInFooter: true,
     showInHeader: true,
@@ -214,12 +214,12 @@ Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an or
     summary:
       'Store Pickup counter slots, Home Delivery shipping charges in INR, and estimated dispatch timelines.',
     contentMarkdown: `1. Store Pickup (FREE — ₹0 INR)
-• Select "Store Pickup" at checkout to reserve your stationery items immediately at Gayatri Stationers, Agra.
+• Select "Store Pickup" at checkout to reserve your stationery items immediately at Gayatri Stationers (Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021).
 • Present your 6-digit Pickup Code at our retail counter during business hours (Mon–Sat, 10:00 AM – 8:00 PM).
 
 2. Home Delivery & Courier Dispatch
-• Local Agra Delivery (PIN 282010, 282001, 282002): Same-Day or Next-Business-Day delivery (₹35 – ₹45 INR, FREE on orders above ₹399 / ₹499 INR).
-• Outstation & National Delivery: Dispatched within 24–48 hours via tracked surface/air courier with delivery in 2–5 business days (₹40 – ₹75 INR, FREE above threshold).`,
+• Local Kanpur Delivery (PIN 208021, 208001, 208002, 208012): Same-Day or Next-Business-Day delivery (FREE ₹0 delivery surcharge).
+• Outstation & National Delivery: Dispatched within 24–48 hours via tracked surface/air courier with delivery in 2–5 business days.`,
     isActive: true,
     showInFooter: true,
     showInHeader: false,
@@ -584,8 +584,8 @@ const DEFAULT_PRODUCTS = [
   const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([
     {
       id: 1,
-      pincode: '282010',
-      city: 'Agra (Shahganj / Dayal Bagh Local Zone)',
+      pincode: '208021',
+      city: 'Kanpur (Naubasta / Awas Vikas / Galla Mandi)',
       state: 'Uttar Pradesh',
       deliveryFeePaise: 0,
       freeDeliveryThresholdPaise: 0,
@@ -595,19 +595,30 @@ const DEFAULT_PRODUCTS = [
     },
     {
       id: 2,
-      pincode: '282001',
-      city: 'Agra Cantt / Civil Lines',
+      pincode: '208001',
+      city: 'Kanpur (Civil Lines / Mall Road)',
       state: 'Uttar Pradesh',
       deliveryFeePaise: 0,
       freeDeliveryThresholdPaise: 0,
       codAvailable: true,
-      estimatedDays: '1–2 Business Days',
+      estimatedDays: 'Same Day / Next Day Delivery',
       isActive: true,
     },
     {
       id: 3,
-      pincode: '282002',
-      city: 'Agra (Sanjay Place / Commercial Hub)',
+      pincode: '208002',
+      city: 'Kanpur (Swaroop Nagar / Arya Nagar)',
+      state: 'Uttar Pradesh',
+      deliveryFeePaise: 0,
+      freeDeliveryThresholdPaise: 0,
+      codAvailable: true,
+      estimatedDays: 'Same Day / Next Day Delivery',
+      isActive: true,
+    },
+    {
+      id: 4,
+      pincode: '208012',
+      city: 'Kanpur (Gumti No. 5 / Kidwai Nagar)',
       state: 'Uttar Pradesh',
       deliveryFeePaise: 0,
       freeDeliveryThresholdPaise: 0,
@@ -691,9 +702,9 @@ const DEFAULT_PRODUCTS = [
     addressLine1: '',
     addressLine2: '',
     landmark: '',
-    city: 'Agra',
+    city: 'Kanpur',
     state: 'Uttar Pradesh',
-    pincode: '282010',
+    pincode: '208021',
   });
   const [orderNotes, setOrderNotes] = useState('');
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
@@ -2106,12 +2117,14 @@ const DEFAULT_PRODUCTS = [
               ? {
                   recipientName: resolvedName,
                   phone: resolvedPhone,
-                  addressLine1: shippingAddress.addressLine1.trim() || 'Dayal Bagh Main Road',
+                  addressLine1:
+                    shippingAddress.addressLine1.trim() ||
+                    'Awas Vikas Market, Galla Mandi, Naubasta',
                   addressLine2: shippingAddress.addressLine2,
                   landmark: shippingAddress.landmark,
-                  city: shippingAddress.city.trim() || 'Agra',
+                  city: shippingAddress.city.trim() || 'Kanpur',
                   state: shippingAddress.state.trim() || 'Uttar Pradesh',
-                  pincode: shippingAddress.pincode.trim() || '282010',
+                  pincode: shippingAddress.pincode.trim() || '208021',
                 }
               : undefined,
         }),
@@ -3004,7 +3017,10 @@ const DEFAULT_PRODUCTS = [
                           <p className="text-xs text-stone-600 leading-relaxed">
                             Reserve stock online and choose <strong>Pay at Store</strong> or Online Payment. Collect your packed bag at the counter using your 6-character Pickup Code once staff marks it <em>Ready for Pickup</em>.
                           </p>
-                          <p className="text-[11px] text-stone-500 pt-1">
+                          <p className="text-[11px] text-stone-600 font-medium pt-1">
+                            Visit Us: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
+                          </p>
+                          <p className="text-[11px] text-stone-500">
                             {(
                               storeSettings?.store_profile?.pickupCounterLabel ||
                               'Gayatri Stationers — Retail Pickup Counter'
@@ -4817,7 +4833,7 @@ const DEFAULT_PRODUCTS = [
                               Pay at Store Counter (Store Pickup — Zero Shipping Fee)
                             </p>
                             <p className="text-stone-600 mt-0.5">
-                              Reserve your items online and pay at Gayatri Stationers counter in Agra when collecting your order.
+                              Reserve your items online and pay at Gayatri Stationers counter in Kanpur when collecting your order.
                             </p>
                           </div>
                         </label>
@@ -4891,7 +4907,10 @@ const DEFAULT_PRODUCTS = [
                           <div className="p-5 bg-slate-50 border border-slate-200/80 rounded-[24px] space-y-3 text-xs">
                             <div>
                               <p className="font-semibold text-stone-900">
-                                Pickup Counter Information:
+                                Visit Us · Pickup Counter Information:
+                              </p>
+                              <p className="text-stone-800 font-medium mt-0.5">
+                                Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021
                               </p>
                               <p className="text-stone-700 mt-0.5">
                                 {storeSettings?.store_profile?.pickupCounterLabel}
@@ -5001,7 +5020,7 @@ const DEFAULT_PRODUCTS = [
                                         pincode: e.target.value,
                                       })
                                     }
-                                    placeholder="e.g. 282010"
+                                    placeholder="e.g. 208021"
                                     className="w-full px-4 py-2 border border-stone-300 rounded-full font-mono-tabular"
                                   />
                                 </div>
@@ -5434,9 +5453,9 @@ const DEFAULT_PRODUCTS = [
                               </p>
                             </div>
                             <div>
-                              <p className="font-bold text-stone-900">Registered Store Address</p>
+                              <p className="font-bold text-stone-900">Visit Us · Registered Store Address</p>
                               <p className="text-stone-700 mt-0.5">
-                                Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+                                Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
                               </p>
                             </div>
                           </div>
@@ -5848,7 +5867,7 @@ const DEFAULT_PRODUCTS = [
 
                     <div className="pt-2 border-t border-stone-200 space-y-3 text-xs">
                       <div className="font-bold text-slate-900">
-                        Default Home Delivery Address (Agra &amp; NCR)
+                        Default Home Delivery Address (Kanpur &amp; UP)
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
@@ -5864,7 +5883,7 @@ const DEFAULT_PRODUCTS = [
                                 addressLine1: e.target.value,
                               })
                             }
-                            placeholder="e.g. House 42, Dayal Bagh Main Road"
+                            placeholder="e.g. House 42, Awas Vikas Market, Naubasta"
                             className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
                           />
                         </div>
@@ -5879,7 +5898,7 @@ const DEFAULT_PRODUCTS = [
                                 landmark: e.target.value,
                               })
                             }
-                            placeholder="Near DEI Gate / Shahganj"
+                            placeholder="Near Galla Mandi, Naubasta"
                             className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
                           />
                         </div>
@@ -5895,7 +5914,7 @@ const DEFAULT_PRODUCTS = [
                                 pincode: e.target.value.replace(/\D/g, '').slice(0, 6),
                               })
                             }
-                            placeholder="282010"
+                            placeholder="208001"
                             className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm font-mono-tabular"
                           />
                         </div>
@@ -6320,12 +6339,12 @@ const DEFAULT_PRODUCTS = [
           </div>
 
           <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Contact Us &amp; Merchant Details</p>
+            <p className="font-semibold text-stone-900">Visit Us &amp; Contact Details</p>
             <p className="leading-relaxed font-medium text-stone-800">
               Gayatri Stationers — Retail &amp; Institutional Counter
             </p>
-            <p className="leading-relaxed">
-              Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, Uttar Pradesh – 282010, India
+            <p className="leading-relaxed text-stone-700 font-medium">
+              Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
             </p>
             <p className="font-mono-tabular">
               Phone: +91 98765 43210 · Email: support@gayatristationers.co.in

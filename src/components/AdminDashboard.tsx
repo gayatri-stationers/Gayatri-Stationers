@@ -4341,7 +4341,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) =>
                           setPincodeForm({ ...pincodeForm, pincode: e.target.value })
                         }
-                        placeholder="e.g. 282005"
+                        placeholder="e.g. 208021"
                         className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
                       />
                     </div>
@@ -4354,7 +4354,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         required
                         value={pincodeForm.city}
                         onChange={(e) => setPincodeForm({ ...pincodeForm, city: e.target.value })}
-                        placeholder="e.g. Agra (Dayalbagh)"
+                        placeholder="e.g. Kanpur (Naubasta / Awas Vikas / Galla Mandi)"
                         className="w-full px-3 py-2 border border-slate-300 rounded"
                       />
                     </div>
