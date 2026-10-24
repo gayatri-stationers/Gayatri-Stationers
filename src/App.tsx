@@ -427,6 +427,7 @@ export default function App() {
     uid: string;
     email: string;
     fullName?: string | null;
+    phone?: string | null;
     role: string;
   } | null>(() => {
     try {
@@ -908,7 +909,7 @@ const DEFAULT_PRODUCTS = [
       setCustomerName((prev) => prev || dbUser?.fullName || '');
       setCustomerEmail((prev) => prev || dbUser?.email || supabaseUser?.email || '');
       if (dbUser?.phone) {
-        setCustomerPhone((prev) => prev || dbUser.phone);
+        setCustomerPhone((prev) => prev || dbUser.phone || '');
       }
     }
   }, [dbUser, supabaseUser]);
@@ -2698,8 +2699,8 @@ const DEFAULT_PRODUCTS = [
             color: themeConfig.announcementTextColor || '#F8FAFC',
           }}
         >
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-            <p className="truncate font-medium">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+            <p className="text-[11px] sm:text-xs font-medium leading-tight truncate sm:overflow-visible">
               {themeConfig.announcementText ||
                 storeSettings?.promo_banner?.text ||
                 'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'}
@@ -2715,9 +2716,17 @@ const DEFAULT_PRODUCTS = [
       <div className="sticky top-0 z-40 px-2.5 pt-2 pb-1.5 md:p-0 bg-[#FAFAFA]/85 md:bg-white/95 backdrop-blur-md md:shadow-xs space-y-1.5 md:space-y-0">
         {/* Strict 3-Zone Top Bar — Floating Oval Capsule on Mobile */}
         <header className="bg-white/95 backdrop-blur-xl border border-slate-200/90 md:border-x-0 md:border-t-0 md:border-b rounded-[28px] md:rounded-none shadow-sm md:shadow-none px-3 sm:px-6 py-2.5 sm:py-3 overflow-hidden">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-4 min-w-0">
-            {/* Left Zone: Wordmark */}
-            <div className="flex items-center gap-1.5 min-w-0 shrink">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4 min-w-0">
+            {/* Left Zone: Hamburger Button on Mobile + Wordmark */}
+            <div className="flex items-center gap-2 min-w-0 shrink">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label="Open mobile navigation menu"
+                className="md:hidden p-1.5 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-full transition-colors cursor-pointer shrink-0"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => {
                   window.history.pushState({}, '', '/');
@@ -2826,10 +2835,8 @@ const DEFAULT_PRODUCTS = [
                 aria-label="Open My Profile Page"
               >
                 <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="font-bold max-w-[76px] sm:max-w-[140px] truncate">
-                  {(customerName || dbUser?.fullName)
-                    ? (customerName || dbUser?.fullName).split(' ')[0]
-                    : 'Profile'}
+                <span className="font-bold hidden sm:inline max-w-[140px] truncate">
+                  {(customerName || dbUser?.fullName || 'Profile').split(' ')[0]}
                 </span>
               </button>
               <button
@@ -2844,138 +2851,6 @@ const DEFAULT_PRODUCTS = [
               </button>
             </div>
           </div>
-
-          {/* Always-Visible Oval Mobile Navigation Pill Track (Stays still when scrolling on mobile) */}
-          <nav
-            aria-label="Mobile Primary Navigation"
-            className="md:hidden flex items-center justify-start gap-1.5 overflow-x-auto no-scrollbar px-1.5 py-1 mt-2 bg-slate-100/90 border border-slate-200/70 rounded-full text-xs font-medium"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setSelectedCategorySlug('ALL');
-                setSelectedBrandSlug('ALL');
-                setActiveView('storefront');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'storefront'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Shop
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setActiveView('combos');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'combos'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Combos
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setActiveView('bulk');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'bulk'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Bulk Orders
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setActiveView('track');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'track'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              My Orders
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/profile');
-                setActiveView('profile');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'profile'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Profile
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setActiveView('wishlist');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'wishlist'
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Wishlist ({wishlistProductIds.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '/admin');
-                setActiveView('admin');
-              }}
-              className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                activeView === 'admin' || activeView === 'admin-login'
-                  ? 'bg-[#B42318] text-white font-semibold shadow-2xs'
-                  : 'text-slate-700 hover:bg-white/80'
-              }`}
-            >
-              Admin
-            </button>
-            {supabaseUser || dbUser ? (
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="px-3.5 py-1.5 rounded-full text-slate-700 hover:bg-white/80 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                Sign Out
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/signin');
-                  setActiveView('signin');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className={`px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-all ${
-                  activeView === 'signin'
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'bg-white text-slate-900 font-semibold shadow-2xs'
-                }`}
-              >
-                Sign In
-              </button>
-            )}
-          </nav>
         </header>
 
         {/* Practical Retail Search, Account & Discovery Bar — Oval Pill Container on Mobile */}
@@ -3045,7 +2920,7 @@ const DEFAULT_PRODUCTS = [
             <button
               type="button"
               onClick={() => setRufusOpen(true)}
-              className="px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-opacity"
+              className="hidden sm:flex px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-[11px] sm:text-xs font-semibold items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-opacity"
               title="Ask Vidya AI — Gayatri Stationers Smart Guide"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
@@ -6717,72 +6592,6 @@ const DEFAULT_PRODUCTS = [
                 </div>
               </div>
             )}
-
-            {/* VIEW 9: DIRECT ADMIN CONSOLE (/admin) — Instant Access Without Login Wall */}
-            {(activeView === 'admin-login' || activeView === 'admin') && (
-              <AdminDashboard
-                idToken={idToken || 'gs_admin_direct_owner:vainhavgupta20052014@gmail.com'}
-                currentUser={
-                  dbUser && (dbUser.role === 'owner' || dbUser.role === 'staff')
-                    ? dbUser
-                    : {
-                        id: 1,
-                        uid: 'admin-owner-vainhav',
-                        email:
-                          dbUser?.email ||
-                          supabaseUser?.email ||
-                          'vainhavgupta20052014@gmail.com',
-                        fullName: dbUser?.fullName || 'Gayatri Stationers Owner',
-                        role: 'owner',
-                      }
-                }
-                categories={categories}
-                brands={brands}
-                products={products}
-                storeSettings={storeSettings}
-                bootstrap={{
-                  categories,
-                  brands,
-                  products,
-                  bundles,
-                  coupons,
-                  serviceablePincodes,
-                  settings: storeSettings,
-                  navigationItems,
-                  homepageSections,
-                  banners,
-                  pages: cmsPages,
-                  revisions: cmsRevisions,
-                }}
-                onRefreshStorefront={() => loadStoreBootstrap()}
-                onRoleSwitched={handleSwitchRole}
-                onExitAdmin={() => {
-                  window.history.pushState({}, '', '/');
-                  setActiveView('storefront');
-                }}
-                onNavigateStorefront={(target) => {
-                  window.history.pushState({}, '', '/');
-                  if (target.view === 'page' && target.pageSlug) {
-                    setActivePageSlug(target.pageSlug);
-                    setActiveView('page');
-                    return;
-                  }
-                  if (target.categorySlug) {
-                    setSelectedCategorySlug(target.categorySlug);
-                    setSelectedBrandSlug('ALL');
-                    setActiveView('storefront');
-                    return;
-                  }
-                  if (target.brandSlug) {
-                    setSelectedBrandSlug(target.brandSlug);
-                    setSelectedCategorySlug('ALL');
-                    setActiveView('storefront');
-                    return;
-                  }
-                  setActiveView('storefront');
-                }}
-              />
-            )}
           </>
         )}
       </main>
@@ -7025,18 +6834,220 @@ const DEFAULT_PRODUCTS = [
         </div>
       </footer>
 
-      {/* Floating Vidya AI Customer Assistant Pill & Modal */}
-      {activeView !== 'admin' && activeView !== 'admin-login' && !rufusOpen && (
-        <button
-          type="button"
-          onClick={() => setRufusOpen(true)}
-          className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 px-4 py-2.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-xs font-bold shadow-xl border border-white/20 flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
-          aria-label="Open Vidya AI Shopping Guide"
-        >
-          <Sparkles className="w-4 h-4 text-amber-300" />
-          <span>Ask Vidya AI</span>
-        </button>
-      )}
+      {/* Responsive Hamburger Mobile Navigation Drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex" role="dialog" aria-modal="true" aria-label="Mobile Navigation Menu">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+
+            {/* Slide-out Panel */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10"
+            >
+              <div className="p-4 sm:p-5 space-y-4">
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="min-w-0">
+                    <p className="font-serif-display font-bold text-base text-slate-900 truncate">
+                      {themeConfig.storeName || 'Gayatri Stationers'}
+                    </p>
+                    <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-medium text-amber-900">
+                      Naubasta, Kanpur
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(false)}
+                    aria-label="Close navigation menu"
+                    className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full cursor-pointer transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Primary Navigation Links */}
+                <nav className="space-y-1">
+                  {[
+                    {
+                      label: 'Shop All Catalogue',
+                      icon: Store,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/');
+                        setSelectedCategorySlug('ALL');
+                        setSelectedBrandSlug('ALL');
+                        setActiveView('storefront');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: 'School Kits & Combos',
+                      icon: SlidersHorizontal,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('combos');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: 'Bulk Institutional Orders',
+                      icon: FileSpreadsheet,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('bulk');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: 'Track Order & Pickup Code',
+                      icon: Package,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('track');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: `Saved Wishlist (${wishlistProductIds.length})`,
+                      icon: Heart,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/');
+                        setActiveView('wishlist');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: 'My Profile & Addresses',
+                      icon: User,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/profile');
+                        setActiveView('profile');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                    {
+                      label: 'Admin Console',
+                      icon: ShieldCheck,
+                      onClick: () => {
+                        window.history.pushState({}, '', '/admin');
+                        setActiveView('admin');
+                        setMobileMenuOpen(false);
+                      },
+                    },
+                  ].map((item, idx) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={item.onClick}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-800 hover:bg-slate-100/80 transition-colors text-left cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Icon className="w-4 h-4 text-slate-500" />
+                          <span>{item.label}</span>
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    );
+                  })}
+                </nav>
+
+                {/* Popular Categories Shortcut */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold px-1">
+                    BROWSE CATEGORIES
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories.filter((c) => c.isActive !== false).slice(0, 6).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategorySlug(c.slug);
+                          setSelectedBrandSlug('ALL');
+                          setActiveView('storefront');
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer ${
+                          selectedCategorySlug === c.slug
+                            ? 'bg-slate-900 text-white font-semibold'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Kanpur Physical Store Badge */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs text-slate-700">
+                  <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-[#B42318]" />
+                    <span>Store Pickup Counter</span>
+                  </p>
+                  <p className="text-[11px] text-slate-600 leading-snug">
+                    Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Counter Hours: 9:00 AM – 9:30 PM (Pickup ready in 2 hours)
+                  </p>
+                </div>
+              </div>
+
+              {/* Drawer Footer / Account Action */}
+              <div className="p-4 bg-slate-50 border-t border-slate-100">
+                {supabaseUser || dbUser ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate">
+                        {customerName || dbUser?.fullName || 'Logged In'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {customerEmail || dbUser?.email || supabaseUser?.email}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSignOut();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.history.pushState({}, '', '/signin');
+                      setActiveView('signin');
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold text-center cursor-pointer shadow-xs"
+                  >
+                    Customer Sign In / Register
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <RufusAssistant
         isOpen={rufusOpen}
