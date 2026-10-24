@@ -2707,15 +2707,15 @@ const DEFAULT_PRODUCTS = [
               )}
             </div>
 
-            {/* Ask Rufus AI Button (Amazon Rufus-style Customer Shopping Assistant) */}
+            {/* Ask Vidya AI Button (Gayatri Stationers AI Shopping & Study Guide) */}
             <button
               type="button"
               onClick={() => setRufusOpen(true)}
               className="px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-opacity"
-              title="Ask Rufus AI Shopping Assistant"
+              title="Ask Vidya AI — Gayatri Stationers Smart Guide"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>Ask Rufus AI</span>
+              <span>Ask Vidya AI</span>
             </button>
 
             {/* Quick Filter Button (School Kits & Combos) */}
@@ -3870,7 +3870,7 @@ const DEFAULT_PRODUCTS = [
                         </div>
                       )}
 
-                    {/* Amazon Rufus-style "Ask Rufus AI about this product" widget on PDP */}
+                    {/* "Ask Vidya AI about this product" widget on PDP */}
                     <div className="p-5 bg-gradient-to-br from-slate-900 via-slate-900 to-[#B42318]/90 text-white rounded-[28px] space-y-3 shadow-sm">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -3879,15 +3879,15 @@ const DEFAULT_PRODUCTS = [
                           </span>
                           <div>
                             <h3 className="text-xs font-bold tracking-tight">
-                              Looking for specific info? Ask Rufus AI
+                              Looking for specific info? Ask Vidya AI
                             </h3>
                             <p className="text-[10px] text-slate-300">
-                              Gemini-powered product Q&amp;A &amp; stationery comparison
+                              Gayatri Stationers AI Guide · Product Q&amp;A &amp; Comparison
                             </p>
                           </div>
                         </div>
                         <span className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 bg-white/10 rounded-full text-amber-200">
-                          Rufus AI
+                          Vidya AI
                         </span>
                       </div>
 
@@ -3925,14 +3925,14 @@ const DEFAULT_PRODUCTS = [
                           type="text"
                           value={pdpRufusQuestionInput}
                           onChange={(e) => setPdpRufusQuestionInput(e.target.value)}
-                          placeholder={`Ask Rufus anything about ${activePdpProduct.name}...`}
+                          placeholder={`Ask Vidya AI anything about ${activePdpProduct.name}...`}
                           className="flex-1 px-4 py-2 rounded-full bg-white/95 text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none"
                         />
                         <button
                           type="submit"
                           className="px-4 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer shrink-0"
                         >
-                          Ask Rufus
+                          Ask Vidya AI
                         </button>
                       </form>
                     </div>
@@ -6343,16 +6343,16 @@ const DEFAULT_PRODUCTS = [
         </div>
       </footer>
 
-      {/* Floating Rufus AI Customer Assistant Pill & Modal (Amazon Rufus style) */}
+      {/* Floating Vidya AI Customer Assistant Pill & Modal */}
       {activeView !== 'admin' && activeView !== 'admin-login' && !rufusOpen && (
         <button
           type="button"
           onClick={() => setRufusOpen(true)}
           className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 px-4 py-2.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-xs font-bold shadow-xl border border-white/20 flex items-center gap-2 cursor-pointer hover:scale-105 transition-transform"
-          aria-label="Open Rufus AI Shopping Assistant"
+          aria-label="Open Vidya AI Shopping Guide"
         >
           <Sparkles className="w-4 h-4 text-amber-300" />
-          <span>Ask Rufus AI</span>
+          <span>Ask Vidya AI</span>
         </button>
       )}
 

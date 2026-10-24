@@ -43,9 +43,9 @@ export function RufusAssistant({
 }: RufusAssistantProps) {
   const [messages, setMessages] = useState<RufusChatMessage[]>([
     {
-      id: 'welcome-rufus',
+      id: 'welcome-vidya',
       role: 'assistant',
-      text: 'Hi! I’m **Rufus**, your Gayatri Stationers AI Shopping Assistant powered by Gemini. Ask me to compare pens, find notebooks under your budget, build a school exam kit, or add items to your cart!',
+      text: 'Namaste! I’m **Vidya AI**, your Gayatri Stationers Shopping & Study Guide. Ask me to compare pens, find notebooks under your budget, build a complete school exam kit, or add items directly to your cart!',
       recommendedProductIds: products
         .filter((p) => p && p.isActive !== false && p.isBestseller)
         .slice(0, 2)
@@ -128,7 +128,7 @@ export function RufusAssistant({
 
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Execute optional client action if customer asked Rufus to add to cart or filter
+      // Execute optional client action if customer asked Vidya AI to add to cart or filter
       if (data?.clientAction?.type === 'ADD_TO_CART' && data.clientAction.productId) {
         const targetProd = products.find(
           (p) => Number(p.id) === Number(data.clientAction.productId)
@@ -207,7 +207,7 @@ export function RufusAssistant({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end sm:p-4 bg-slate-950/40 backdrop-blur-xs">
       <div className="w-full sm:max-w-md h-[86vh] sm:h-[680px] bg-white border border-slate-200 rounded-t-[32px] sm:rounded-[32px] shadow-2xl flex flex-col overflow-hidden">
-        {/* Header — Rufus Brand Bar */}
+        {/* Header — Vidya AI Brand Bar */}
         <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-slate-900 to-[#B42318] text-white flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-full bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
@@ -216,10 +216,10 @@ export function RufusAssistant({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="font-serif-display text-base font-bold tracking-tight truncate">
-                  Rufus AI
+                  Vidya AI
                 </h2>
                 <span className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider bg-amber-400/20 text-amber-200 border border-amber-300/30 rounded-full font-bold">
-                  Gemini Shopping Assistant
+                  Gayatri Stationers Guide
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 truncate">
@@ -231,7 +231,7 @@ export function RufusAssistant({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close Rufus AI Assistant"
+            aria-label="Close Vidya AI Assistant"
             className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
@@ -284,7 +284,7 @@ export function RufusAssistant({
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-[#B42318] font-bold mb-1">
                       <Bot className="w-3.5 h-3.5" />
-                      <span>Rufus · Gayatri Stationers AI</span>
+                      <span>Vidya AI · Gayatri Stationers Guide</span>
                     </div>
                   )}
                   <div>
@@ -300,7 +300,7 @@ export function RufusAssistant({
                   </div>
                 </div>
 
-                {/* Recommended Product Cards inside Rufus Chat */}
+                {/* Recommended Product Cards inside Vidya AI Chat */}
                 {recProducts.length > 0 && (
                   <div className="w-full space-y-2 pl-1">
                     {recProducts.map((prod: any) => {
@@ -309,7 +309,7 @@ export function RufusAssistant({
                       const mrp = variant?.mrpPaise ?? prod.mrpPaise ?? price;
                       return (
                         <div
-                          key={`rufus-rec-${msg.id}-${prod.id}`}
+                          key={`vidya-rec-${msg.id}-${prod.id}`}
                           className="p-3 bg-white border border-slate-200/90 rounded-[22px] shadow-2xs flex items-center justify-between gap-3"
                         >
                           <button
@@ -388,7 +388,7 @@ export function RufusAssistant({
           {loading && (
             <div className="flex items-center gap-2 px-4 py-3 bg-white border border-slate-200 rounded-[22px] w-fit text-xs text-slate-600 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5 text-[#B42318] animate-spin" />
-              <span>Rufus is checking Gayatri Stationers catalogue...</span>
+              <span>Vidya AI is checking Gayatri Stationers catalogue...</span>
             </div>
           )}
         </div>
@@ -404,7 +404,7 @@ export function RufusAssistant({
           <button
             type="button"
             onClick={handleVoiceAsk}
-            title="Speak to Rufus AI"
+            title="Speak to Vidya AI"
             className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
               listening
                 ? 'bg-red-600 text-white animate-pulse'
@@ -418,7 +418,7 @@ export function RufusAssistant({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Rufus a question or 'Add Classmate notebook'..."
+            placeholder="Ask Vidya AI a question or 'Add Classmate notebook'..."
             className="flex-1 px-4 py-2 text-xs bg-slate-100 focus:bg-white border border-slate-200 focus:border-slate-900 rounded-full focus:outline-none text-slate-900"
           />
 

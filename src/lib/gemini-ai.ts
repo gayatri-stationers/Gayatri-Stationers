@@ -268,7 +268,7 @@ export async function askCustomerRufusAssistant(
     try {
       const historyText = (params.history || [])
         .slice(-6)
-        .map((m) => `${m.role === 'user' ? 'Customer' : 'Rufus'}: ${m.text}`)
+        .map((m) => `${m.role === 'user' ? 'Customer' : 'Vidya AI'}: ${m.text}`)
         .join('\n');
 
       const currentProdContext = params.currentProduct
@@ -279,7 +279,7 @@ export async function askCustomerRufusAssistant(
           )}), Description="${params.currentProduct.description || params.currentProduct.shortDescription || ''}"`
         : 'Customer is browsing the main Gayatri Stationers storefront.';
 
-      const systemPrompt = `You are Rufus, the official AI Shopping Assistant for Gayatri Stationers (Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, UP - 282010), modeled after Amazon Rufus.
+      const systemPrompt = `You are Vidya AI, the official AI Shopping & Study Guide for Gayatri Stationers (Shop No. 14, Dayal Bagh / Shahganj Main Market, Agra, UP - 282010).
 Your job is to help customers find the right notebooks, pens, art & craft supplies, geometry sets, calculators, and office files, compare products, build school/exam kits within their budget, explain Store Pickup (₹0 free counter pickup with a 6-digit Pickup Code) vs Home Delivery (₹0 delivery surcharge), and even add items to their cart when asked.
 
 STORE POLICIES & FACTS:
@@ -308,7 +308,7 @@ ${historyText}`;
               answer: {
                 type: Type.STRING,
                 description:
-                  'Helpful, friendly, concise Amazon Rufus-style answer using bullet points where appropriate and exact ₹ prices.',
+                  'Helpful, friendly, concise Vidya AI shopping answer using bullet points where appropriate and exact ₹ prices.',
               },
               recommendedProductIds: {
                 type: Type.ARRAY,
