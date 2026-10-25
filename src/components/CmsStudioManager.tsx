@@ -288,7 +288,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save category');
-      notify(`Category "${data.category.name}" saved & published to storefront.`);
+      notify(`Category "${data.category?.name || catForm.name}" saved & published to storefront.`);
       setCatForm({
         id: undefined,
         name: '',
@@ -479,7 +479,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save navigation item');
-      notify(`Navigation item "${data.navigationItem.label}" saved.`);
+      notify(`Navigation item "${data.navigationItem?.label || navForm.label}" saved.`);
       setNavForm({
         id: undefined,
         label: '',
@@ -511,15 +511,20 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
   };
 
   const handleMoveNavOrder = async (item: any, direction: 'up' | 'down') => {
+    if (!item?.label) return;
     const delta = direction === 'up' ? -1 : 1;
-    await fetchWithAuth('/api/admin/navigation/save', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...item,
-        sortOrder: Math.max(1, (item.sortOrder || 1) + delta),
-      }),
-    });
-    await onRefresh();
+    try {
+      await fetchWithAuth('/api/admin/navigation/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...item,
+          sortOrder: Math.max(1, (item.sortOrder || 1) + delta),
+        }),
+      });
+      await onRefresh();
+    } catch (err: any) {
+      notify(err.message, 'error');
+    }
   };
 
   const handleSaveSection = async (e: React.FormEvent) => {
@@ -542,7 +547,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save section');
-      notify(`Homepage section "${data.homepageSection.title}" saved.`);
+      notify(`Homepage section "${data.homepageSection?.title || sectionForm.title}" saved.`);
       setSectionForm({
         id: undefined,
         sectionType: 'PRODUCT_CAROUSEL',
@@ -569,35 +574,49 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
   };
 
   const handleMoveSectionOrder = async (sec: any, direction: 'up' | 'down') => {
+    if (!sec?.title) return;
     const delta = direction === 'up' ? -1 : 1;
-    await fetchWithAuth('/api/admin/homepage-sections/save', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...sec,
-        sortOrder: Math.max(1, (sec.sortOrder || 1) + delta),
-      }),
-    });
-    await onRefresh();
+    try {
+      await fetchWithAuth('/api/admin/homepage-sections/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...sec,
+          sortOrder: Math.max(1, (sec.sortOrder || 1) + delta),
+        }),
+      });
+      await onRefresh();
+    } catch (err: any) {
+      notify(err.message, 'error');
+    }
   };
 
   const handleToggleSectionStatus = async (sec: any) => {
+    if (!sec?.title) return;
     const nextStatus = sec.status === 'PUBLISHED' ? 'HIDDEN' : 'PUBLISHED';
-    await fetchWithAuth('/api/admin/homepage-sections/save', {
-      method: 'POST',
-      body: JSON.stringify({
-        ...sec,
-        status: nextStatus,
-        isActive: nextStatus === 'PUBLISHED',
-      }),
-    });
-    notify(`Section "${sec.title}" ${nextStatus === 'PUBLISHED' ? 'published' : 'hidden'}.`);
-    await onRefresh();
+    try {
+      await fetchWithAuth('/api/admin/homepage-sections/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...sec,
+          status: nextStatus,
+          isActive: nextStatus === 'PUBLISHED',
+        }),
+      });
+      notify(`Section "${sec.title}" ${nextStatus === 'PUBLISHED' ? 'published' : 'hidden'}.`);
+      await onRefresh();
+    } catch (err: any) {
+      notify(err.message, 'error');
+    }
   };
 
   const handleDeleteSection = async (id: number) => {
-    await fetchWithAuth(`/api/admin/homepage-sections/${id}`, { method: 'DELETE' });
-    notify('Homepage section deleted.');
-    await onRefresh();
+    try {
+      await fetchWithAuth(`/api/admin/homepage-sections/${id}`, { method: 'DELETE' });
+      notify('Homepage section deleted.');
+      await onRefresh();
+    } catch (err: any) {
+      notify(err.message, 'error');
+    }
   };
 
   const handleSaveBanner = async (e: React.FormEvent) => {
@@ -617,7 +636,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save banner');
-      notify(`Banner "${data.banner.title}" saved.`);
+      notify(`Banner "${data.banner?.title || bannerForm.title}" saved.`);
       setBannerForm({
         id: undefined,
         placement: 'HERO_MAIN',
@@ -666,7 +685,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save page');
-      notify(`Page "${data.page.title}" saved.`);
+      notify(`Page "${data.page?.title || pageForm.title}" saved.`);
       setPageForm({
         id: undefined,
         title: '',
@@ -730,7 +749,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save combo bundle');
-      notify(`Combo Bundle "${data.bundle.name}" saved.`);
+      notify(`Combo Bundle "${data.bundle?.name || bundleForm.name}" saved.`);
       setBundleForm({
         id: undefined,
         name: '',
@@ -900,7 +919,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               };
 
         const previewNavList = [
-          ...navItems.filter((n) => n.isActive !== false),
+          ...navItems.filter((n) => n && n.isActive !== false && n.label),
           ...(navForm.label.trim() && !navForm.id
             ? [
                 {
@@ -2303,13 +2322,13 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               {navPreviewDevice === 'desktop' ? (
                 <div className="p-3 bg-[#FAF7F2] border border-[#141413] flex items-center gap-2 overflow-x-auto">
                   {navItems
-                    .filter((i) => i.isActive && i.showOnDesktop)
+                    .filter((i) => i && i.isActive && i.showOnDesktop)
                     .map((item) => (
                       <span
                         key={item.id}
                         className="px-2.5 py-1 bg-white border border-[#D6D1C7] text-xs font-bold whitespace-nowrap inline-flex items-center gap-1"
                       >
-                        {item.label}
+                        {item.label || 'Untitled'}
                         {item.highlightBadge && (
                           <span className="px-1 py-0.2 bg-[#D9381E] text-white text-[9px] font-mono">
                             {item.highlightBadge}
@@ -2321,13 +2340,13 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
               ) : (
                 <div className="p-3 bg-[#FAF7F2] border border-[#141413] max-w-xs space-y-1">
                   {navItems
-                    .filter((i) => i.isActive && i.showOnMobile)
+                    .filter((i) => i && i.isActive && i.showOnMobile)
                     .map((item) => (
                       <div
                         key={item.id}
                         className="px-3 py-1.5 bg-white border border-[#E5E0D8] text-xs font-bold flex items-center justify-between"
                       >
-                        <span>{item.label}</span>
+                        <span>{item.label || 'Untitled'}</span>
                         {item.highlightBadge && (
                           <span className="px-1.5 py-0.5 bg-[#D9381E] text-white text-[9px] font-mono">
                             {item.highlightBadge}
@@ -2342,10 +2361,10 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
             {/* Saved Navigation Items List */}
             <div className="bg-white border border-[#141413] p-5 space-y-3">
               <h4 className="text-base font-bold border-b border-[#E5E0D8] pb-2">
-                Configured Menu Links ({navItems.length})
+                Configured Menu Links ({navItems.filter(Boolean).length})
               </h4>
               <div className="divide-y divide-[#E5E0D8]">
-                {navItems.map((item) => {
+                {navItems.filter(Boolean).map((item) => {
                   const check = validateNavDestination(item.linkType, item.targetValue);
                   return (
                     <div
@@ -2355,7 +2374,7 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-xs text-[#57534E]">#{item.sortOrder}</span>
-                          <span className="font-bold text-sm">{item.label}</span>
+                          <span className="font-bold text-sm">{item.label || 'Untitled'}</span>
                           {item.highlightBadge && (
                             <span className="px-1.5 py-0.5 bg-[#D9381E] text-white text-[10px] font-mono font-bold">
                               {item.highlightBadge}

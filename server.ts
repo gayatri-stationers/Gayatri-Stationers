@@ -78,6 +78,7 @@ import {
   searchWebProductPhotos,
   askCustomerRufusAssistant,
   parseAdminCopilotCommandWithGemini,
+  transcribeAudioWithGemini,
 } from './src/lib/gemini-ai.ts';
 
 dotenv.config();
@@ -1121,6 +1122,23 @@ async function startServer() {
     }
   });
 
+  // Server-Side Microphone Audio Transcription Endpoint (gemini-3.5-transcribe)
+  app.post('/api/ai/transcribe', async (req, res) => {
+    try {
+      const { audioBase64, mimeType } = req.body || {};
+      if (!audioBase64 || typeof audioBase64 !== 'string') {
+        return res.status(400).json({ error: 'Audio data is required for transcription.' });
+      }
+      const result = await transcribeAudioWithGemini({
+        audioBase64,
+        mimeType: typeof mimeType === 'string' ? mimeType : 'audio/webm',
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Voice transcription error.' });
+    }
+  });
+
   // Admin AI Copilot — Tell AI to Add Product, Add Photos from the Web, or Remove Product / Photo
   app.post('/api/ai/admin-copilot', requireStaffOrOwner, async (req: AuthRequest, res) => {
     try {
@@ -1714,13 +1732,6 @@ async function startServer() {
     res.status(404).json({ error: 'API endpoint not found.' });
   });
 
-  // Global Express Error Handler
-  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('Express server error:', err);
-    if (res.headersSent) return;
-    res.status(500).json({ error: err.message || 'An unexpected server error occurred.' });
-  });
-
   // Bind port 3000 immediately so health checks succeed without waiting for Vite plugin initialization
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Gayatri Stationers server running on http://0.0.0.0:${PORT}`);
@@ -1735,6 +1746,9 @@ async function startServer() {
         watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
       },
       appType: 'spa',
+    });
+    vitePromise.catch((err) => {
+      console.error('Failed to initialize Vite dev server:', err);
     });
     app.use(async (req, res, next) => {
       try {
@@ -1751,6 +1765,15 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // Global Express Error Handler
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Express server error:', err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: err.message || 'An unexpected server error occurred.' });
+  });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Fatal server startup error:', err);
+});

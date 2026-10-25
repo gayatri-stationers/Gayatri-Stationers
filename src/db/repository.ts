@@ -2761,7 +2761,10 @@ export async function upsertNavigationItemByAdmin(params: {
     const nextIsActive = nextStatus === 'PUBLISHED';
     const resolvedTargetType = params.targetType || params.linkType || 'CATEGORY';
 
-    if (params.id) {
+    const allItems = await db.select().from(cmsNavigationItems);
+    const existing = params.id ? allItems.find((i) => i.id === Number(params.id)) : undefined;
+
+    if (existing) {
       const [updated] = await db
         .update(cmsNavigationItems)
         .set({
@@ -2769,17 +2772,16 @@ export async function upsertNavigationItemByAdmin(params: {
           targetType: resolvedTargetType,
           targetValue: (params.targetValue || '').trim(),
           parentId: params.parentId ? Number(params.parentId) : null,
-          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : 0,
-          showOnDesktop: params.showOnDesktop !== undefined ? Boolean(params.showOnDesktop) : true,
-          showOnMobile: params.showOnMobile !== undefined ? Boolean(params.showOnMobile) : true,
+          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : existing.sortOrder,
+          showOnDesktop: params.showOnDesktop !== undefined ? Boolean(params.showOnDesktop) : existing.showOnDesktop,
+          showOnMobile: params.showOnMobile !== undefined ? Boolean(params.showOnMobile) : existing.showOnMobile,
           status: nextStatus,
           isActive: nextIsActive,
         })
-        .where(eq(cmsNavigationItems.id, Number(params.id)))
+        .where(eq(cmsNavigationItems.id, existing.id))
         .returning();
-      return updated;
+      return updated || { ...existing, label: cleanLabel };
     } else {
-      const allItems = await db.select().from(cmsNavigationItems);
       const [created] = await db
         .insert(cmsNavigationItems)
         .values({
@@ -2851,34 +2853,38 @@ export async function upsertHomepageSectionByAdmin(params: {
       layoutStyle: params.layoutStyle || 'GRID_4',
     };
 
-    if (params.id) {
+    const allSections = await db.select().from(cmsHomepageSections);
+    const existing = params.id ? allSections.find((s) => s.id === Number(params.id)) : undefined;
+
+    if (existing) {
       const [updated] = await db
         .update(cmsHomepageSections)
         .set({
-          sectionType: params.sectionType || 'PRODUCT_CAROUSEL',
+          sectionType: params.sectionType || existing.sectionType || 'PRODUCT_CAROUSEL',
           title: cleanTitle,
           subtitle: (params.subtitle || '').trim(),
           ctaLabel: (params.ctaText || params.ctaLabel || 'View All').trim(),
           ctaTarget: (params.ctaLink || params.ctaTarget || '').trim(),
           filterConfigJson,
-          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : 0,
+          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : existing.sortOrder,
           status: nextStatus,
           isVisible: nextIsVisible,
           updatedAt: new Date(),
         })
-        .where(eq(cmsHomepageSections.id, Number(params.id)))
+        .where(eq(cmsHomepageSections.id, existing.id))
         .returning();
 
-      await logCmsRevision({
-        entityType: 'HOMEPAGE_SECTION',
-        entityId: String(updated.id),
-        action: 'UPDATED',
-        snapshotJson: updated as unknown as Record<string, unknown>,
-        actorEmail: params.actorEmail || 'owner',
-      });
-      return updated;
+      if (updated) {
+        await logCmsRevision({
+          entityType: 'HOMEPAGE_SECTION',
+          entityId: String(updated.id),
+          action: 'UPDATED',
+          snapshotJson: updated as unknown as Record<string, unknown>,
+          actorEmail: params.actorEmail || 'owner',
+        });
+      }
+      return updated || { ...existing, title: cleanTitle };
     } else {
-      const allSections = await db.select().from(cmsHomepageSections);
       const sectionKey =
         params.sectionKey ||
         `${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString().slice(-4)}`;
@@ -2949,11 +2955,14 @@ export async function upsertBannerByAdmin(params: {
     const nextStatus = params.status || (params.isActive === false ? 'HIDDEN' : 'PUBLISHED');
     const nextIsActive = nextStatus === 'PUBLISHED';
 
-    if (params.id) {
+    const allBanners = await db.select().from(cmsBanners);
+    const existing = params.id ? allBanners.find((b) => b.id === Number(params.id)) : undefined;
+
+    if (existing) {
       const [updated] = await db
         .update(cmsBanners)
         .set({
-          placement: params.placement || 'HERO_MAIN',
+          placement: params.placement || existing.placement || 'HERO_MAIN',
           title: cleanTitle,
           subtitle: (params.subtitle || '').trim(),
           badgeText: (params.badgeText || '').trim(),
@@ -2964,24 +2973,25 @@ export async function upsertBannerByAdmin(params: {
           mobileImageUrl: params.mobileImageUrl || '',
           startDate: params.startAt || '',
           endDate: params.endAt || '',
-          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : 0,
+          sortOrder: params.sortOrder !== undefined ? Number(params.sortOrder) : existing.sortOrder,
           status: nextStatus,
           isActive: nextIsActive,
           updatedAt: new Date(),
         })
-        .where(eq(cmsBanners.id, Number(params.id)))
+        .where(eq(cmsBanners.id, existing.id))
         .returning();
 
-      await logCmsRevision({
-        entityType: 'BANNER',
-        entityId: String(updated.id),
-        action: 'UPDATED',
-        snapshotJson: updated as unknown as Record<string, unknown>,
-        actorEmail: params.actorEmail || 'owner',
-      });
-      return updated;
+      if (updated) {
+        await logCmsRevision({
+          entityType: 'BANNER',
+          entityId: String(updated.id),
+          action: 'UPDATED',
+          snapshotJson: updated as unknown as Record<string, unknown>,
+          actorEmail: params.actorEmail || 'owner',
+        });
+      }
+      return updated || { ...existing, title: cleanTitle };
     } else {
-      const allBanners = await db.select().from(cmsBanners);
       const [created] = await db
         .insert(cmsBanners)
         .values({
@@ -3157,7 +3167,10 @@ export async function upsertProductBundleByAdmin(params: {
     const bundlePricePaise = Number(params.bundlePricePaise);
     const originalTotalPaise = bundlePricePaise + Number(params.savingsPaise || 0);
 
-    if (params.id) {
+    const allBundles = await db.select().from(productBundles);
+    const existing = params.id ? allBundles.find((b) => b.id === Number(params.id)) : undefined;
+
+    if (existing) {
       const [updated] = await db
         .update(productBundles)
         .set({
@@ -3171,9 +3184,9 @@ export async function upsertProductBundleByAdmin(params: {
           isActive: params.isActive !== undefined ? Boolean(params.isActive) : true,
           isSampleData: false,
         })
-        .where(eq(productBundles.id, Number(params.id)))
+        .where(eq(productBundles.id, existing.id))
         .returning();
-      return updated;
+      return updated || { ...existing, name: cleanName };
     } else {
       const [created] = await db
         .insert(productBundles)

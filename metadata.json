@@ -1,6 +1,6 @@
 {
   "name": "Gayatri Stationers — Online Store & Retail Pickup",
   "description": "Complete Indian stationery, books, school supplies, art materials, and office essentials store with Home Delivery and Store Pickup fulfilment.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

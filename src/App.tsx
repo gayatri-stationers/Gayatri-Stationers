@@ -13,6 +13,7 @@ import { ProductIllustration } from './components/ProductIllustration.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { OrderTrackingTimeline } from './components/OrderTrackingTimeline.tsx';
 import { RufusAssistant } from './components/RufusAssistant.tsx';
+import { ProductComparisonModal } from './components/ProductComparisonModal.tsx';
 import {
   Search,
   ShoppingBag,
@@ -36,6 +37,8 @@ import {
   Tag,
   ShieldCheck,
   Calendar,
+  Scale,
+  Mic,
 } from 'lucide-react';
 
 interface LocalCartItem {
@@ -828,6 +831,21 @@ const DEFAULT_PRODUCTS = [
     }
   });
 
+  // Side-by-Side Product Comparison state (up to 3 items, persisted to localStorage)
+  const [compareProductIds, setCompareProductIds] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem('gs_compare_ids_v1');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed)
+        ? parsed.map((id) => Number(id)).filter(Boolean).slice(0, 3)
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const [compareModalOpen, setCompareModalOpen] = useState<boolean>(false);
+  const [compareToastMessage, setCompareToastMessage] = useState<string | null>(null);
+
   // Checkout & Customer Profile state (pre-populated from saved profile/session so Full Name & Email are freely editable)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASHFREE_ONLINE');
@@ -1311,7 +1329,7 @@ const DEFAULT_PRODUCTS = [
     setMobileMenuOpen(false);
     setActiveView('checkout');
     if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo(0, 0);
     }
   }, []);
 
@@ -1319,7 +1337,7 @@ const DEFAULT_PRODUCTS = [
     // Cart toast/drawer pop-ups disabled to ensure a clean full-page experience
   };
 
-  // Cart manipulation handlers — force navigation to full-page /checkout on all screen sizes
+  // Cart manipulation handlers — directly open full-page /checkout with no animation
   const handleAddToCart = (
     product: any,
     variantId?: number,
@@ -1330,8 +1348,17 @@ const DEFAULT_PRODUCTS = [
   ) => {
     const targetVarId =
       variantId || selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
-    const variant = product.variants?.find((v: any) => v.id === targetVarId);
-    if (!variant) return;
+    const variant =
+      product.variants?.find((v: any) => Number(v.id) === Number(targetVarId)) ||
+      product.variants?.[0] || {
+        id: targetVarId || Number(product.id) || 1,
+        productId: product.id,
+        sku: product.sku || `GS-${product.id}`,
+        variantName: 'Standard Pack',
+        mrpPaise: product.mrpPaise || 10000,
+        sellingPricePaise: product.sellingPricePaise || 9000,
+        stockQuantity: product.totalStock ?? 25,
+      };
 
     if (variant.stockQuantity <= 0) {
       return;
@@ -1447,6 +1474,44 @@ const DEFAULT_PRODUCTS = [
       console.error('Wishlist error:', err);
     }
   };
+
+  // Persist compareProductIds to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('gs_compare_ids_v1', JSON.stringify(compareProductIds));
+    } catch {
+      // ignore
+    }
+  }, [compareProductIds]);
+
+  const handleToggleCompare = useCallback((productId: number) => {
+    const numericId = Number(productId);
+    if (!numericId) return;
+    setCompareProductIds((prev) => {
+      if (prev.includes(numericId)) {
+        setCompareToastMessage(null);
+        return prev.filter((id) => id !== numericId);
+      }
+      if (prev.length >= 3) {
+        setCompareToastMessage(
+          'You can compare up to 3 stationery items at a time. Remove an item first to select another.'
+        );
+        setTimeout(() => {
+          setCompareToastMessage((curr) =>
+            curr?.includes('up to 3') ? null : curr
+          );
+        }, 4000);
+        return prev;
+      }
+      setCompareToastMessage(null);
+      return [...prev, numericId];
+    });
+  }, []);
+
+  const handleClearCompare = useCallback(() => {
+    setCompareProductIds([]);
+    setCompareToastMessage(null);
+  }, []);
 
   // Automatically ensure dbUser & idToken are populated whenever supabaseUser exists
   useEffect(() => {
@@ -3036,6 +3101,22 @@ const DEFAULT_PRODUCTS = [
               <span>Ask Vidya AI</span>
             </button>
 
+            {/* Side-by-Side Product Comparison Button */}
+            <button
+              type="button"
+              onClick={() => setCompareModalOpen(true)}
+              className={`px-3 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
+                compareProductIds.length > 0
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Compare up to 3 products side-by-side"
+            >
+              <Scale className="w-3.5 h-3.5 text-[#B42318] shrink-0" />
+              <span className="hidden md:inline">Compare</span>
+              <span className="font-mono-tabular">({compareProductIds.length}/3)</span>
+            </button>
+
             {/* Quick Filter Button (School Kits & Combos) */}
             <button
               type="button"
@@ -3847,6 +3928,30 @@ const DEFAULT_PRODUCTS = [
                                   />
                                 </button>
                                 <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleCompare(product.id);
+                                  }}
+                                  aria-label={
+                                    compareProductIds.includes(product.id)
+                                      ? `Remove ${product.name} from comparison`
+                                      : `Add ${product.name} to side-by-side comparison`
+                                  }
+                                  className={`absolute top-2.5 left-2.5 sm:top-3.5 sm:left-3.5 px-2.5 py-1 rounded-full text-[10px] font-semibold backdrop-blur-md border shadow-2xs flex items-center gap-1 cursor-pointer transition-colors ${
+                                    compareProductIds.includes(product.id)
+                                      ? 'bg-slate-900 text-white border-slate-900'
+                                      : 'bg-white/90 hover:bg-white text-slate-700 border-slate-200/80'
+                                  }`}
+                                >
+                                  <Scale className="w-3 h-3 shrink-0" />
+                                  <span>
+                                    {compareProductIds.includes(product.id)
+                                      ? 'Comparing'
+                                      : '+ Compare'}
+                                  </span>
+                                </button>
+                                <button
                                   onClick={() => handleToggleWishlist(product.id)}
                                   aria-label="Save to wishlist"
                                   className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-full shadow-2xs flex items-center justify-center hover:bg-white cursor-pointer"
@@ -3991,7 +4096,7 @@ const DEFAULT_PRODUCTS = [
                                 <button
                                   disabled={stock <= 0}
                                   onClick={(e) => handleAddToCart(product, activeVariant?.id, 1, e)}
-                                  className={`w-full sm:w-auto px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full transition-transform active:scale-95 whitespace-nowrap shrink-0 cursor-pointer ${
+                                  className={`w-full sm:w-auto px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
                                     stock > 0
                                       ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-2xs'
                                       : 'bg-slate-200 text-slate-500 cursor-not-allowed'
@@ -4000,30 +4105,6 @@ const DEFAULT_PRODUCTS = [
                                   {stock > 0 ? '+ Add' : 'Out of Stock'}
                                 </button>
                               </div>
-
-                              {/* Interactive Swipe / Drag Product into Cart Track (Tablet & Desktop) */}
-                              {stock > 0 && (
-                                <div className="hidden sm:flex relative h-8 bg-slate-100 border border-slate-200 rounded-full overflow-hidden items-center px-1.5 select-none">
-                                  <span className="w-full text-center text-[10px] font-mono text-slate-500 pointer-events-none">
-                                    Swipe or Drag into Cart →
-                                  </span>
-                                  <motion.div
-                                    drag="x"
-                                    dragConstraints={{ left: 0, right: 0 }}
-                                    dragElastic={0.65}
-                                    whileTap={{ scale: 0.96, cursor: 'grabbing' }}
-                                    onDragEnd={(event, info) => {
-                                      if (info.offset.x > 45 || info.velocity.x > 260) {
-                                        const targetEl = event.target as HTMLElement | null;
-                                        handleAddToCart(product, activeVariant?.id, 1, targetEl);
-                                      }
-                                    }}
-                                    className="absolute left-1 top-1 bottom-1 w-6 h-6 bg-white border border-slate-200 rounded-full shadow-2xs flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-700"
-                                  >
-                                    <Plus className="w-3.5 h-3.5" />
-                                  </motion.div>
-                                </div>
-                              )}
                             </div>
                           </article>
                         );
@@ -4645,7 +4726,7 @@ const DEFAULT_PRODUCTS = [
                               pdpSelectedColor
                             )
                           }
-                          className="flex-1 py-3 px-6 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-xs hover:bg-stone-800 active:scale-95 transition-transform disabled:bg-stone-300 cursor-pointer"
+                          className="flex-1 py-3 px-6 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-xs hover:bg-stone-800 disabled:bg-stone-300 cursor-pointer"
                         >
                           Add to Cart
                         </button>
@@ -4688,6 +4769,28 @@ const DEFAULT_PRODUCTS = [
                             {wishlistProductIds.includes(activePdpProduct.id)
                               ? 'Wishlisted'
                               : 'Wishlist'}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!compareProductIds.includes(activePdpProduct.id)) {
+                              handleToggleCompare(activePdpProduct.id);
+                            }
+                            setCompareModalOpen(true);
+                          }}
+                          className={`py-3 px-4 text-xs font-semibold rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
+                            compareProductIds.includes(activePdpProduct.id)
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white text-stone-800 border-stone-300 hover:bg-stone-50'
+                          }`}
+                        >
+                          <Scale className="w-4 h-4" />
+                          <span className="hidden sm:inline">
+                            {compareProductIds.includes(activePdpProduct.id)
+                              ? `Comparing (${compareProductIds.length}/3)`
+                              : 'Compare'}
                           </span>
                         </button>
                       </div>
@@ -4839,7 +4942,7 @@ const DEFAULT_PRODUCTS = [
                         </span>
                         <button
                           onClick={(e) => handleAddBundleToCart(b, e)}
-                          className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] active:scale-95 transition-transform cursor-pointer"
+                          className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] cursor-pointer"
                         >
                           Add Bundle Items to Cart
                         </button>
@@ -5610,7 +5713,7 @@ const DEFAULT_PRODUCTS = [
                                   handleToggleWishlist(p.id);
                                   navigateToCheckout();
                                 }}
-                                className="flex-1 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full active:scale-95 transition-transform cursor-pointer"
+                                className="flex-1 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer"
                               >
                                 Move to Cart
                               </button>
@@ -7562,6 +7665,34 @@ const DEFAULT_PRODUCTS = [
         )}
       </AnimatePresence>
 
+      <ProductComparisonModal
+        isOpen={compareModalOpen}
+        onClose={() => setCompareModalOpen(false)}
+        onOpenModal={() => setCompareModalOpen(true)}
+        compareProductIds={compareProductIds}
+        products={products}
+        selectedVariantByProduct={selectedVariantByProduct}
+        selectedColorByProduct={selectedColorByProduct}
+        onSelectVariant={(prodId, varId) =>
+          setSelectedVariantByProduct((prev) => ({ ...prev, [prodId]: varId }))
+        }
+        onSelectColor={(prodId, colLabel, varId) => {
+          setSelectedColorByProduct((prev) => ({ ...prev, [prodId]: colLabel }));
+          if (varId) {
+            setSelectedVariantByProduct((prev) => ({ ...prev, [prodId]: varId }));
+          }
+        }}
+        onToggleCompare={handleToggleCompare}
+        onClearCompare={handleClearCompare}
+        onAddToCart={(prod, varId, colLabel) =>
+          handleAddToCart(prod, varId, 1, undefined, false, colLabel)
+        }
+        onOpenProduct={(prod) => openProductDetail(prod)}
+        getProductColorOptions={getProductColorOptions}
+        compareToastMessage={compareToastMessage}
+        onDismissToast={() => setCompareToastMessage(null)}
+      />
+
       <RufusAssistant
         isOpen={rufusOpen}
         onClose={() => setRufusOpen(false)}
@@ -7574,6 +7705,9 @@ const DEFAULT_PRODUCTS = [
           setSelectedBrandSlug('ALL');
           setActiveView('storefront');
         }}
+        onToggleCompare={handleToggleCompare}
+        compareProductIds={compareProductIds}
+        onOpenComparison={() => setCompareModalOpen(true)}
         initialQuestion={rufusInitialQuestion}
         onClearInitialQuestion={() => setRufusInitialQuestion(null)}
       />

@@ -1,16 +1,19 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   Send,
   X,
   ShoppingBag,
   Mic,
+  MicOff,
+  Square,
   Bot,
   HelpCircle,
   Globe,
   ExternalLink,
   Search,
   TrendingUp,
+  Scale,
 } from 'lucide-react';
 import { formatPaiseToINR } from '../lib/domain-logic.ts';
 import { ProductIllustration } from './ProductIllustration.tsx';
@@ -34,6 +37,9 @@ interface RufusAssistantProps {
   onAddToCart: (product: any) => void;
   onOpenProduct: (product: any) => void;
   onFilterCategory?: (categorySlug: string) => void;
+  onToggleCompare?: (productId: number) => void;
+  compareProductIds?: number[];
+  onOpenComparison?: () => void;
   initialQuestion?: string | null;
   onClearInitialQuestion?: () => void;
 }
@@ -53,6 +59,9 @@ export function RufusAssistant({
   onAddToCart,
   onOpenProduct,
   onFilterCategory,
+  onToggleCompare,
+  compareProductIds = [],
+  onOpenComparison,
   initialQuestion,
   onClearInitialQuestion,
 }: RufusAssistantProps) {
@@ -60,7 +69,7 @@ export function RufusAssistant({
     {
       id: 'welcome-vidya',
       role: 'assistant',
-      text: 'Namaste! I’m **Vidya AI**, your Gayatri Stationers Shopping & Study Guide — now powered by **Google Search Grounding** for real-time Indian stationery market trends, live price comparisons across brands, and verified product reviews. Ask me anything or tap a prompt below!',
+      text: 'Namaste! I’m **Vidya AI**, your Gayatri Stationers Shopping & Study Guide — now powered by **Google Search Grounding** for real-time Indian stationery market trends, live price comparisons across brands, and verified product reviews. Ask me anything by typing or tapping the **Microphone** below!',
       recommendedProductIds: products
         .filter((p) => p && p.isActive !== false && p.isBestseller)
         .slice(0, 2)
@@ -72,14 +81,76 @@ export function RufusAssistant({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
   const [enableSearchGrounding, setEnableSearchGrounding] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Refs for hybrid SpeechRecognition + MediaRecorder voice capture
+  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const speechTranscriptRef = useRef<string>('');
+  const silenceTimerRef = useRef<any>(null);
+  const maxRecordTimerRef = useRef<any>(null);
+  const hasSubmittedVoiceRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [messages, loading, isOpen]);
+  }, [messages, loading, isOpen, voiceStatus]);
+
+  const cleanupVoiceResources = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (maxRecordTimerRef.current) {
+      clearTimeout(maxRecordTimerRef.current);
+      maxRecordTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    mediaRecorderRef.current = null;
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {
+        // ignore
+      }
+      mediaStreamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      cleanupVoiceResources();
+      setListening(false);
+      setTranscribing(false);
+      setVoiceStatus(null);
+    }
+    return () => {
+      cleanupVoiceResources();
+    };
+  }, [isOpen, cleanupVoiceResources]);
 
   const sendQuestion = async (questionText: string) => {
     const cleanQ = questionText.trim();
@@ -94,6 +165,7 @@ export function RufusAssistant({
     const nextHistory = [...messages, userMsg];
     setMessages(nextHistory);
     setInput('');
+    setVoiceStatus(null);
     setLoading(true);
 
     try {
@@ -109,7 +181,7 @@ export function RufusAssistant({
         body: JSON.stringify({
           question: contextualQuestion,
           enableSearchGrounding,
-           currentProduct: activeProduct
+          currentProduct: activeProduct
             ? {
                 id: activeProduct.id,
                 sku: activeProduct.sku,
@@ -207,32 +279,252 @@ export function RufusAssistant({
     }
   }, [isOpen, initialQuestion]);
 
-  const handleVoiceAsk = () => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
+  const blobToBase64 = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = String(reader.result || '');
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+  const finalizeAndSubmitVoice = async (recordedBlob?: Blob | null) => {
+    if (hasSubmittedVoiceRef.current) return;
+    hasSubmittedVoiceRef.current = true;
+    setListening(false);
+
+    const directSpeech = speechTranscriptRef.current.trim();
+    if (directSpeech) {
+      setInput(directSpeech);
+      setVoiceStatus(null);
+      await sendQuestion(directSpeech);
       return;
     }
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'en-IN';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      setListening(true);
-      recognition.onresult = (event: any) => {
-        const transcript = event?.results?.[0]?.[0]?.transcript || '';
-        if (transcript) {
-          setInput(transcript);
-          sendQuestion(transcript);
+
+    if (recordedBlob && recordedBlob.size > 400) {
+      setTranscribing(true);
+      setVoiceStatus('Transcribing your voice query with Vidya AI...');
+      try {
+        const audioBase64 = await blobToBase64(recordedBlob);
+        const res = await fetch('/api/ai/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audioBase64,
+            mimeType: recordedBlob.type || 'audio/webm',
+          }),
+        });
+        const data = await res.json();
+        const text = String(data?.transcript || '').trim();
+        if (text) {
+          setInput(text);
+          setTranscribing(false);
+          setVoiceStatus(null);
+          await sendQuestion(text);
+          return;
         }
-        setListening(false);
-      };
-      recognition.onerror = () => setListening(false);
-      recognition.onend = () => setListening(false);
-      recognition.start();
-    } catch {
-      setListening(false);
+      } catch {
+        // Fallback below
+      } finally {
+        setTranscribing(false);
+      }
     }
+
+    setVoiceStatus('No clear speech heard. Please speak closer to the mic or tap a prompt above.');
+  };
+
+  const stopVoiceRecording = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (maxRecordTimerRef.current) {
+      clearTimeout(maxRecordTimerRef.current);
+      maxRecordTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+        return; // mediaRecorder.onstop will call finalizeAndSubmitVoice
+      } catch {
+        // ignore
+      }
+    }
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+      mediaStreamRef.current = null;
+    }
+    finalizeAndSubmitVoice(null);
+  };
+
+  const handleVoiceAsk = async () => {
+    if (listening) {
+      stopVoiceRecording();
+      return;
+    }
+    if (loading || transcribing) return;
+
+    cleanupVoiceResources();
+    speechTranscriptRef.current = '';
+    audioChunksRef.current = [];
+    hasSubmittedVoiceRef.current = false;
+    setVoiceStatus('Listening... Speak your stationery question (tap mic again to send)');
+    setListening(true);
+
+    let mediaRecorderStarted = false;
+
+    // 1. Start MediaRecorder via getUserMedia for reliable cross-browser & iframe capture
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function'
+    ) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+
+        if (typeof MediaRecorder !== 'undefined') {
+          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : '';
+          const recorder = mimeType
+            ? new MediaRecorder(stream, { mimeType })
+            : new MediaRecorder(stream);
+          mediaRecorderRef.current = recorder;
+          audioChunksRef.current = [];
+
+          recorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) {
+              audioChunksRef.current.push(ev.data);
+            }
+          };
+
+          recorder.onstop = () => {
+            const blob =
+              audioChunksRef.current.length > 0
+                ? new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+                : null;
+            if (mediaStreamRef.current) {
+              try {
+                mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+              } catch {
+                // ignore
+              }
+              mediaStreamRef.current = null;
+            }
+            finalizeAndSubmitVoice(blob);
+          };
+
+          recorder.start(250);
+          mediaRecorderStarted = true;
+        }
+      } catch (err: any) {
+        const errName = String(err?.name || '');
+        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          setListening(false);
+          setVoiceStatus(
+            'Microphone access was blocked by the browser. Please allow microphone permission in your browser address bar, then tap the mic again.'
+          );
+          return;
+        }
+      }
+    }
+
+    // 2. Also run Web Speech API (SpeechRecognition) for instant live transcript in input
+    const SpeechRecognition =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.lang = 'en-IN';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+          let combined = '';
+          for (let i = 0; i < (event?.results?.length || 0); i++) {
+            combined += event.results[i][0]?.transcript || '';
+          }
+          const clean = combined.trim();
+          if (clean) {
+            speechTranscriptRef.current = clean;
+            setInput(clean);
+            setVoiceStatus(`Heard: "${clean}" — tap Stop/Send or pause to submit`);
+
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = setTimeout(() => {
+              stopVoiceRecording();
+            }, 1800);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          const errorCode = String(event?.error || '');
+          if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed') {
+            if (!mediaRecorderStarted) {
+              setListening(false);
+              setVoiceStatus(
+                'Microphone permission is required for voice search. Please allow microphone access in your browser.'
+              );
+            }
+          } else if (!mediaRecorderStarted && !speechTranscriptRef.current) {
+            setListening(false);
+            setVoiceStatus('Could not capture voice. Please try speaking again or type below.');
+          }
+        };
+
+        recognition.onend = () => {
+          if (!mediaRecorderStarted) {
+            if (speechTranscriptRef.current.trim()) {
+              finalizeAndSubmitVoice(null);
+            } else {
+              setListening(false);
+            }
+          }
+        };
+
+        recognition.start();
+      } catch {
+        if (!mediaRecorderStarted) {
+          setListening(false);
+          setVoiceStatus('Voice recognition could not start in this browser.');
+          return;
+        }
+      }
+    } else if (!mediaRecorderStarted) {
+      setListening(false);
+      setVoiceStatus('Microphone is not supported in this browser environment.');
+      return;
+    }
+
+    // Auto-stop after 7 seconds so recording never hangs indefinitely
+    maxRecordTimerRef.current = setTimeout(() => {
+      stopVoiceRecording();
+    }, 7000);
   };
 
   if (!isOpen) return null;
@@ -511,17 +803,53 @@ export function RufusAssistant({
                             </div>
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => onAddToCart(prod)}
-                            className="px-3.5 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white text-[11px] font-semibold rounded-full shrink-0 cursor-pointer flex items-center gap-1 shadow-2xs"
-                          >
-                            <ShoppingBag className="w-3 h-3" />
-                            <span>+ Add</span>
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {onToggleCompare && (
+                              <button
+                                type="button"
+                                onClick={() => onToggleCompare(Number(prod.id))}
+                                title="Add to Side-by-Side Comparison"
+                                className={`px-2.5 py-2 text-[10px] font-semibold rounded-full border cursor-pointer flex items-center gap-1 transition-colors ${
+                                  compareProductIds.includes(Number(prod.id))
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                <Scale className="w-3 h-3" />
+                                <span>
+                                  {compareProductIds.includes(Number(prod.id))
+                                    ? 'Comparing'
+                                    : 'Compare'}
+                                </span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => onAddToCart(prod)}
+                              className="px-3.5 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white text-[11px] font-semibold rounded-full shrink-0 cursor-pointer flex items-center gap-1 shadow-2xs"
+                            >
+                              <ShoppingBag className="w-3 h-3" />
+                              <span>+ Add</span>
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
+                    {compareProductIds.length >= 2 && onOpenComparison && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenComparison();
+                        }}
+                        className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded-full flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <Scale className="w-3.5 h-3.5 text-amber-300" />
+                        <span>
+                          Open Side-by-Side Comparison Table ({compareProductIds.length}/3 Selected) →
+                        </span>
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -560,10 +888,60 @@ export function RufusAssistant({
           )}
         </div>
 
+        {/* Live Microphone / Voice Status Banner */}
+        {(listening || transcribing || voiceStatus) && (
+          <div
+            className={`px-4 py-2 border-t text-[11px] flex items-center justify-between gap-2 shrink-0 ${
+              listening
+                ? 'bg-red-50 border-red-200 text-red-900'
+                : transcribing
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-slate-100 border-slate-200 text-slate-700'
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {listening ? (
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping shrink-0" />
+              ) : transcribing ? (
+                <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-spin shrink-0" />
+              ) : (
+                <Mic className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              )}
+              <span className="truncate font-medium">
+                {voiceStatus ||
+                  (listening
+                    ? 'Listening... Speak your stationery query now'
+                    : 'Transcribing voice with Vidya AI...')}
+              </span>
+            </div>
+            {listening ? (
+              <button
+                type="button"
+                onClick={stopVoiceRecording}
+                className="px-2.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded-full text-[10px] font-bold shrink-0 cursor-pointer"
+              >
+                Stop &amp; Send
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setVoiceStatus(null)}
+                className="text-[10px] underline shrink-0 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Input Form */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (listening) {
+              stopVoiceRecording();
+              return;
+            }
             sendQuestion(input);
           }}
           className="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0"
@@ -571,27 +949,39 @@ export function RufusAssistant({
           <button
             type="button"
             onClick={handleVoiceAsk}
-            title="Speak to Vidya AI"
-            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
+            disabled={loading || transcribing}
+            aria-label={listening ? 'Stop voice recording and send' : 'Speak to Vidya AI'}
+            title={listening ? 'Tap to stop recording & send' : 'Speak to Vidya AI (Voice Input)'}
+            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 cursor-pointer transition-all ${
               listening
-                ? 'bg-red-600 text-white animate-pulse'
+                ? 'bg-red-600 text-white ring-4 ring-red-200 animate-pulse'
+                : transcribing
+                ? 'bg-amber-100 text-amber-800'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            <Mic className="w-4 h-4" />
+            {listening ? (
+              <Square className="w-3.5 h-3.5 fill-current" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
           </button>
 
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask trends, price comparisons, reviews, or 'Add Classmate'..."
+            placeholder={
+              listening
+                ? 'Listening... speak now or tap red stop button'
+                : "Tap mic to speak or ask trends, prices, reviews..."
+            }
             className="flex-1 px-4 py-2 text-xs bg-slate-100 focus:bg-white border border-slate-200 focus:border-slate-900 rounded-full focus:outline-none text-slate-900"
           />
 
           <button
             type="submit"
-            disabled={!input.trim() || loading}
+            disabled={(!input.trim() && !listening) || loading || transcribing}
             className="w-9 h-9 rounded-full bg-[#B42318] hover:bg-[#991B1B] disabled:opacity-40 text-white flex items-center justify-center shrink-0 cursor-pointer transition-colors shadow-2xs"
           >
             <Send className="w-3.5 h-3.5" />

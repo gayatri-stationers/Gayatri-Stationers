@@ -1158,7 +1158,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return next;
         });
       }
-      setStatusBanner(`Saved product "${data.product.name}" (${data.product.sku}).`);
+      setStatusBanner(
+        `Saved product "${data.product?.name || productForm.name}" (${data.product?.sku || productForm.sku}).`
+      );
       handleResetProductForm();
       setShowProductForm(false);
       await fetchAdminData();
@@ -1520,38 +1522,186 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Voice Dictation so the Admin can speak commands to Gemini AI Copilot
-  const handleStartVoiceDictation = () => {
+  const adminRecognitionRef = React.useRef<any>(null);
+  const adminMediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const adminMediaStreamRef = React.useRef<MediaStream | null>(null);
+  const adminSpeechTranscriptRef = React.useRef<string>('');
+  const adminHasSubmittedVoiceRef = React.useRef<boolean>(false);
+
+  const stopAdminVoiceDictation = () => {
+    if (adminRecognitionRef.current) {
+      try {
+        adminRecognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      adminRecognitionRef.current = null;
+    }
+    if (adminMediaRecorderRef.current && adminMediaRecorderRef.current.state !== 'inactive') {
+      try {
+        adminMediaRecorderRef.current.stop();
+        return;
+      } catch {
+        // ignore
+      }
+    }
+    if (adminMediaStreamRef.current) {
+      try {
+        adminMediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch {
+        // ignore
+      }
+      adminMediaStreamRef.current = null;
+    }
+    setAiListening(false);
+    const directText = adminSpeechTranscriptRef.current.trim();
+    if (directText && !adminHasSubmittedVoiceRef.current) {
+      adminHasSubmittedVoiceRef.current = true;
+      setAiCopilotPrompt(directText);
+      handleRunAiAdminCopilot(directText);
+    }
+  };
+
+  const handleStartVoiceDictation = async () => {
     if (typeof window === 'undefined') return;
+    if (aiListening) {
+      stopAdminVoiceDictation();
+      return;
+    }
+    setErrorMsg(null);
+    adminSpeechTranscriptRef.current = '';
+    adminHasSubmittedVoiceRef.current = false;
+    setAiListening(true);
+    setStatusBanner('Listening... Speak your command to Gemini AI Copilot (tap Mic again to finish).');
+
+    let recorderActive = false;
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function'
+    ) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        adminMediaStreamRef.current = stream;
+        if (typeof MediaRecorder !== 'undefined') {
+          const chunks: Blob[] = [];
+          const recorder = new MediaRecorder(stream);
+          adminMediaRecorderRef.current = recorder;
+          recorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+          };
+          recorder.onstop = async () => {
+            setAiListening(false);
+            if (adminMediaStreamRef.current) {
+              try {
+                adminMediaStreamRef.current.getTracks().forEach((t) => t.stop());
+              } catch {
+                // ignore
+              }
+              adminMediaStreamRef.current = null;
+            }
+            if (adminHasSubmittedVoiceRef.current) return;
+            const directText = adminSpeechTranscriptRef.current.trim();
+            if (directText) {
+              adminHasSubmittedVoiceRef.current = true;
+              setAiCopilotPrompt(directText);
+              handleRunAiAdminCopilot(directText);
+              return;
+            }
+            const blob = chunks.length > 0 ? new Blob(chunks, { type: recorder.mimeType || 'audio/webm' }) : null;
+            if (blob && blob.size > 400) {
+              setStatusBanner('Transcribing voice command with Gemini AI...');
+              try {
+                const base64Audio = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const resStr = String(reader.result || '');
+                    resolve(resStr.includes(',') ? resStr.split(',')[1] : resStr);
+                  };
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+                const res = await fetch('/api/ai/transcribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    audioBase64: base64Audio,
+                    mimeType: blob.type || 'audio/webm',
+                  }),
+                });
+                const data = await res.json();
+                const text = String(data?.transcript || '').trim();
+                if (text && !adminHasSubmittedVoiceRef.current) {
+                  adminHasSubmittedVoiceRef.current = true;
+                  setAiCopilotPrompt(text);
+                  handleRunAiAdminCopilot(text);
+                  return;
+                }
+              } catch {
+                // ignore
+              }
+            }
+            setStatusBanner('No clear voice command heard. Please try speaking again or type your command.');
+          };
+          recorder.start(250);
+          recorderActive = true;
+        }
+      } catch (err: any) {
+        if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+          setAiListening(false);
+          setErrorMsg('Microphone permission is blocked. Please allow microphone access in your browser.');
+          return;
+        }
+      }
+    }
+
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
+    if (SpeechRec) {
+      try {
+        const recognition = new SpeechRec();
+        adminRecognitionRef.current = recognition;
+        recognition.lang = 'en-IN';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+        recognition.maxAlternatives = 1;
+        recognition.onresult = (event: any) => {
+          let combined = '';
+          for (let i = 0; i < (event?.results?.length || 0); i++) {
+            combined += event.results[i][0]?.transcript || '';
+          }
+          const clean = combined.trim();
+          if (clean) {
+            adminSpeechTranscriptRef.current = clean;
+            setAiCopilotPrompt(clean);
+          }
+        };
+        recognition.onerror = () => {
+          if (!recorderActive) setAiListening(false);
+        };
+        recognition.onend = () => {
+          if (!recorderActive) {
+            setAiListening(false);
+            const clean = adminSpeechTranscriptRef.current.trim();
+            if (clean && !adminHasSubmittedVoiceRef.current) {
+              adminHasSubmittedVoiceRef.current = true;
+              handleRunAiAdminCopilot(clean);
+            }
+          }
+        };
+        recognition.start();
+      } catch {
+        if (!recorderActive) setAiListening(false);
+      }
+    } else if (!recorderActive) {
+      setAiListening(false);
       setErrorMsg('Voice input is not supported in this browser. Please type your command in the box.');
       return;
     }
-    try {
-      const recognition = new SpeechRec();
-      recognition.lang = 'en-IN';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      setAiListening(true);
-      recognition.onresult = (event: any) => {
-        const transcript = event?.results?.[0]?.[0]?.transcript || '';
-        setAiListening(false);
-        if (transcript) {
-          setAiCopilotPrompt(transcript);
-          handleRunAiAdminCopilot(transcript);
-        }
-      };
-      recognition.onerror = () => {
-        setAiListening(false);
-      };
-      recognition.onend = () => {
-        setAiListening(false);
-      };
-      recognition.start();
-    } catch {
-      setAiListening(false);
-    }
+
+    setTimeout(() => {
+      stopAdminVoiceDictation();
+    }, 6500);
   };
 
   const handleImportCsv = async () => {
@@ -1615,7 +1765,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save coupon');
-      setStatusBanner(`Saved coupon ${data.coupon.code}.`);
+      setStatusBanner(`Saved coupon ${data.coupon?.code || couponForm.code}.`);
       setCouponForm({ ...couponForm, code: '', description: '' });
       await fetchAdminData();
       onRefreshStorefront();
@@ -1643,7 +1793,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save PIN code rule');
-      setStatusBanner(`Saved delivery rule for PIN code ${data.pincodeRule.pincode}.`);
+      setStatusBanner(`Saved delivery rule for PIN code ${data.pincodeRule?.pincode || pincodeForm.pincode}.`);
       setPincodeForm({ ...pincodeForm, pincode: '', city: '' });
       await fetchAdminData();
       onRefreshStorefront();

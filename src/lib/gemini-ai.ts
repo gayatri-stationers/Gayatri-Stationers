@@ -812,3 +812,70 @@ ${prodSummary}`;
     } companies/brands. Try telling me:\n• "Add product Classmate Octane Gel Pen Pack of 10 at ₹90"\n• "Add web photos for Classmate Pulse Spiral Notebook"\n• "Remove photo from Unomax Geltron"\n• "Remove product Kangaro Stapler"`,
   };
 }
+
+/**
+ * Transcribes base64-encoded audio recorded from the browser microphone using Gemini ('gemini-3.5-transcribe').
+ */
+export async function transcribeAudioWithGemini(params: {
+  audioBase64: string;
+  mimeType?: string;
+}): Promise<{ transcript: string; source: 'GEMINI_TRANSCRIBE' | 'EMPTY' }> {
+  const cleanBase64 = (params.audioBase64 || '')
+    .replace(/^data:audio\/[^;]+;base64,/i, '')
+    .trim();
+  if (!cleanBase64) {
+    return { transcript: '', source: 'EMPTY' };
+  }
+
+  const mimeType = (params.mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
+  const ai = getGeminiClient();
+  if (!ai) {
+    return { transcript: '', source: 'EMPTY' };
+  }
+
+  const promptText =
+    'Transcribe this spoken voice query for an Indian stationery store (Gayatri Stationers). The speaker may mention brands like Classmate, DOMS, Flair, Unomax, Camlin, Faber-Castell, notebooks, pens, geometry boxes, prices in rupees, or product comparisons. Return ONLY the plain transcribed text without quotes or commentary. If no speech is audible, return an empty string.';
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-transcribe',
+      contents: [
+        {
+          inlineData: {
+            mimeType,
+            data: cleanBase64,
+          },
+        },
+        {
+          text: promptText,
+        },
+      ],
+    });
+    const text = (response.text || '').trim();
+    return { transcript: text, source: text ? 'GEMINI_TRANSCRIBE' : 'EMPTY' };
+  } catch (err: any) {
+    console.warn('gemini-3.5-transcribe fallback to gemini-3.8-flash:', err?.message || err);
+    try {
+      const fallbackRes = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          {
+            inlineData: {
+              mimeType,
+              data: cleanBase64,
+            },
+          },
+          {
+            text: promptText,
+          },
+        ],
+      });
+      const text = (fallbackRes.text || '').trim();
+      return { transcript: text, source: text ? 'GEMINI_TRANSCRIBE' : 'EMPTY' };
+    } catch (innerErr: any) {
+      console.warn('Audio transcription failed:', innerErr?.message || innerErr);
+      return { transcript: '', source: 'EMPTY' };
+    }
+  }
+}
+
