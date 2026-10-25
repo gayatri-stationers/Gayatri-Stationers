@@ -1137,18 +1137,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setErrorMsg(null);
     let resolvedBrandId = Number(productForm.brandId || localBrandsList[0]?.id || 1);
     let resolvedCategoryId = Number(productForm.categoryId || localCategoriesList[0]?.id || 1);
+    let inlineCreatedBrandObj: any = null;
+    let inlineCreatedCatObj: any = null;
 
     try {
       if (addingInlineBrand && productForm.newBrandName.trim()) {
         const createdBrand = await handleQuickSaveInlineBrand();
         if (createdBrand?.id) {
           resolvedBrandId = Number(createdBrand.id);
+          inlineCreatedBrandObj = createdBrand;
         }
       }
       if (addingInlineCategory && productForm.newCategoryName.trim()) {
         const createdCat = await handleQuickSaveInlineCategory();
         if (createdCat?.id) {
           resolvedCategoryId = Number(createdCat.id);
+          inlineCreatedCatObj = createdCat;
         }
       }
     } catch {
@@ -1163,10 +1167,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       sellingPricePaise,
       Math.round((Number(productForm.mrpRupees) || sellingPricePaise / 100) * 100)
     );
-    const selectedBrandObj = localBrandsList.find((b) => Number(b.id) === Number(resolvedBrandId));
-    const selectedCategoryObj = localCategoriesList.find(
-      (c) => Number(c.id) === Number(resolvedCategoryId)
-    );
+    const selectedBrandObj =
+      inlineCreatedBrandObj ||
+      localBrandsList.find((b) => Number(b.id) === Number(resolvedBrandId));
+    const selectedCategoryObj =
+      inlineCreatedCatObj ||
+      localCategoriesList.find((c) => Number(c.id) === Number(resolvedCategoryId));
 
     const buildEnrichedProduct = (rawProd?: any) => {
       const id = Number(rawProd?.id || editingProductId || Date.now());
@@ -1192,27 +1198,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         stockQuantity: stockQty,
         inStock: stockQty > 0,
       };
+      const finalCatName =
+        rawProd?.categoryName ||
+        selectedCategoryObj?.name ||
+        productForm.newCategoryName.trim() ||
+        'Notebooks & Registers';
+      const finalCatSlug =
+        rawProd?.categorySlug ||
+        selectedCategoryObj?.slug ||
+        finalCatName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const finalBrandName =
+        rawProd?.brandName ||
+        selectedBrandObj?.name ||
+        productForm.newBrandName.trim() ||
+        'Gayatri Essentials';
+      const finalBrandSlug =
+        rawProd?.brandSlug ||
+        selectedBrandObj?.slug ||
+        finalBrandName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
       return {
         ...(rawProd || {}),
         id,
         sku,
         name,
         slug,
-        categoryId: resolvedCategoryId,
-        categoryName:
-          rawProd?.categoryName ||
-          selectedCategoryObj?.name ||
-          productForm.newCategoryName.trim() ||
-          'Notebooks & Registers',
-        categorySlug:
-          rawProd?.categorySlug || selectedCategoryObj?.slug || 'notebooks-and-registers',
-        brandId: resolvedBrandId,
-        brandName:
-          rawProd?.brandName ||
-          selectedBrandObj?.name ||
-          productForm.newBrandName.trim() ||
-          'Gayatri Essentials',
-        brandSlug: rawProd?.brandSlug || selectedBrandObj?.slug || 'gayatri',
+        categoryId: Number(rawProd?.categoryId || resolvedCategoryId),
+        categoryName: finalCatName,
+        categorySlug: finalCatSlug,
+        brandId: Number(rawProd?.brandId || resolvedBrandId),
+        brandName: finalBrandName,
+        brandSlug: finalBrandSlug,
         shortDescription:
           productForm.shortDescription.trim() ||
           productForm.description.trim() ||

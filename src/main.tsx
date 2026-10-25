@@ -985,6 +985,37 @@ function handleClientSideApiFallback(apiPath: string, init?: RequestInit): Respo
     });
   }
 
+  if (apiPath.startsWith('/api/storefront/bootstrap')) {
+    const storedCats = getStoredList('gs_fallback_categories_v1');
+    const storedBrands = getStoredList('gs_fallback_brands_v1');
+    const storedProds = getStoredList('gs_fallback_catalogue_v1');
+    return jsonResponse({
+      categories: storedCats,
+      brands: storedBrands,
+      products: storedProds,
+      bundles: [],
+      coupons: [],
+      serviceablePincodes: [
+        {
+          id: 1,
+          pincode: '208021',
+          city: 'Kanpur (Naubasta / Awas Vikas / Galla Mandi)',
+          state: 'Uttar Pradesh',
+          deliveryFeePaise: 0,
+          freeDeliveryThresholdPaise: 0,
+          codAvailable: true,
+          estimatedDays: 'Same Day / Next Day Delivery',
+          isActive: true,
+        },
+      ],
+      settings: {},
+      navigationItems: [],
+      banners: [],
+      homepageSections: [],
+      cmsPages: [],
+    });
+  }
+
   if (apiPath.startsWith('/api/admin/cms/bootstrap')) {
     return jsonResponse({
       banners: [],

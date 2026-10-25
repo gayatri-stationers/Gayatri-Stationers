@@ -460,20 +460,142 @@ export default function App() {
   const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
   const [visibleProductCount, setVisibleProductCount] = useState<number>(12);
 
+const CATEGORY_ALIAS_GROUPS: string[][] = [
+  ['notebooks-and-registers', 'notebooks-and-diaries'],
+  ['pens-and-pencils', 'pens-and-writing-instruments', 'pens-and-writing'],
+  ['school-supplies', 'geometry-boxes-and-accessories', 'school-and-geometry-essentials'],
+  ['art-and-craft-supplies', 'drawing-and-painting', 'diy-and-crafts'],
+];
+
+const BRAND_ALIAS_GROUPS: string[][] = [
+  ['classmate', 'itc-classmate'],
+  ['camlin', 'camlin-kokuyo', 'kokuyo-camlin'],
+  ['schnieder-luxor', 'schneider-luxor', 'luxor', 'schneider'],
+  ['pentonic-linc', 'pentonic', 'linc'],
+  ['pidilite-fevicol', 'pidilite', 'fevicol'],
+  ['navneet-youva', 'navneet', 'youva'],
+];
+
+const getCanonicalCategoryKey = (slugOrName: string): string => {
+  const s = String(slugOrName || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  const group = CATEGORY_ALIAS_GROUPS.find((g) => g.includes(s));
+  return group ? group[0] : s;
+};
+
+const getCanonicalBrandKey = (slugOrName: string): string => {
+  const s = String(slugOrName || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  const group = BRAND_ALIAS_GROUPS.find((g) => g.includes(s));
+  return group ? group[0] : s;
+};
+
+const doesProductMatchCategory = (p: any, cat: any, childCatSlugs: string[] = []): boolean => {
+  if (!p || p.isActive === false || !cat) return false;
+  const catId = Number(cat.id);
+  const cSlug = String(cat.slug || '')
+    .toLowerCase()
+    .trim();
+  const cName = String(cat.name || '')
+    .toLowerCase()
+    .trim();
+  const cAliases = CATEGORY_ALIAS_GROUPS.find((g) => g.includes(cSlug)) || (cSlug ? [cSlug] : []);
+
+  const pCatSlug = String(p.categorySlug || '')
+    .toLowerCase()
+    .trim();
+  const pSubSlug = String(p.subcategorySlug || '')
+    .toLowerCase()
+    .trim();
+  const pCatName = String(p.categoryName || '')
+    .toLowerCase()
+    .trim();
+
+  if (Number.isFinite(catId) && catId > 0) {
+    if (Number(p.categoryId) === catId || Number(p.subcategoryId) === catId) {
+      if (!pCatSlug || cAliases.includes(pCatSlug) || pCatSlug === cSlug) {
+        return true;
+      }
+    }
+    if (Array.isArray(p.secondaryCategoryIds) && p.secondaryCategoryIds.map(Number).includes(catId)) {
+      return true;
+    }
+  }
+
+  if (cSlug && (pCatSlug === cSlug || pSubSlug === cSlug || cAliases.includes(pCatSlug) || cAliases.includes(pSubSlug))) {
+    return true;
+  }
+  if (childCatSlugs.length > 0 && (childCatSlugs.includes(pCatSlug) || childCatSlugs.includes(pSubSlug))) {
+    return true;
+  }
+  if (cName && pCatName === cName) {
+    return true;
+  }
+  return false;
+};
+
+const doesProductMatchBrand = (p: any, brand: any): boolean => {
+  if (!p || p.isActive === false || !brand) return false;
+  const brandId = Number(brand.id);
+  const bSlug = String(brand.slug || '')
+    .toLowerCase()
+    .trim();
+  const bName = String(brand.name || '')
+    .toLowerCase()
+    .trim();
+  const bAliases = BRAND_ALIAS_GROUPS.find((g) => g.includes(bSlug)) || (bSlug ? [bSlug] : []);
+  const bTokens = bName
+    .split(/[\s\-()]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 4 || ['doms', 'linc'].includes(t));
+
+  const pBrandSlug = String(p.brandSlug || '')
+    .toLowerCase()
+    .trim();
+  const pBrandName = String(p.brandName || '')
+    .toLowerCase()
+    .trim();
+  const pBrandDerivedSlug = pBrandName.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const pTitle = String(p.name || '')
+    .toLowerCase()
+    .trim();
+
+  if (bSlug && (pBrandSlug === bSlug || pBrandDerivedSlug === bSlug || bAliases.includes(pBrandSlug) || bAliases.includes(pBrandDerivedSlug))) {
+    return true;
+  }
+  if (bName && pBrandName === bName) {
+    return true;
+  }
+  if (bTokens.length > 0 && bTokens.some((tok) => pBrandName.includes(tok) || pBrandSlug.includes(tok) || pTitle.includes(tok))) {
+    return true;
+  }
+  if (Number.isFinite(brandId) && brandId > 0 && Number(p.brandId) === brandId && (!pBrandSlug || pBrandSlug === bSlug || bAliases.includes(pBrandSlug))) {
+    return true;
+  }
+  return false;
+};
+
 const DEFAULT_CATEGORIES = [
-  { id: 1, name: 'Notebooks & Diaries', slug: 'notebooks-and-diaries', description: 'Ruled registers, spiral notebooks, and planners', isActive: true, showInNav: true, showOnHomepage: true },
-  { id: 2, name: 'Pens & Writing Instruments', slug: 'pens-and-writing-instruments', description: 'Gel pens, ball pens, fountain pens, and highlighters', isActive: true, showInNav: true, showOnHomepage: true },
-  { id: 3, name: 'Art & Craft Supplies', slug: 'art-and-craft-supplies', description: 'Acrylic paints, sketchbooks, and canvases', isActive: true, showInNav: true, showOnHomepage: true },
-  { id: 4, name: 'School & Geometry Essentials', slug: 'school-and-geometry-essentials', description: 'Geometry boxes, compasses, and rulers', isActive: true, showInNav: true, showOnHomepage: true },
+  { id: 1, name: 'Notebooks & Diaries', slug: 'notebooks-and-diaries', description: 'Ruled registers, spiral notebooks, and planners', isActive: true, showInNav: true, showOnHomepage: true, productCount: 3 },
+  { id: 2, name: 'Pens & Writing Instruments', slug: 'pens-and-writing-instruments', description: 'Gel pens, ball pens, fountain pens, and highlighters', isActive: true, showInNav: true, showOnHomepage: true, productCount: 4 },
+  { id: 3, name: 'Art & Craft Supplies', slug: 'art-and-craft-supplies', description: 'Acrylic paints, sketchbooks, and canvases', isActive: true, showInNav: true, showOnHomepage: true, productCount: 2 },
+  { id: 4, name: 'School & Geometry Essentials', slug: 'school-and-geometry-essentials', description: 'Geometry boxes, compasses, and rulers', isActive: true, showInNav: true, showOnHomepage: true, productCount: 2 },
 ];
 
 const DEFAULT_BRANDS = [
-  { id: 1, name: 'ITC Classmate', slug: 'itc-classmate', description: 'Spiral notebooks, registers, and school stationery', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 1 },
-  { id: 2, name: 'Unomax', slug: 'unomax', description: 'Precision liquid ball pens and gel pens', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 2 },
-  { id: 3, name: 'Flair', slug: 'flair', description: 'Roller gel pens, fountain pens, and markers', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 3 },
-  { id: 4, name: 'DOMS', slug: 'doms', description: 'Colour pencils, geometry boxes, and art kits', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 4 },
-  { id: 5, name: 'Camlin Kokuyo', slug: 'camlin-kokuyo', description: 'Fine art paints, brushes, markers, and inks', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 5 },
-  { id: 6, name: 'Faber-Castell', slug: 'faber-castell', description: 'Highlighters, drawing pencils, and connectors', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 6 },
+  { id: 1, name: 'ITC Classmate', slug: 'itc-classmate', description: 'Spiral notebooks, registers, and school stationery', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 1, productCount: 2 },
+  { id: 2, name: 'Unomax', slug: 'unomax', description: 'Precision liquid ball pens and gel pens', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 2, productCount: 1 },
+  { id: 3, name: 'Flair', slug: 'flair', description: 'Roller gel pens, fountain pens, and markers', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 3, productCount: 1 },
+  { id: 4, name: 'DOMS', slug: 'doms', description: 'Colour pencils, geometry boxes, and art kits', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 4, productCount: 2 },
+  { id: 5, name: 'Camlin Kokuyo', slug: 'camlin-kokuyo', description: 'Fine art paints, brushes, markers, and inks', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 5, productCount: 1 },
+  { id: 6, name: 'Faber-Castell', slug: 'faber-castell', description: 'Highlighters, drawing pencils, and connectors', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 6, productCount: 1 },
+  { id: 7, name: 'Schnieder Luxor', slug: 'schnieder-luxor', description: 'Precision German rollerball pens, fineliners, and highlighters', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 7, productCount: 1 },
 ];
 
 const DEFAULT_PRODUCTS = [
@@ -684,7 +806,7 @@ const DEFAULT_PRODUCTS = [
     sku: 'GS-PW-FAB04',
     categoryId: 2,
     categoryName: 'Pens & Writing Instruments',
-    categorySlug: 'pens-and-writing',
+    categorySlug: 'pens-and-writing-instruments',
     brandId: 6,
     brandName: 'Faber-Castell',
     brandSlug: 'faber-castell',
@@ -705,6 +827,34 @@ const DEFAULT_PRODUCTS = [
       { id: 17, variantName: 'Pack of 4 Pastel Shades', sku: 'GS-PW-FAB04-SET', mrpPaise: 18000, sellingPricePaise: 16000, pricePaise: 16000, stockQuantity: 50, inStock: true },
     ],
   },
+  {
+    id: 11,
+    name: 'Schnieder Luxor One Business 0.6mm Liquid Rollerball & Fineliner Set (Pack of 5)',
+    slug: 'schnieder-luxor-one-business-rollerball-set-5',
+    sku: 'GS-PN-LUX-SCH05',
+    categoryId: 2,
+    categoryName: 'Pens & Writing Instruments',
+    categorySlug: 'pens-and-writing-instruments',
+    brandId: 7,
+    brandName: 'Schnieder Luxor',
+    brandSlug: 'schnieder-luxor',
+    description: 'Schnieder Luxor precision 0.6mm rollerball pens featuring regulator ink control, waterproof pigment ink, and ergonomic rubberised grip.',
+    shortDescription: 'German-engineered Super-Flow liquid ink rollerball pens for effortless executive writing.',
+    illustrationType: 'gel_pen_pack',
+    mrpPaise: 25000,
+    sellingPricePaise: 22000,
+    baseMrpPaise: 25000,
+    basePricePaise: 22000,
+    totalStock: 54,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: true,
+    isNewArrival: true,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 18, variantName: 'Assorted Pack of 5 Pens', sku: 'GS-PN-LUX-SCH05-STD', mrpPaise: 25000, sellingPricePaise: 22000, pricePaise: 22000, stockQuantity: 54, inStock: true },
+    ],
+  },
 ].map(normalizeCatalogueProduct);
 
   // Storefront data from PostgreSQL + LocalStorage persistence
@@ -715,9 +865,11 @@ const DEFAULT_PRODUCTS = [
       const raw = localStorage.getItem('gs_fallback_categories_v1');
       const stored = raw ? JSON.parse(raw) : [];
       const merged = new Map<string, any>();
-      for (const c of [...DEFAULT_CATEGORIES, ...(Array.isArray(stored) ? stored : [])]) {
+      for (const c of [...(Array.isArray(stored) ? stored : []), ...DEFAULT_CATEGORIES]) {
         if (!c || !c.name) continue;
-        merged.set(String(c.slug || c.name).toLowerCase(), c);
+        const key = getCanonicalCategoryKey(c.slug || c.name);
+        const existing = merged.get(key);
+        merged.set(key, existing ? { ...c, ...existing, productCount: Math.max(Number(existing.productCount || 0), Number(c.productCount || 0)) } : c);
       }
       return Array.from(merged.values());
     } catch {
@@ -729,9 +881,11 @@ const DEFAULT_PRODUCTS = [
       const raw = localStorage.getItem('gs_fallback_brands_v1');
       const stored = raw ? JSON.parse(raw) : [];
       const merged = new Map<string, any>();
-      for (const b of [...DEFAULT_BRANDS, ...(Array.isArray(stored) ? stored : [])]) {
+      for (const b of [...(Array.isArray(stored) ? stored : []), ...DEFAULT_BRANDS]) {
         if (!b || !b.name) continue;
-        merged.set(String(b.slug || b.name).toLowerCase(), b);
+        const key = getCanonicalBrandKey(b.slug || b.name);
+        const existing = merged.get(key);
+        merged.set(key, existing ? { ...b, ...existing, productCount: Math.max(Number(existing.productCount || 0), Number(b.productCount || 0)) } : b);
       }
       return Array.from(merged.values());
     } catch {
@@ -760,7 +914,8 @@ const DEFAULT_PRODUCTS = [
         }
         merged.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
       }
-      return Array.from(merged.values());
+      const list = Array.from(merged.values());
+      return list.length > 0 ? list : DEFAULT_PRODUCTS;
     } catch {
       return DEFAULT_PRODUCTS;
     }
@@ -1174,15 +1329,21 @@ const DEFAULT_PRODUCTS = [
       if (!res.ok) {
         throw new Error(data.error || 'Failed to load store catalogue');
       }
-      // Merge Categories with localStorage fallback
+      // Merge Categories with localStorage fallback (Server categories take priority)
       if (Array.isArray(data.categories) && data.categories.length > 0) {
         try {
           const localCatsRaw = localStorage.getItem('gs_fallback_categories_v1');
           const localCats = localCatsRaw ? JSON.parse(localCatsRaw) : [];
           const catMap = new Map<string, any>();
-          for (const c of [...data.categories, ...(Array.isArray(localCats) ? localCats : [])]) {
+          for (const c of [...(Array.isArray(localCats) ? localCats : []), ...data.categories]) {
             if (!c || !c.name) continue;
-            catMap.set(String(c.slug || c.name).toLowerCase(), c);
+            const key = getCanonicalCategoryKey(c.slug || c.name);
+            const prev = catMap.get(key);
+            catMap.set(key, {
+              ...(prev || {}),
+              ...c,
+              productCount: Math.max(Number(prev?.productCount || 0), Number(c.productCount || 0)),
+            });
           }
           const finalCats = Array.from(catMap.values());
           setCategories(finalCats);
@@ -1192,16 +1353,22 @@ const DEFAULT_PRODUCTS = [
         }
       }
 
-      // Merge Companies / Brands with localStorage fallback so newly added companies always persist
+      // Merge Companies / Brands with localStorage fallback (Server brands take priority)
       if (Array.isArray(data.brands)) {
         try {
           const localBrandsRaw = localStorage.getItem('gs_fallback_brands_v1');
           const localBrands = localBrandsRaw ? JSON.parse(localBrandsRaw) : [];
           const brandMap = new Map<string, any>();
           const sourceBrands = data.brands.length > 0 ? data.brands : DEFAULT_BRANDS;
-          for (const b of [...sourceBrands, ...(Array.isArray(localBrands) ? localBrands : [])]) {
+          for (const b of [...(Array.isArray(localBrands) ? localBrands : []), ...sourceBrands]) {
             if (!b || !b.name) continue;
-            brandMap.set(String(b.slug || b.name).toLowerCase(), b);
+            const key = getCanonicalBrandKey(b.slug || b.name);
+            const prev = brandMap.get(key);
+            brandMap.set(key, {
+              ...(prev || {}),
+              ...b,
+              productCount: Math.max(Number(prev?.productCount || 0), Number(b.productCount || 0)),
+            });
           }
           const finalBrands = Array.from(brandMap.values());
           setBrands(finalBrands);
@@ -1226,7 +1393,8 @@ const DEFAULT_PRODUCTS = [
         );
         const prodMap = new Map<string, any>();
         const baseProds = serverProds.length > 0 ? serverProds : DEFAULT_PRODUCTS;
-        for (const p of [...baseProds, ...(Array.isArray(localProds) ? localProds : [])]) {
+        // Put localProds first, then baseProds (serverProds) so authoritative server brand/category IDs win, while preserving custom local-only products
+        for (const p of [...(Array.isArray(localProds) ? localProds : []), ...baseProds]) {
           if (!p || !p.name) continue;
           if (
             deletedIds.has(String(p.id).toLowerCase()) ||
@@ -1238,10 +1406,9 @@ const DEFAULT_PRODUCTS = [
           prodMap.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
         }
         const finalProducts = Array.from(prodMap.values());
-        if (finalProducts.length > 0) {
-          setProducts(finalProducts);
-          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(finalProducts));
-        }
+        const resolvedProducts = finalProducts.length > 0 ? finalProducts : baseProds;
+        setProducts(resolvedProducts);
+        localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(resolvedProducts));
       } catch {
         if (serverProds.length > 0) setProducts(serverProds);
       }
@@ -1316,6 +1483,15 @@ const DEFAULT_PRODUCTS = [
     loadStoreBootstrap();
   }, [loadStoreBootstrap]);
 
+  // Persist cartItems to localStorage whenever cartItems change
+  useEffect(() => {
+    try {
+      localStorage.setItem('gs_cart_items_v1', JSON.stringify(cartItems));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [cartItems]);
+
   // Recalculate cart totals on the server whenever cart items, coupon, fulfilment, or pincode change
   const syncAndCalculateCart = useCallback(async () => {
     setCartLoading(true);
@@ -1336,24 +1512,6 @@ const DEFAULT_PRODUCTS = [
       const data = await res.json();
       if (res.ok && data) {
         setServerCartResult(data);
-        if (data.calculation?.items && Array.isArray(data.calculation.items)) {
-          const syncedItems: LocalCartItem[] = data.calculation.items.map((i: any) => {
-            const existingMatch = cartItems.find(
-              (c) => Number(c.productId) === Number(i.productId) && Number(c.variantId) === Number(i.variantId)
-            );
-            return {
-              productId: Number(i.productId),
-              variantId: Number(i.variantId),
-              quantity: Number(i.quantity),
-              selectedColor: existingMatch?.selectedColor,
-            };
-          });
-          const currentSig = cartItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
-          const syncedSig = syncedItems.map((c) => `${c.productId}_${c.variantId}_${c.quantity}`).sort().join('|');
-          if (syncedSig !== currentSig) {
-            setCartItems(syncedItems);
-          }
-        }
       }
     } catch (err) {
       console.error('Failed to calculate cart:', err);
@@ -1389,19 +1547,23 @@ const DEFAULT_PRODUCTS = [
     }
   }, []);
 
-  const showToast = (_msg: string) => {
-    // Cart toast/drawer pop-ups disabled to ensure a clean full-page experience
-  };
+  const showToast = useCallback((msg: string) => {
+    setCartFeedbackToast(msg);
+    setTimeout(() => {
+      setCartFeedbackToast((curr) => (curr === msg ? null : curr));
+    }, 4000);
+  }, []);
 
-  // Cart manipulation handlers — directly open full-page /checkout with no animation
+  // Cart manipulation handlers with Flying-to-Cart animation, Cart Badge Bounce, and Toast / Drawer
   const handleAddToCart = (
     product: any,
     variantId?: number,
     qtyToAdd = 1,
-    _sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null,
+    sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null,
     skipRedirect = false,
     explicitColor?: string
   ) => {
+    if (!product) return;
     const targetVarId =
       variantId || selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
     const variant =
@@ -1416,9 +1578,7 @@ const DEFAULT_PRODUCTS = [
         stockQuantity: product.totalStock ?? 25,
       };
 
-    if (variant.stockQuantity <= 0) {
-      return;
-    }
+    const maxStock = Math.max(1, Number(variant.stockQuantity ?? product.totalStock ?? 25));
 
     const colorOptions = getProductColorOptions(product);
     const resolvedColor =
@@ -1428,21 +1588,13 @@ const DEFAULT_PRODUCTS = [
       colorOptions[0]?.label ??
       undefined;
 
-    const existingItem = cartItems.find(
-      (i) => i.productId === product.id && i.variantId === variant.id
-    );
-    if (existingItem && existingItem.quantity >= variant.stockQuantity) {
-      if (!skipRedirect) navigateToCheckout();
-      return;
-    }
-
     setCartItems((prev) => {
       const existingIdx = prev.findIndex(
-        (i) => i.productId === product.id && i.variantId === variant.id
+        (i) => Number(i.productId) === Number(product.id) && Number(i.variantId) === Number(variant.id)
       );
       if (existingIdx > -1) {
         const currentQty = prev[existingIdx].quantity;
-        const nextQty = Math.min(variant.stockQuantity, currentQty + qtyToAdd);
+        const nextQty = Math.min(maxStock, currentQty + qtyToAdd);
         const copy = [...prev];
         copy[existingIdx] = {
           ...copy[existingIdx],
@@ -1451,12 +1603,12 @@ const DEFAULT_PRODUCTS = [
         };
         return copy;
       } else {
-        const clampedQty = Math.min(variant.stockQuantity, qtyToAdd);
+        const clampedQty = Math.min(maxStock, Math.max(1, qtyToAdd));
         return [
           ...prev,
           {
-            productId: product.id,
-            variantId: variant.id,
+            productId: Number(product.id),
+            variantId: Number(variant.id),
             quantity: clampedQty,
             selectedColor: resolvedColor,
           },
@@ -1464,40 +1616,96 @@ const DEFAULT_PRODUCTS = [
       }
     });
 
+    // Spawn smooth Flying-to-Cart animation toward the header Cart pill
+    if (typeof window !== 'undefined') {
+      let startX = window.innerWidth / 2;
+      let startY = window.innerHeight / 2;
+
+      if (sourceEventOrEl) {
+        if ('currentTarget' in sourceEventOrEl && sourceEventOrEl.currentTarget) {
+          const rect = sourceEventOrEl.currentTarget.getBoundingClientRect();
+          startX = rect.left + rect.width / 2;
+          startY = rect.top + rect.height / 2;
+        } else if ('clientX' in sourceEventOrEl && typeof sourceEventOrEl.clientX === 'number') {
+          startX = sourceEventOrEl.clientX;
+          startY = sourceEventOrEl.clientY;
+        } else if ('getBoundingClientRect' in sourceEventOrEl) {
+          const rect = sourceEventOrEl.getBoundingClientRect();
+          startX = rect.left + rect.width / 2;
+          startY = rect.top + rect.height / 2;
+        }
+      }
+
+      const cartRect = cartButtonRef.current?.getBoundingClientRect();
+      const endX = cartRect ? cartRect.left + cartRect.width / 2 : window.innerWidth - 80;
+      const endY = cartRect ? cartRect.top + cartRect.height / 2 : 28;
+
+      const flyId = `fly_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const unitPrice = Number(variant.sellingPricePaise ?? product.sellingPricePaise ?? 0);
+      const newFlyingItem: FlyingCartItem = {
+        id: flyId,
+        name: product.name,
+        priceFormatted: formatPaiseToINR(unitPrice),
+        illustrationType: product.illustrationType || 'spiral_notebook',
+        imageUrl: product.imageUrl,
+        startX,
+        startY,
+        endX,
+        endY,
+      };
+
+      setFlyingCartItems((prev) => [...prev.slice(-4), newFlyingItem]);
+
+      setTimeout(() => {
+        setCartButtonBouncing(true);
+        setTimeout(() => setCartButtonBouncing(false), 650);
+      }, 420);
+
+      setTimeout(() => {
+        setFlyingCartItems((prev) => prev.filter((f) => f.id !== flyId));
+      }, 850);
+    }
+
+    const colorNote = resolvedColor ? ` (${resolvedColor})` : '';
+    showToast(`Added "${product.name}"${colorNote} to cart`);
+
     if (!skipRedirect) {
-      navigateToCheckout();
+      setCartDrawerOpen(true);
     }
   };
 
   const handleAddBundleToCart = (
     bundle: any,
-    _sourceEvent?: React.MouseEvent<HTMLElement>
+    sourceEvent?: React.MouseEvent<HTMLElement>
   ) => {
     const bundleItems = bundle.itemsJson || [];
     for (const bi of bundleItems) {
-      const prod = products.find((p) => p.id === bi.productId);
+      const prod = products.find((p) => Number(p.id) === Number(bi.productId));
       if (prod) {
-        handleAddToCart(prod, bi.variantId, bi.quantity, undefined, true);
+        handleAddToCart(prod, bi.variantId, bi.quantity, sourceEvent, true);
       }
     }
-    navigateToCheckout();
+    setCartDrawerOpen(true);
+    showToast(`Added "${bundle.name || 'School Combo Kit'}" items to cart`);
   };
 
   const handleUpdateCartQuantity = (productId: number, variantId: number, nextQty: number) => {
     if (nextQty <= 0) {
       setCartItems((prev) =>
-        prev.filter((i) => !(i.productId === productId && i.variantId === variantId))
+        prev.filter(
+          (i) => !(Number(i.productId) === Number(productId) && Number(i.variantId) === Number(variantId))
+        )
       );
       return;
     }
-    const prod = products.find((p) => p.id === productId);
-    const variant = prod?.variants?.find((v: any) => v.id === variantId);
-    const maxStock = variant ? variant.stockQuantity : 99;
+    const prod = products.find((p) => Number(p.id) === Number(productId));
+    const variant = prod?.variants?.find((v: any) => Number(v.id) === Number(variantId));
+    const maxStock = variant ? Math.max(1, Number(variant.stockQuantity || 50)) : 99;
     const clamped = Math.min(maxStock, nextQty);
 
     setCartItems((prev) =>
       prev.map((i) =>
-        i.productId === productId && i.variantId === variantId
+        Number(i.productId) === Number(productId) && Number(i.variantId) === Number(variantId)
           ? { ...i, quantity: clamped }
           : i
       )
@@ -2090,34 +2298,14 @@ const DEFAULT_PRODUCTS = [
       .filter((p) => {
         if (!p.isActive) return false;
         if (selectedCategorySlug !== 'ALL') {
-          const matchesPrimary = p.categorySlug === selectedCategorySlug;
-          const matchesSub = p.subcategorySlug === selectedCategorySlug;
-          const matchesChild = childCatSlugs.includes(p.categorySlug);
-          const matchesSecondary =
-            selectedCatObj &&
-            Array.isArray(p.secondaryCategoryIds) &&
-            p.secondaryCategoryIds.includes(selectedCatObj.id);
-          if (!matchesPrimary && !matchesSub && !matchesChild && !matchesSecondary) {
+          const catTarget = selectedCatObj || { slug: selectedCategorySlug, name: selectedCategorySlug };
+          if (!doesProductMatchCategory(p, catTarget, childCatSlugs)) {
             return false;
           }
         }
         if (selectedBrandSlug !== 'ALL') {
-          const targetSlug = selectedBrandSlug.toLowerCase();
-          const targetName = String(selectedBrandObj?.name || selectedBrandSlug).toLowerCase();
-          const prodBrandSlug = String(p.brandSlug || '')
-            .toLowerCase()
-            .trim();
-          const prodBrandName = String(p.brandName || '')
-            .toLowerCase()
-            .trim();
-          const prodBrandDerivedSlug = prodBrandName
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, '');
-          if (
-            prodBrandSlug !== targetSlug &&
-            prodBrandDerivedSlug !== targetSlug &&
-            prodBrandName !== targetName
-          ) {
+          const brandTarget = selectedBrandObj || { slug: selectedBrandSlug, name: selectedBrandSlug };
+          if (!doesProductMatchBrand(p, brandTarget)) {
             return false;
           }
         }
@@ -2453,21 +2641,18 @@ const DEFAULT_PRODUCTS = [
         setDbUser(activeUser);
       }
 
-      // If Cashfree Online Payment is selected, ensure Cashfree SDK is ready BEFORE creating the order
-      if (paymentMethod === 'CASHFREE_ONLINE') {
-        const sdk = await loadCashfreeSdkScript();
-        if (!sdk) {
-          throw new Error(
-            'Cashfree Payment Gateway SDK could not be loaded. Please check your connection or select Cash on Delivery.'
-          );
-        }
-      } else {
-        // For COD or Pay at Store, require customer contact details on the checkout form
-        if (!customerName.trim() || !customerPhone.trim()) {
-          throw new Error(
-            'Please enter your Full Name and 10-Digit Mobile Number for Cash on Delivery / Store Pickup.'
-          );
-        }
+      if (!customerName.trim() || !customerPhone.trim()) {
+        throw new Error(
+          'Please enter your Full Name and 10-Digit Mobile Number to place your order.'
+        );
+      }
+      if (
+        fulfilmentMethod === 'HOME_DELIVERY' &&
+        (!shippingAddress.addressLine1.trim() || !shippingAddress.pincode.trim())
+      ) {
+        throw new Error(
+          'Please enter your complete Delivery Street Address and 6-Digit PIN Code for Home Delivery.'
+        );
       }
 
       const resolvedName =
@@ -2601,28 +2786,27 @@ const DEFAULT_PRODUCTS = [
         }
       }
 
-      // If Cashfree Online Payment is selected:
-      // ALWAYS open the Cashfree Drop-in Popup right here on Checkout (fetching session via /api/payments/cashfree/create-session if not embedded)
-      if (paymentMethod === 'CASHFREE_ONLINE') {
+      // If Online Payment is selected and a live paymentSessionId was created, open the payment modal;
+      // otherwise (or in fallback mode), confirm the order directly so the customer is never blocked
+      if (paymentMethod === 'CASHFREE_ONLINE' && data.cashfree?.paymentSessionId && !data.cashfree?.fallback) {
         await triggerCashfreePaymentModal(
           data.order.orderNumber,
-          data.cashfree?.paymentSessionId
-            ? {
-                paymentSessionId: data.cashfree.paymentSessionId,
-                cfOrderId: data.cashfree.cfOrderId || data.order.orderNumber,
-                environment: data.cashfree.environment,
-              }
-            : undefined,
+          {
+            paymentSessionId: data.cashfree.paymentSessionId,
+            cfOrderId: data.cashfree.cfOrderId || data.order.orderNumber,
+            environment: data.cashfree.environment,
+          },
           data
         );
         return;
       }
 
-      // For COD or Pay at Store (or fallback when gateway session is offline): confirm immediately
+      // Confirm order and navigate to Confirmation Receipt view
       setConfirmedOrderData(data);
       setCartItems([]);
       setAppliedCouponCode('');
       setCouponInput('');
+      showToast(`Order #${data.order?.orderNumber || ''} confirmed!`);
       await loadStoreBootstrap();
       setActiveView('confirmation');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2754,11 +2938,18 @@ const DEFAULT_PRODUCTS = [
   const localFallbackCalculation = useMemo(() => {
     const pricedItems = cartItems
       .map((ci) => {
-        const prod = products.find((p) => p.id === ci.productId);
+        const prod = products.find((p) => Number(p.id) === Number(ci.productId));
         if (!prod) return null;
         const variant =
-          prod.variants?.find((v: any) => v.id === ci.variantId) || prod.variants?.[0];
-        if (!variant) return null;
+          prod.variants?.find((v: any) => Number(v.id) === Number(ci.variantId)) ||
+          prod.variants?.[0] || {
+            id: ci.variantId || prod.id,
+            variantName: 'Standard Pack',
+            sku: prod.sku || `GS-${prod.id}`,
+            sellingPricePaise: prod.sellingPricePaise || prod.basePricePaise || 9000,
+            mrpPaise: prod.mrpPaise || prod.baseMrpPaise || 10000,
+            stockQuantity: prod.totalStock ?? 50,
+          };
         const unitPricePaise = Number(
           variant.sellingPricePaise ?? variant.pricePaise ?? prod.sellingPricePaise ?? 0
         );
@@ -2771,8 +2962,8 @@ const DEFAULT_PRODUCTS = [
             ? `${baseVariantName} (${ci.selectedColor})`
             : baseVariantName;
         return {
-          productId: prod.id,
-          variantId: variant.id,
+          productId: Number(prod.id),
+          variantId: Number(variant.id),
           productName: prod.name,
           variantName: displayVariantName,
           selectedColor: ci.selectedColor,
@@ -2780,7 +2971,7 @@ const DEFAULT_PRODUCTS = [
           quantity: ci.quantity,
           unitMrpPaise: Number.isFinite(unitMrpPaise) ? unitMrpPaise : 0,
           unitPricePaise: Number.isFinite(unitPricePaise) ? unitPricePaise : 0,
-          taxRatePercent: Number(prod.gstRatePercent ?? 12),
+          taxRatePercent: Number(prod.taxRatePercent ?? prod.gstRatePercent ?? 12),
           availableStock: Number(variant.stockQuantity ?? 50),
           pickupEligible: true,
           deliveryEligible: true,
@@ -2803,7 +2994,7 @@ const DEFAULT_PRODUCTS = [
   const calculation =
     serverCartResult?.calculation &&
     Array.isArray(serverCartResult.calculation.items) &&
-    (serverCartResult.calculation.items.length > 0 || cartItems.length === 0)
+    serverCartResult.calculation.items.length === cartItems.length
       ? serverCartResult.calculation
       : localFallbackCalculation;
 
@@ -2924,7 +3115,7 @@ const DEFAULT_PRODUCTS = [
                 'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'}
             </p>
             <span className="hidden md:inline opacity-80 whitespace-nowrap shrink-0 text-[11px]">
-              Pan-India Home Delivery Powered by Shiprocket · Free Store Pickup
+              Kanpur &amp; Pan-India Express Home Delivery · Free Store Pickup
             </span>
           </div>
         </div>
@@ -3094,16 +3285,27 @@ const DEFAULT_PRODUCTS = [
                   {(customerName || dbUser?.fullName || 'Profile').split(' ')[0]}
                 </span>
               </button>
-              <button
+              <motion.button
                 ref={cartButtonRef}
-                onClick={navigateToCheckout}
-                className="px-3 sm:px-5 py-1.5 sm:py-2 text-xs font-semibold text-white bg-[#B42318] rounded-full shadow-xs hover:bg-[#991B1B] transition-all duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5"
-                aria-label="Open Cart & Checkout Page"
+                type="button"
+                animate={
+                  cartButtonBouncing
+                    ? { scale: [1, 1.18, 0.94, 1.08, 1], rotate: [0, -4, 4, -2, 0] }
+                    : { scale: 1, rotate: 0 }
+                }
+                transition={{ duration: 0.55, ease: 'easeOut' }}
+                onClick={() => setCartDrawerOpen(true)}
+                className={`px-3 sm:px-5 py-1.5 sm:py-2 text-xs font-semibold text-white rounded-full shadow-xs transition-colors duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 ${
+                  cartButtonBouncing
+                    ? 'bg-emerald-600 ring-4 ring-emerald-200'
+                    : 'bg-[#B42318] hover:bg-[#991B1B]'
+                }`}
+                aria-label="Open Shopping Bag Drawer"
               >
                 <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                 <span className="font-bold">Cart ({totalCartItemsCount})</span>
                 <span className="hidden sm:inline opacity-90">· {formatPaiseToINR(calculation.totalPaise)}</span>
-              </button>
+              </motion.button>
             </div>
           </div>
         </header>
@@ -3598,18 +3800,14 @@ const DEFAULT_PRODUCTS = [
                             </h2>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                           {activeHomepageCategories.map((cat) => {
-                            const cSlug = String(cat.slug || '').toLowerCase();
-                            const cName = String(cat.name || '').toLowerCase();
-                            const liveCatCount = products.filter((p) => {
-                              if (!p || p.isActive === false) return false;
-                              return (
-                                Number(p.categoryId) === Number(cat.id) ||
-                                (cSlug && String(p.categorySlug || '').toLowerCase() === cSlug) ||
-                                (cName && String(p.categoryName || '').toLowerCase() === cName)
-                              );
-                            }).length;
+                            const childCatSlugs = categories
+                              .filter((c) => c.parentId === cat.id)
+                              .map((c) => String(c.slug || '').toLowerCase());
+                            const liveCatCount = products.filter((p) =>
+                              doesProductMatchCategory(p, cat, childCatSlugs)
+                            ).length;
                             const displayCatCount = Math.max(liveCatCount, Number(cat.productCount || 0));
                             return (
                               <button
@@ -3665,20 +3863,9 @@ const DEFAULT_PRODUCTS = [
                         </div>
                         <div className="flex items-center gap-3 overflow-x-auto pb-1">
                           {activeBrands.map((brand) => {
-                            const bSlug = String(brand.slug || '').toLowerCase();
-                            const bName = String(brand.name || '').toLowerCase();
-                            const bToken = bName.split(/\s+/)[0] || '';
-                            const liveBrandCount = products.filter((p) => {
-                              if (!p || p.isActive === false) return false;
-                              const pSlug = String(p.brandSlug || '').toLowerCase();
-                              const pName = String(p.brandName || '').toLowerCase();
-                              return (
-                                Number(p.brandId) === Number(brand.id) ||
-                                (bSlug && pSlug === bSlug) ||
-                                (bName && pName === bName) ||
-                                (bToken.length >= 3 && (pName.includes(bToken) || bName.includes(pName)))
-                              );
-                            }).length;
+                            const liveBrandCount = products.filter((p) =>
+                              doesProductMatchBrand(p, brand)
+                            ).length;
                             const displayBrandCount = Math.max(liveBrandCount, Number(brand.productCount || 0));
                             return (
                               <button
@@ -6191,21 +6378,11 @@ const DEFAULT_PRODUCTS = [
                         )}
                       </div>
 
-                      {/* STEP 3: Only require Customer & Address Details on the form when COD or Pay at Store is selected */}
-                      {paymentMethod === 'CASHFREE_ONLINE' ? (
-                        <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-[28px] space-y-1.5 text-xs text-emerald-950">
-                          <p className="font-bold text-sm">
-                            ✓ Instant Online Checkout Mode Active
-                          </p>
-                          <p className="text-emerald-900 leading-relaxed">
-                            No manual form required here — click <strong>Pay Online Now</strong> on the right to complete your payment via <strong>UPI (GPay, PhonePe, Paytm, QR / UPI ID)</strong>, Cards, or NetBanking.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
-                          <h2 className="text-sm font-bold text-stone-900">
-                            03. Customer & Delivery Details (Required for {paymentMethod === 'COD' ? 'Cash on Delivery' : 'Pay at Store'})
-                          </h2>
+                      {/* STEP 3: Customer & Delivery Details (Always visible so customer can enter Name, Mobile & Address) */}
+                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
+                        <h2 className="text-sm font-bold text-stone-900">
+                          03. Customer &amp; {fulfilmentMethod === 'HOME_DELIVERY' ? 'Home Delivery Address' : 'Store Pickup Contact'} Details
+                        </h2>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                             <div>
                               <label className="block text-xs font-medium text-stone-700 mb-1">
@@ -6344,7 +6521,6 @@ const DEFAULT_PRODUCTS = [
                             </div>
                           )}
                         </div>
-                      )}
                     </div>
 
                     {/* Right Column: Server-Validated Order Summary */}
@@ -7338,7 +7514,7 @@ const DEFAULT_PRODUCTS = [
                                           : 'bg-emerald-100 text-emerald-900'
                                       }`}
                                     >
-                                      {isStoreOrder ? 'Get at Store' : 'Shiprocket'}
+                                      {isStoreOrder ? 'Get at Store' : 'Home Delivery'}
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-stone-500 mt-0.5">
@@ -7357,7 +7533,7 @@ const DEFAULT_PRODUCTS = [
                                   }}
                                   className="px-3 py-1.5 bg-white border border-stone-300 rounded-full text-[11px] font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer shrink-0"
                                 >
-                                  {isStoreOrder ? 'Store Pass' : 'Track Shiprocket'}
+                                  {isStoreOrder ? 'Store Pass' : 'Track Order'}
                                 </button>
                               </div>
                             );
@@ -7890,6 +8066,266 @@ const DEFAULT_PRODUCTS = [
         initialQuestion={rufusInitialQuestion}
         onClearInitialQuestion={() => setRufusInitialQuestion(null)}
       />
+
+      {/* Flying-to-Cart Arc Animation Particles */}
+      <AnimatePresence>
+        {flyingCartItems.map((fly) => (
+          <motion.div
+            key={fly.id}
+            initial={{
+              x: fly.startX - 28,
+              y: fly.startY - 28,
+              scale: 1,
+              opacity: 1,
+            }}
+            animate={{
+              x: [fly.startX - 28, (fly.startX + fly.endX) / 2 - 20, fly.endX - 18],
+              y: [fly.startY - 28, Math.min(fly.startY, fly.endY) - 90, fly.endY - 18],
+              scale: [1, 1.12, 0.35],
+              opacity: [1, 1, 0.2],
+            }}
+            exit={{ opacity: 0, scale: 0.2 }}
+            transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed top-0 left-0 z-[90] pointer-events-none flex items-center gap-2 bg-stone-900 text-white px-3 py-1.5 rounded-full shadow-2xl border border-white/20"
+          >
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-white shrink-0">
+              <ProductIllustration
+                type={fly.illustrationType}
+                imageUrl={fly.imageUrl}
+                alt={fly.name}
+                className="w-full h-full"
+              />
+            </div>
+            <span className="text-[11px] font-semibold max-w-[130px] truncate">{fly.name}</span>
+            <span className="text-[10px] font-mono text-amber-300 font-bold">{fly.priceFormatted}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {/* Floating Cart Feedback Toast Banner */}
+      <AnimatePresence>
+        {cartFeedbackToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.25 }}
+            className="fixed bottom-20 md:bottom-6 right-4 z-50 max-w-sm bg-stone-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center justify-between gap-3 text-xs"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5" />
+              </span>
+              <span className="font-medium truncate">{cartFeedbackToast}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={navigateToCheckout}
+                className="px-3 py-1 bg-[#B42318] hover:bg-[#991B1B] text-white font-bold rounded-full cursor-pointer transition-colors"
+              >
+                Checkout →
+              </button>
+              <button
+                type="button"
+                onClick={() => setCartFeedbackToast(null)}
+                className="p-1 text-stone-400 hover:text-white cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Slide-Over Shopping Bag / Cart Drawer */}
+      <AnimatePresence>
+        {cartDrawerOpen && (
+          <div
+            className="fixed inset-0 z-50 flex justify-end"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Shopping Bag Drawer"
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setCartDrawerOpen(false)}
+              className="fixed inset-0 bg-slate-950/55 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col justify-between z-10"
+            >
+              {/* Drawer Header */}
+              <div className="p-5 border-b border-stone-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-full bg-red-50 text-[#B42318] flex items-center justify-center">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-serif-display text-base font-bold text-stone-900">
+                      Your Stationery Bag ({totalCartItemsCount})
+                    </h2>
+                    <p className="text-[11px] text-stone-500">
+                      Free Store Pickup in Kanpur · Express Home Delivery
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCartDrawerOpen(false)}
+                  className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-full cursor-pointer"
+                  aria-label="Close Cart Drawer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Items List */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                {calculation.items.length === 0 ? (
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center mx-auto">
+                      <ShoppingBag className="w-6 h-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-stone-800">Your shopping bag is empty</p>
+                    <p className="text-xs text-stone-500 max-w-xs mx-auto">
+                      Add notebooks, pens, geometry sets, or art supplies from the catalogue to start your order.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCartDrawerOpen(false)}
+                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full cursor-pointer"
+                    >
+                      Continue Shopping
+                    </button>
+                  </div>
+                ) : (
+                  calculation.items.map((item: any) => {
+                    const prod = products.find((p) => Number(p.id) === Number(item.productId));
+                    return (
+                      <div
+                        key={`${item.productId}-${item.variantId}`}
+                        className="p-3.5 rounded-2xl border border-stone-200/90 bg-slate-50/60 flex gap-3 items-start"
+                      >
+                        <div className="w-14 h-14 rounded-xl border border-stone-200 bg-white overflow-hidden shrink-0">
+                          <ProductIllustration
+                            type={prod?.illustrationType || 'spiral_notebook'}
+                            imageUrl={prod?.imageUrl}
+                            alt={item.productName}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-xs font-bold text-stone-900 line-clamp-2">
+                              {item.productName}
+                            </p>
+                            <span className="font-mono-tabular text-xs font-bold text-stone-900 shrink-0">
+                              {formatPaiseToINR(item.lineSubtotalPaise)}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-stone-500 mt-0.5">
+                            {item.variantName} · {formatPaiseToINR(item.unitPricePaise)} each
+                          </p>
+                          <div className="flex items-center justify-between mt-2.5">
+                            <div className="inline-flex items-center border border-stone-300 rounded-full bg-white p-0.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateCartQuantity(
+                                    item.productId,
+                                    item.variantId,
+                                    item.quantity - 1
+                                  )
+                                }
+                                className="px-2.5 py-0.5 text-xs font-bold hover:bg-stone-100 rounded-full cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="px-2.5 py-0.5 text-xs font-mono-tabular font-semibold">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateCartQuantity(
+                                    item.productId,
+                                    item.variantId,
+                                    item.quantity + 1
+                                  )
+                                }
+                                className="px-2.5 py-0.5 text-xs font-bold hover:bg-stone-100 rounded-full cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateCartQuantity(item.productId, item.variantId, 0)
+                              }
+                              className="text-[11px] text-stone-500 hover:text-red-700 font-medium cursor-pointer flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Remove</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Drawer Footer */}
+              {calculation.items.length > 0 && (
+                <div className="p-5 border-t border-stone-200 bg-slate-50 space-y-3">
+                  <div className="space-y-1.5 text-xs font-mono-tabular">
+                    <div className="flex justify-between text-stone-600">
+                      <span>Subtotal ({totalCartItemsCount} items)</span>
+                      <span>{formatPaiseToINR(calculation.subtotalPaise)}</span>
+                    </div>
+                    {calculation.catalogSavingsPaise > 0 && (
+                      <div className="flex justify-between text-emerald-700 font-semibold">
+                        <span>Total MRP Savings</span>
+                        <span>-{formatPaiseToINR(calculation.catalogSavingsPaise)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-bold text-stone-900 pt-1.5 border-t border-stone-200">
+                      <span>Estimated Total</span>
+                      <span>{formatPaiseToINR(calculation.totalPaise)}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setCartDrawerOpen(false)}
+                      className="py-3 px-4 bg-white border border-stone-300 hover:bg-stone-100 text-stone-800 text-xs font-semibold rounded-full cursor-pointer transition-colors"
+                    >
+                      Keep Shopping
+                    </button>
+                    <button
+                      type="button"
+                      onClick={navigateToCheckout}
+                      className="py-3 px-4 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold rounded-full shadow-sm cursor-pointer transition-colors"
+                    >
+                      Proceed to Checkout →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
