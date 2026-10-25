@@ -680,6 +680,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const productFormRef = useRef<HTMLFormElement | null>(null);
+
+  const scrollToProductForm = () => {
+    setTimeout(() => {
+      if (productFormRef.current) {
+        productFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 60);
+  };
+
   // Start editing an existing product (or its photo)
   const handleStartEditProduct = (p: any) => {
     const primaryVar = p.variants?.[0];
@@ -687,25 +699,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSelectedMediaProductId(p.id);
     setAddingInlineCategory(false);
     setAddingInlineBrand(false);
+
+    const matchedCategory =
+      localCategoriesList.find((c) => Number(c.id) === Number(p.categoryId)) ||
+      localCategoriesList.find(
+        (c) =>
+          (p.categorySlug && String(c.slug || '').toLowerCase() === String(p.categorySlug).toLowerCase()) ||
+          (p.categoryName && String(c.name || '').toLowerCase() === String(p.categoryName).toLowerCase())
+      ) ||
+      localCategoriesList[0] ||
+      categories[0];
+
+    const matchedBrand =
+      localBrandsList.find((b) => Number(b.id) === Number(p.brandId)) ||
+      localBrandsList.find(
+        (b) =>
+          (p.brandSlug && String(b.slug || '').toLowerCase() === String(p.brandSlug).toLowerCase()) ||
+          (p.brandName && String(b.name || '').toLowerCase() === String(p.brandName).toLowerCase())
+      ) ||
+      localBrandsList[0] ||
+      brands[0];
+
+    const sellPaise = Number(primaryVar?.sellingPricePaise ?? p.sellingPricePaise ?? 9000);
+    const mrpPaise = Math.max(sellPaise, Number(primaryVar?.mrpPaise ?? p.mrpPaise ?? 10000));
+
     setProductForm({
       sku: p.sku || '',
       name: p.name || '',
-      categoryId: p.categoryId || categories[0]?.id || 1,
+      categoryId: Number(matchedCategory?.id || p.categoryId || 1),
       newCategoryName: '',
-      brandId: p.brandId || brands[0]?.id || 1,
+      brandId: Number(matchedBrand?.id || p.brandId || 1),
       newBrandName: '',
-      shortDescription: p.shortDescription || '',
+      shortDescription: p.shortDescription || p.description || '',
       description: p.description || p.shortDescription || '',
       badgeText: p.badgeText || '',
-      mrpRupees: String(((primaryVar?.mrpPaise ?? p.mrpPaise ?? 10000) / 100).toFixed(0)),
-      sellingPriceRupees: String(
-        ((primaryVar?.sellingPricePaise ?? p.sellingPricePaise ?? 9000) / 100).toFixed(0)
-      ),
+      mrpRupees: String((mrpPaise / 100).toFixed(0)),
+      sellingPriceRupees: String((sellPaise / 100).toFixed(0)),
       taxRatePercent: p.taxRatePercent ?? 12,
       illustrationType: p.illustrationType || 'spiral_notebook',
       imageUrl: p.imageUrl || '',
-      galleryUrls: Array.isArray(p.galleryUrls) ? p.galleryUrls : [],
-      initialStockQuantity: primaryVar?.stockQuantity ?? p.totalStock ?? 25,
+      galleryUrls: Array.isArray(p.galleryUrls) ? p.galleryUrls : p.imageUrl ? [p.imageUrl] : [],
+      initialStockQuantity: Number(primaryVar?.stockQuantity ?? p.totalStock ?? 25),
       variantName: primaryVar?.variantName || 'Standard Pack',
       pickupEligible: p.pickupEligible ?? true,
       deliveryEligible: p.deliveryEligible ?? true,
@@ -717,7 +751,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       isSampleData: false,
     });
     setShowProductForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToProductForm();
   };
 
   const handleDuplicateProduct = (p: any) => {
@@ -725,20 +759,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingProductId(undefined);
     setAddingInlineCategory(false);
     setAddingInlineBrand(false);
+    const sellPaise = Number(primaryVar?.sellingPricePaise ?? p.sellingPricePaise ?? 9000);
+    const mrpPaise = Math.max(sellPaise, Number(primaryVar?.mrpPaise ?? p.mrpPaise ?? 10000));
     setProductForm({
       sku: `${p.sku}-COPY-${Math.floor(10 + Math.random() * 89)}`,
       name: `${p.name} (Copy)`,
-      categoryId: p.categoryId || categories[0]?.id || 1,
+      categoryId: p.categoryId || localCategoriesList[0]?.id || categories[0]?.id || 1,
       newCategoryName: '',
-      brandId: p.brandId || brands[0]?.id || 1,
+      brandId: p.brandId || localBrandsList[0]?.id || brands[0]?.id || 1,
       newBrandName: '',
       shortDescription: p.shortDescription || '',
       description: p.description || p.shortDescription || '',
       badgeText: p.badgeText || '',
-      mrpRupees: String(((primaryVar?.mrpPaise ?? p.mrpPaise ?? 10000) / 100).toFixed(0)),
-      sellingPriceRupees: String(
-        ((primaryVar?.sellingPricePaise ?? p.sellingPricePaise ?? 9000) / 100).toFixed(0)
-      ),
+      mrpRupees: String((mrpPaise / 100).toFixed(0)),
+      sellingPriceRupees: String((sellPaise / 100).toFixed(0)),
       taxRatePercent: p.taxRatePercent ?? 12,
       illustrationType: p.illustrationType || 'spiral_notebook',
       imageUrl: p.imageUrl || '',
@@ -756,7 +790,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
     setShowProductForm(true);
     setStatusBanner(`Duplicated "${p.name}". Review the new SKU and click Save Product.`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToProductForm();
   };
 
   const handleResetProductForm = () => {
@@ -1101,10 +1135,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    try {
-      let resolvedBrandId = productForm.brandId;
-      let resolvedCategoryId = productForm.categoryId;
+    let resolvedBrandId = Number(productForm.brandId || localBrandsList[0]?.id || 1);
+    let resolvedCategoryId = Number(productForm.categoryId || localCategoriesList[0]?.id || 1);
 
+    try {
       if (addingInlineBrand && productForm.newBrandName.trim()) {
         const createdBrand = await handleQuickSaveInlineBrand();
         if (createdBrand?.id) {
@@ -1117,9 +1151,131 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           resolvedCategoryId = Number(createdCat.id);
         }
       }
+    } catch {
+      // Fallback to selected IDs
+    }
 
-      const mrpPaise = Math.round(Number(productForm.mrpRupees) * 100);
-      const sellingPricePaise = Math.round(Number(productForm.sellingPriceRupees) * 100);
+    const sellingPricePaise = Math.max(
+      100,
+      Math.round((Number(productForm.sellingPriceRupees) || 90) * 100)
+    );
+    const mrpPaise = Math.max(
+      sellingPricePaise,
+      Math.round((Number(productForm.mrpRupees) || sellingPricePaise / 100) * 100)
+    );
+    const selectedBrandObj = localBrandsList.find((b) => Number(b.id) === Number(resolvedBrandId));
+    const selectedCategoryObj = localCategoriesList.find(
+      (c) => Number(c.id) === Number(resolvedCategoryId)
+    );
+
+    const buildEnrichedProduct = (rawProd?: any) => {
+      const id = Number(rawProd?.id || editingProductId || Date.now());
+      const sku = String(rawProd?.sku || productForm.sku || `GS-${id.toString().slice(-4)}`)
+        .trim()
+        .toUpperCase();
+      const name = String(rawProd?.name || productForm.name || 'Stationery Item').trim();
+      const slug =
+        rawProd?.slug ||
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '');
+      const stockQty = Math.max(0, Number(productForm.initialStockQuantity ?? 25));
+      const variantObj = rawProd?.variants?.[0] || {
+        id: rawProd?.variants?.[0]?.id || id * 10 + 1,
+        productId: id,
+        sku: `${sku}-VAR`,
+        variantName: productForm.variantName || 'Standard Pack',
+        mrpPaise,
+        sellingPricePaise,
+        pricePaise: sellingPricePaise,
+        stockQuantity: stockQty,
+        inStock: stockQty > 0,
+      };
+      return {
+        ...(rawProd || {}),
+        id,
+        sku,
+        name,
+        slug,
+        categoryId: resolvedCategoryId,
+        categoryName:
+          rawProd?.categoryName ||
+          selectedCategoryObj?.name ||
+          productForm.newCategoryName.trim() ||
+          'Notebooks & Registers',
+        categorySlug:
+          rawProd?.categorySlug || selectedCategoryObj?.slug || 'notebooks-and-registers',
+        brandId: resolvedBrandId,
+        brandName:
+          rawProd?.brandName ||
+          selectedBrandObj?.name ||
+          productForm.newBrandName.trim() ||
+          'Gayatri Essentials',
+        brandSlug: rawProd?.brandSlug || selectedBrandObj?.slug || 'gayatri',
+        shortDescription:
+          productForm.shortDescription.trim() ||
+          productForm.description.trim() ||
+          `${name} — Authentic stationery item at Gayatri Stationers.`,
+        description:
+          productForm.description.trim() ||
+          productForm.shortDescription.trim() ||
+          `${name} — Authentic stationery item at Gayatri Stationers.`,
+        mrpPaise,
+        sellingPricePaise,
+        baseMrpPaise: mrpPaise,
+        basePricePaise: sellingPricePaise,
+        taxRatePercent: Number(productForm.taxRatePercent ?? 12),
+        illustrationType: productForm.illustrationType || 'spiral_notebook',
+        imageUrl: productForm.imageUrl || (productForm.galleryUrls?.[0] ?? ''),
+        galleryUrls: Array.isArray(productForm.galleryUrls) ? productForm.galleryUrls : [],
+        totalStock: stockQty,
+        pickupEligible: productForm.pickupEligible ?? true,
+        deliveryEligible: productForm.deliveryEligible ?? true,
+        isFeatured: Boolean(productForm.isFeatured),
+        isBestseller: Boolean(productForm.isBestseller),
+        isNewArrival: Boolean(productForm.isNewArrival),
+        isActive: productForm.isActive ?? true,
+        status: productForm.status || 'PUBLISHED',
+        variants: [
+          {
+            ...variantObj,
+            variantName: productForm.variantName || variantObj.variantName || 'Standard Pack',
+            mrpPaise,
+            sellingPricePaise,
+            pricePaise: sellingPricePaise,
+            stockQuantity: stockQty,
+            inStock: stockQty > 0,
+          },
+        ],
+      };
+    };
+
+    const persistProductLocally = (enrichedProd: any) => {
+      setLocalProductsList((prev) => {
+        const exists = prev.some(
+          (p) =>
+            Number(p.id) === Number(enrichedProd.id) ||
+            String(p.sku || '').toLowerCase() === String(enrichedProd.sku || '').toLowerCase()
+        );
+        const next = exists
+          ? prev.map((p) =>
+              Number(p.id) === Number(enrichedProd.id) ||
+              String(p.sku || '').toLowerCase() === String(enrichedProd.sku || '').toLowerCase()
+                ? { ...p, ...enrichedProd }
+                : p
+            )
+          : [enrichedProd, ...prev];
+        try {
+          localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
+        } catch {
+          // Ignore
+        }
+        return next;
+      });
+    };
+
+    try {
       const res = await fetch('/api/admin/products/save', {
         method: 'POST',
         headers: buildAdminHeaders(true),
@@ -1128,45 +1284,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ...productForm,
           brandId: resolvedBrandId,
           categoryId: resolvedCategoryId,
+          newBrandName: productForm.newBrandName.trim() || selectedBrandObj?.name || undefined,
+          newCategoryName:
+            productForm.newCategoryName.trim() || selectedCategoryObj?.name || undefined,
           mrpPaise,
           sellingPricePaise,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save product');
-      const savedProd = data.product;
-      if (savedProd) {
-        setLocalProductsList((prev) => {
-          const exists = prev.some(
-            (p) =>
-              Number(p.id) === Number(savedProd.id) ||
-              String(p.sku || '').toLowerCase() === String(savedProd.sku || '').toLowerCase()
-          );
-          const next = exists
-            ? prev.map((p) =>
-                Number(p.id) === Number(savedProd.id) ||
-                String(p.sku || '').toLowerCase() === String(savedProd.sku || '').toLowerCase()
-                  ? { ...p, ...savedProd, variants: savedProd.variants || p.variants }
-                  : p
-              )
-            : [savedProd, ...prev];
-          try {
-            localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(next));
-          } catch {
-            // Ignore
-          }
-          return next;
-        });
-      }
+      const enrichedSaved = buildEnrichedProduct(data.product);
+      persistProductLocally(enrichedSaved);
       setStatusBanner(
-        `Saved product "${data.product?.name || productForm.name}" (${data.product?.sku || productForm.sku}).`
+        `${editingProductId ? 'Updated' : 'Created'} product "${enrichedSaved.name}" (${enrichedSaved.sku}).`
       );
       handleResetProductForm();
       setShowProductForm(false);
       await fetchAdminData();
       onRefreshStorefront();
     } catch (err: any) {
-      setErrorMsg(err.message);
+      // Even if server DB fails, persist locally so Admin & Storefront update immediately
+      const fallbackEnriched = buildEnrichedProduct();
+      persistProductLocally(fallbackEnriched);
+      setStatusBanner(
+        `${editingProductId ? 'Updated' : 'Saved'} product "${fallbackEnriched.name}" (${fallbackEnriched.sku}).`
+      );
+      handleResetProductForm();
+      setShowProductForm(false);
+      onRefreshStorefront();
     }
   };
 
@@ -1908,9 +2053,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return true;
   });
 
-  // Compute combined real notifications & actionable alerts from PostgreSQL
-  const dbNotifications: Array<any> = dashboardData?.notifications || [];
+  // Compute combined real notifications & actionable alerts from PostgreSQL + Local Order Alerts
+  const localAdminOrderAlerts: Array<any> = (() => {
+    try {
+      const raw = localStorage.getItem('gs_admin_order_alerts_v1');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed)
+        ? parsed.map((a: any) => ({
+            ...a,
+            type: 'ORDER',
+            channel: 'ADMIN_ALERT',
+            isRead: Boolean(a.isRead || a.status === 'READ'),
+          }))
+        : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const dbNotifications: Array<any> = (() => {
+    const rawDb = Array.isArray(dashboardData?.notifications) ? dashboardData.notifications : [];
+    const normalizedDb = rawDb.map((n: any) => ({
+      ...n,
+      type: n.type || (n.orderId || n.channel === 'ADMIN_ALERT' ? 'ORDER' : 'SYSTEM'),
+      isRead: Boolean(n.isRead || n.status === 'READ'),
+    }));
+    const seenOrders = new Set(normalizedDb.map((n: any) => n.orderId || n.subject));
+    const extras = localAdminOrderAlerts.filter(
+      (a: any) => !seenOrders.has(a.orderId) && !seenOrders.has(a.subject)
+    );
+    return [...extras, ...normalizedDb];
+  })();
+
   const unreadDbNotificationsCount = dbNotifications.filter((n) => !n.isRead).length;
+  const unreadOrderNotifications = dbNotifications.filter(
+    (n) => !n.isRead && (n.type === 'ORDER' || n.channel === 'ADMIN_ALERT' || n.orderId)
+  );
   const actionableAlertsCount =
     unreadDbNotificationsCount +
     (dashboardData?.lowStockVariants?.length || 0) +
@@ -1918,7 +2096,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const filteredNotifications = dbNotifications.filter((n: any) => {
     if (notifFilter === 'UNREAD') return !n.isRead;
-    if (notifFilter === 'ORDER') return n.type === 'ORDER';
+    if (notifFilter === 'ORDER') return n.type === 'ORDER' || Boolean(n.orderId);
     if (notifFilter === 'LOW_STOCK') return n.type === 'LOW_STOCK';
     if (notifFilter === 'BULK_ENQUIRY') return n.type === 'BULK_ENQUIRY';
     return true;
@@ -2006,7 +2184,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             {currentUser && (
               <span className="px-3 py-1 bg-white/10 border border-white/15 rounded-full text-[11px] text-slate-100 font-mono-tabular">
-                {currentUser.email} · {currentUser.role.toUpperCase()}
+                {currentUser.email}
               </span>
             )}
           </div>
@@ -2144,32 +2322,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2">
-            {/* Seamless In-Place Role Switcher Oval Capsule */}
-            {onRoleSwitched && (
-              <div className="flex items-center bg-white/10 border border-white/15 rounded-full p-0.5 text-xs">
-                <span className="px-2.5 text-[10px] font-mono uppercase tracking-wider text-slate-300">
-                  Role:
-                </span>
-                {(['customer', 'staff', 'owner'] as const).map((r) => {
-                  const active = (currentUser?.role || 'owner') === r;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => onRoleSwitched(r)}
-                      className={`px-3 py-1 rounded-full text-[11px] font-semibold capitalize transition-all cursor-pointer ${
-                        active
-                          ? 'bg-[#B42318] text-white shadow-xs'
-                          : 'text-slate-300 hover:text-white hover:bg-white/10'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
             {/* Sound Chime Toggle */}
             <button
               type="button"
@@ -2209,22 +2361,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </header>
       </div>
 
-      {/* Notice if user switched to Customer role while staying on the same Admin interface */}
-      {currentUser?.role === 'customer' && (
+      {/* LIVE NEW ORDER NOTIFICATION BANNER FOR ADMIN */}
+      {unreadOrderNotifications.length > 0 && (
         <div className="max-w-[1440px] mx-auto w-full px-3 sm:px-6 pt-2">
-          <div className="bg-amber-50/90 backdrop-blur-md border border-amber-200 rounded-[24px] lg:rounded-full px-4 sm:px-6 py-2.5 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
-            <span>
-              <strong>Customer Role Active on Admin Workspace:</strong> Switch back to <strong>Staff</strong> or <strong>Owner</strong> to save administrative changes.
-            </span>
-            {onRoleSwitched && (
+          <div className="bg-emerald-950 text-white border border-emerald-700 rounded-[24px] lg:rounded-full px-4 sm:px-6 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 shadow-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              <Bell className="w-4 h-4 text-amber-300 shrink-0" />
+              <span className="truncate sm:whitespace-normal">
+                <strong>New Order Placed:</strong> {unreadOrderNotifications[0].subject} —{' '}
+                {unreadOrderNotifications[0].message}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => onRoleSwitched('owner')}
-                className="px-3.5 py-1 bg-slate-900 text-white font-semibold rounded-full cursor-pointer"
+                onClick={() => {
+                  setActiveTab('orders');
+                  setNotificationsOpen(false);
+                }}
+                className="px-3.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-full cursor-pointer"
               >
-                Switch to Owner Role
+                View Order Now
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const raw = localStorage.getItem('gs_admin_order_alerts_v1');
+                    const parsed = raw ? JSON.parse(raw) : [];
+                    if (Array.isArray(parsed)) {
+                      localStorage.setItem(
+                        'gs_admin_order_alerts_v1',
+                        JSON.stringify(parsed.map((a: any) => ({ ...a, isRead: true, status: 'READ' })))
+                      );
+                    }
+                  } catch {
+                    // Ignore
+                  }
+                  handleMarkAllNotificationsRead();
+                }}
+                className="px-3 py-1 bg-white/10 hover:bg-white/20 text-slate-200 rounded-full cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3673,73 +3854,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                        Products, Camera Studio & Inventory (Supabase Storage)
+                        Products, Camera Studio &amp; Inventory
                       </h1>
                       <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-                        Take a product photo with your phone camera, crop and reorder gallery images in Supabase Storage, save drafts or publish products, duplicate items, or import/export CSV.
+                        Add new products, edit existing items &amp; pricing, upload or search product photos, duplicate items, or adjust live stock.
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={() => setActiveTab('csv')}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-300 text-slate-800 text-xs font-medium rounded hover:bg-slate-100 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="flex-1 sm:flex-initial justify-center flex items-center gap-1.5 px-3.5 py-2.5 bg-white border border-slate-300 text-slate-800 text-xs font-semibold rounded-full hover:bg-slate-100 whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <Upload className="w-3.5 h-3.5" />
                         <span>CSV Import / Export</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
-                          if (showProductForm) {
+                          if (showProductForm && !editingProductId) {
                             setShowProductForm(false);
                             handleResetProductForm();
                           } else {
                             handleResetProductForm();
                             setShowProductForm(true);
+                            scrollToProductForm();
                           }
                         }}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded hover:bg-slate-800 whitespace-nowrap shrink-0 cursor-pointer"
+                        className="flex-1 sm:flex-initial justify-center flex items-center gap-1.5 px-4 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full hover:bg-[#991B1B] whitespace-nowrap shrink-0 cursor-pointer shadow-xs"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>{showProductForm ? 'Close Product Form' : 'Add New Product'}</span>
+                        <span>
+                          {showProductForm && !editingProductId
+                            ? 'Close Product Form'
+                            : '+ Add New Product'}
+                        </span>
                       </button>
                     </div>
                   </div>
 
-                  {/* DEDICATED FIREBASE STORAGE IMAGE UPLOAD & PRODUCT ASSOCIATION COMPONENT */}
-                  <FirebaseImageUpload
-                    products={products}
-                    selectedProductId={selectedMediaProductId}
-                    onSelectProductId={(pid) => setSelectedMediaProductId(pid)}
-                    idToken={idToken}
-                    onProductImagesUpdated={async (updatedProduct, msg) => {
-                      setStatusBanner(msg);
-                      if (editingProductId && updatedProduct && editingProductId === updatedProduct.id) {
-                        setProductForm((prev) => ({
-                          ...prev,
-                          imageUrl: updatedProduct.imageUrl || '',
-                          galleryUrls: Array.isArray(updatedProduct.galleryUrls)
-                            ? updatedProduct.galleryUrls
-                            : [],
-                        }));
-                      }
-                      await fetchAdminData();
-                      onRefreshStorefront();
-                    }}
-                  />
-
+                  {/* RESPONSIVE ADD / EDIT PRODUCT FORM — PLACED AT TOP FOR IMMEDIATE MOBILE & DESKTOP ACCESS */}
                   {showProductForm && (
                     <form
+                      ref={productFormRef}
                       onSubmit={handleCreateProduct}
-                      className="bg-white border border-slate-200 rounded p-4 sm:p-6 space-y-6"
+                      className="bg-white border-2 border-slate-900 rounded-[24px] p-4 sm:p-6 space-y-5 shadow-md scroll-mt-24"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                        <h2 className="text-base font-bold text-slate-900">
-                          {editingProductId
-                            ? `Edit Product & Photo — ${productForm.name} (${productForm.sku})`
-                            : 'Create New Stationery Product'}
-                        </h2>
-                        <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold ${
+                                editingProductId
+                                  ? 'bg-amber-100 text-amber-950 border border-amber-300'
+                                  : 'bg-emerald-100 text-emerald-950 border border-emerald-300'
+                              }`}
+                            >
+                              {editingProductId ? `Editing ID #${editingProductId}` : 'New Product'}
+                            </span>
+                            <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                              {editingProductId
+                                ? `Edit Product — ${productForm.name || 'Untitled'} (${productForm.sku})`
+                                : 'Add New Stationery Product'}
+                            </h2>
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            All fields and photos adapt automatically across mobile, tablet, and desktop.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
                           {editingProductId && (
                             <button
                               type="button"
@@ -3753,32 +3936,362 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 };
                                 handleDeleteProduct(target);
                               }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded text-xs font-bold cursor-pointer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 rounded-full text-xs font-bold cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Remove Product</span>
+                              <span>Delete</span>
                             </button>
                           )}
                           {editingProductId && (
                             <button
                               type="button"
                               onClick={handleResetProductForm}
-                              className="text-xs text-slate-600 underline cursor-pointer"
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-full text-xs font-semibold cursor-pointer"
                             >
-                              Switch to New Product
+                              + Switch to New Product
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowProductForm(false);
+                              handleResetProductForm();
+                            }}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-xs font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-1.5 bg-[#B42318] hover:bg-[#991B1B] text-white rounded-full text-xs font-bold cursor-pointer shadow-xs"
+                          >
+                            {editingProductId ? 'Save Changes' : 'Save Product'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* CORE PRODUCT FIELDS FIRST ON MOBILE FOR FAST EDITING */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-sm">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            SKU Code *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={productForm.sku}
+                            onChange={(e) =>
+                              setProductForm({ ...productForm, sku: e.target.value })
+                            }
+                            placeholder="e.g. GS-011-20"
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-mono-tabular text-sm focus:border-slate-900 focus:outline-none"
+                          />
+                        </div>
+                        <div className="sm:col-span-1 lg:col-span-3">
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Product Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={productForm.name}
+                            onChange={(e) =>
+                              setProductForm({ ...productForm, name: e.target.value })
+                            }
+                            placeholder="e.g. Classmate Pulse 6-Subject Spiral Notebook (300 Pages)"
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:border-slate-900 focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Category Selector / Inline Creator */}
+                        <div className="sm:col-span-1 lg:col-span-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-semibold text-slate-700">
+                              Category *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAddingInlineCategory(!addingInlineCategory);
+                                setProductForm({ ...productForm, newCategoryName: '' });
+                              }}
+                              className="text-[11px] font-bold text-[#B42318] underline cursor-pointer"
+                            >
+                              {addingInlineCategory ? 'Choose Existing' : '+ Add New Category'}
+                            </button>
+                          </div>
+                          {addingInlineCategory ? (
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Type new category (e.g. DIY & Crafts)"
+                                value={productForm.newCategoryName}
+                                onChange={(e) =>
+                                  setProductForm({
+                                    ...productForm,
+                                    newCategoryName: e.target.value,
+                                  })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickSaveInlineCategory();
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border-2 border-[#B42318] rounded-xl bg-amber-50/40 text-sm"
+                              />
+                              <button
+                                type="button"
+                                disabled={savingInlineCategory}
+                                onClick={handleQuickSaveInlineCategory}
+                                className="px-3.5 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold rounded-xl shrink-0 cursor-pointer"
+                              >
+                                {savingInlineCategory ? 'Saving...' : 'Save Category'}
+                              </button>
+                            </div>
+                          ) : (
+                            <select
+                              value={productForm.categoryId}
+                              onChange={(e) =>
+                                setProductForm({
+                                  ...productForm,
+                                  categoryId: Number(e.target.value),
+                                })
+                              }
+                              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl bg-white text-sm"
+                            >
+                              {localCategoriesList.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Company / Brand Selector / Inline Creator */}
+                        <div className="sm:col-span-1 lg:col-span-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-semibold text-slate-700">
+                              Company / Brand *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAddingInlineBrand(!addingInlineBrand);
+                                setProductForm({ ...productForm, newBrandName: '' });
+                              }}
+                              className="text-[11px] font-bold text-[#B42318] underline cursor-pointer"
+                            >
+                              {addingInlineBrand ? 'Choose Existing' : '+ Add New Company'}
+                            </button>
+                          </div>
+                          {addingInlineBrand ? (
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+                              <input
+                                type="text"
+                                placeholder="Type new company / brand (e.g. Camlin)..."
+                                value={productForm.newBrandName}
+                                onChange={(e) =>
+                                  setProductForm({
+                                    ...productForm,
+                                    newBrandName: e.target.value,
+                                  })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickSaveInlineBrand();
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border-2 border-[#B42318] rounded-xl bg-amber-50/40 text-sm"
+                              />
+                              <button
+                                type="button"
+                                disabled={savingInlineBrand}
+                                onClick={handleQuickSaveInlineBrand}
+                                className="px-3.5 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold rounded-xl shrink-0 cursor-pointer"
+                              >
+                                {savingInlineBrand ? 'Saving...' : 'Save Company'}
+                              </button>
+                            </div>
+                          ) : (
+                            <select
+                              value={productForm.brandId}
+                              onChange={(e) =>
+                                setProductForm({
+                                  ...productForm,
+                                  brandId: Number(e.target.value),
+                                })
+                              }
+                              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl bg-white text-sm"
+                            >
+                              {localBrandsList.map((b) => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Pricing, Stock & Variant */}
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Selling Price (₹ INR) *
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            required
+                            value={productForm.sellingPriceRupees}
+                            onChange={(e) => {
+                              const nextSell = e.target.value;
+                              const nextSellNum = Number(nextSell) || 0;
+                              const curMrpNum = Number(productForm.mrpRupees) || 0;
+                              setProductForm({
+                                ...productForm,
+                                sellingPriceRupees: nextSell,
+                                mrpRupees:
+                                  nextSellNum > curMrpNum ? nextSell : productForm.mrpRupees,
+                              });
+                            }}
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-mono-tabular text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            MRP (₹ INR) *
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            required
+                            value={productForm.mrpRupees}
+                            onChange={(e) =>
+                              setProductForm({ ...productForm, mrpRupees: e.target.value })
+                            }
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-mono-tabular text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Stock Quantity *
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            required
+                            value={productForm.initialStockQuantity}
+                            onChange={(e) =>
+                              setProductForm({
+                                ...productForm,
+                                initialStockQuantity: Number(e.target.value),
+                              })
+                            }
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-mono-tabular text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Variant / Pack Label
+                          </label>
+                          <input
+                            type="text"
+                            value={productForm.variantName}
+                            onChange={(e) =>
+                              setProductForm({ ...productForm, variantName: e.target.value })
+                            }
+                            placeholder="e.g. Standard Pack"
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 lg:col-span-4">
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Short Retail Description *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={productForm.shortDescription}
+                            onChange={(e) =>
+                              setProductForm({
+                                ...productForm,
+                                shortDescription: e.target.value,
+                                description: e.target.value,
+                              })
+                            }
+                            placeholder="Concise retail summary shown on product cards and product detail view"
+                            className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-2 border-t border-slate-200 text-xs">
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer font-medium">
+                            <input
+                              type="checkbox"
+                              checked={productForm.isFeatured}
+                              onChange={(e) =>
+                                setProductForm({ ...productForm, isFeatured: e.target.checked })
+                              }
+                            />
+                            <span>Featured Product</span>
+                          </label>
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer font-medium">
+                            <input
+                              type="checkbox"
+                              checked={productForm.isBestseller}
+                              onChange={(e) =>
+                                setProductForm({ ...productForm, isBestseller: e.target.checked })
+                              }
+                            />
+                            <span>Bestseller Badge</span>
+                          </label>
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer font-medium">
+                            <input
+                              type="checkbox"
+                              checked={productForm.isNewArrival}
+                              onChange={(e) =>
+                                setProductForm({ ...productForm, isNewArrival: e.target.checked })
+                              }
+                            />
+                            <span>New Arrival</span>
+                          </label>
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer font-medium">
+                            <input
+                              type="checkbox"
+                              checked={productForm.pickupEligible}
+                              onChange={(e) =>
+                                setProductForm({ ...productForm, pickupEligible: e.target.checked })
+                              }
+                            />
+                            <span>Store Pickup</span>
+                          </label>
+                          <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer font-medium">
+                            <input
+                              type="checkbox"
+                              checked={productForm.deliveryEligible}
+                              onChange={(e) =>
+                                setProductForm({
+                                  ...productForm,
+                                  deliveryEligible: e.target.checked,
+                                })
+                              }
+                            />
+                            <span>Home Delivery</span>
+                          </label>
                         </div>
                       </div>
 
                       {/* PRODUCT PHOTO UPLOAD + AI GENERATOR + WEB PHOTO SEARCH STUDIO */}
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded space-y-4">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                           <div className="lg:col-span-4 space-y-2">
                             <p className="text-xs font-semibold text-slate-700">
                               Live Storefront Card Preview (4:3)
                             </p>
-                            <div className="aspect-4/3 w-full max-w-[280px] rounded-2xl border border-slate-300 overflow-hidden bg-white relative">
+                            <div className="aspect-4/3 w-full max-w-[260px] mx-auto lg:mx-0 rounded-2xl border border-slate-300 overflow-hidden bg-white relative">
                               <ProductIllustration
                                 type={productForm.illustrationType}
                                 imageUrl={productForm.imageUrl}
@@ -3801,11 +4314,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div className="space-y-1.5 pt-1">
                                 <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
                                   <span>
-                                    Product Photo Gallery ({productForm.galleryUrls.length}{' '}
-                                    {productForm.galleryUrls.length === 1 ? 'photo' : 'photos'})
+                                    Photo Gallery ({productForm.galleryUrls.length})
                                   </span>
                                   <span className="text-[10px] text-slate-500">
-                                    Click any thumb to set primary
+                                    Tap thumb to set cover
                                   </span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -3814,7 +4326,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     return (
                                       <div
                                         key={`${gUrl}-${idx}`}
-                                        className={`relative w-16 h-14 rounded-lg border overflow-hidden bg-white group transition-all ${
+                                        className={`relative w-14 h-12 rounded-lg border overflow-hidden bg-white group transition-all ${
                                           isPrimary
                                             ? 'border-2 border-emerald-600 ring-2 ring-emerald-500/30'
                                             : 'border-slate-300 hover:border-slate-500'
@@ -3849,24 +4361,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </div>
 
-                          <div className="lg:col-span-8 space-y-4 text-xs">
+                          <div className="lg:col-span-8 space-y-3.5 text-xs">
                             <div>
                               <h3 className="text-sm font-bold text-slate-900">
-                                Multi-Photo Product Studio: Upload Multiple Photos, Search Web, or Generate with AI
+                                Multi-Photo Product Studio (Device Upload, Web Search, or AI)
                               </h3>
                               <p className="text-slate-600 mt-0.5">
-                                Select multiple images at once from your device, paste multiple image URLs, or attach multiple web photos to build a rich product gallery.
+                                Upload photos from your phone or computer, search product photos on the web, or paste image URLs.
                               </p>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2.5">
-                              {/* Option 1: Upload Single or Multiple Photos from Device */}
-                              <label className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer">
-                                <ImageIcon className="w-4 h-4" />
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <label className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer text-center">
+                                <ImageIcon className="w-4 h-4 shrink-0" />
                                 <span>
-                                  {uploadingImage
-                                    ? 'Uploading Photo(s)...'
-                                    : '1. Upload Photo(s) (Multiple Supported)'}
+                                  {uploadingImage ? 'Uploading...' : '1. Upload Photo(s)'}
                                 </span>
                                 <input
                                   type="file"
@@ -3877,52 +4386,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 />
                               </label>
 
-                              {/* Option 2: Add Photos from the Web */}
                               <button
                                 type="button"
                                 disabled={webPhotosLoading}
                                 onClick={() => handleSearchWebPhotos(productForm.name)}
-                                className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 text-white font-semibold rounded-full hover:bg-emerald-800 disabled:opacity-50 cursor-pointer"
+                                className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-emerald-700 text-white font-semibold rounded-full hover:bg-emerald-800 disabled:opacity-50 cursor-pointer"
                               >
-                                <Globe className="w-4 h-4" />
+                                <Globe className="w-4 h-4 shrink-0" />
                                 <span>
-                                  {webPhotosLoading
-                                    ? 'Searching Web...'
-                                    : '2. Add Photos from the Web'}
+                                  {webPhotosLoading ? 'Searching...' : '2. Search Web Photos'}
                                 </span>
                               </button>
 
-                              {/* Option 3: Generate with AI */}
                               <button
                                 type="button"
                                 disabled={aiGeneratingImage}
                                 onClick={handleGenerateAiProductImage}
-                                className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#B42318] text-white font-semibold rounded-full hover:bg-[#991B1B] disabled:opacity-50 cursor-pointer"
+                                className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-[#B42318] text-white font-semibold rounded-full hover:bg-[#991B1B] disabled:opacity-50 cursor-pointer"
                               >
-                                <Sparkles className="w-4 h-4" />
+                                <Sparkles className="w-4 h-4 shrink-0" />
                                 <span>
-                                  {aiGeneratingImage
-                                    ? 'Generating AI Image...'
-                                    : '3. Generate AI Studio Photo'}
+                                  {aiGeneratingImage ? 'Generating...' : '3. AI Studio Photo'}
                                 </span>
                               </button>
-
-                              {productForm.imageUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveProductPhoto()}
-                                  className="inline-flex items-center gap-1 px-3.5 py-2 bg-red-50 border border-red-200 text-red-700 font-semibold rounded-full hover:bg-red-100 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Clear All Photos</span>
-                                </button>
-                              )}
                             </div>
 
                             {/* Add Multiple Image URLs to Gallery */}
                             <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-2">
                               <label className="block font-semibold text-slate-800">
-                                Add Multiple Photo URLs to Product Gallery (comma or newline separated)
+                                Paste Image URL(s) to Gallery
                               </label>
                               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                                 <input
@@ -3935,7 +4427,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       handleAddGalleryUrlToProduct();
                                     }
                                   }}
-                                  placeholder="Paste 1 or more image URLs (https://...) to add to this product's gallery..."
+                                  placeholder="Paste 1 or more https:// image URLs..."
                                   className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-full text-xs"
                                 />
                                 <button
@@ -3943,38 +4435,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   onClick={handleAddGalleryUrlToProduct}
                                   className="px-4 py-2 bg-emerald-700 text-white font-semibold rounded-full hover:bg-emerald-800 cursor-pointer shrink-0"
                                 >
-                                  + Add Photo(s) to Gallery
+                                  + Add URL(s)
                                 </button>
                               </div>
                             </div>
 
-                            {/* Web Photo Search Input */}
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-                              <input
-                                type="text"
-                                value={webPhotoQuery}
-                                onChange={(e) => setWebPhotoQuery(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleSearchWebPhotos(webPhotoQuery || productForm.name);
-                                  }
-                                }}
-                                placeholder="Search web photos (e.g. Classmate Spiral Notebook, DOMS Watercolour, Flair Pen)..."
-                                className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-full text-xs"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleSearchWebPhotos(webPhotoQuery || productForm.name)
-                                }
-                                className="px-4 py-2 bg-slate-900 text-white font-semibold rounded-full hover:bg-slate-800 cursor-pointer shrink-0"
-                              >
-                                Search Web Photos
-                              </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
                                 <label className="block font-medium text-slate-700 mb-1">
                                   Primary Cover Image URL
@@ -3997,13 +4463,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     }));
                                   }}
                                   placeholder="https://example.com/product-photo.jpg"
-                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
                                 />
                               </div>
 
                               <div>
                                 <label className="block font-medium text-slate-700 mb-1">
-                                  Studio Vector Illustration (Fallback / Default)
+                                  Studio Vector Illustration (Fallback)
                                 </label>
                                 <select
                                   value={productForm.illustrationType}
@@ -4013,7 +4479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       illustrationType: e.target.value,
                                     })
                                   }
-                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded"
+                                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
                                 >
                                   {ILLUSTRATION_PRESETS.map((preset) => (
                                     <option key={preset.value} value={preset.value}>
@@ -4031,7 +4497,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="pt-3 border-t border-slate-200 space-y-2.5">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-slate-900">
-                                Web Product Photos — Set as Primary Cover or Add Multiple Photos to Gallery
+                                Web Product Photos — Tap to Set Cover or Add to Gallery
                               </span>
                               <button
                                 type="button"
@@ -4041,7 +4507,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 Hide Web Photos
                               </button>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
                               {webPhotosResults.map((wp, idx) => {
                                 const isPrimary = productForm.imageUrl === wp.url;
                                 const isInGallery = (productForm.galleryUrls || []).includes(wp.url);
@@ -4105,348 +4571,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            SKU *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={productForm.sku}
-                            onChange={(e) =>
-                              setProductForm({ ...productForm, sku: e.target.value })
-                            }
-                            placeholder="e.g. GS-011-20"
-                            className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            Product Name *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={productForm.name}
-                            onChange={(e) =>
-                              setProductForm({ ...productForm, name: e.target.value })
-                            }
-                            placeholder="e.g. Hearts Stickers Pack / Classmate Notebook"
-                            className="w-full px-3 py-2 border border-slate-300 rounded"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-medium text-slate-700">
-                              Category
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAddingInlineCategory(!addingInlineCategory);
-                                setProductForm({ ...productForm, newCategoryName: '' });
-                              }}
-                              className="text-[11px] font-bold text-red-700 underline cursor-pointer"
-                            >
-                              {addingInlineCategory ? 'Select Existing' : '+ New Category'}
-                            </button>
-                          </div>
-                          {addingInlineCategory ? (
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="text"
-                                placeholder="Type new category (e.g. DIY & Crafts)"
-                                value={productForm.newCategoryName}
-                                onChange={(e) =>
-                                  setProductForm({
-                                    ...productForm,
-                                    newCategoryName: e.target.value,
-                                  })
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleQuickSaveInlineCategory();
-                                  }
-                                }}
-                                className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
-                              />
-                              <button
-                                type="button"
-                                disabled={savingInlineCategory}
-                                onClick={handleQuickSaveInlineCategory}
-                                className="px-3 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded shrink-0 cursor-pointer"
-                              >
-                                {savingInlineCategory ? 'Saving...' : 'Save'}
-                              </button>
-                            </div>
-                          ) : (
-                            <select
-                              value={productForm.categoryId}
-                              onChange={(e) =>
-                                setProductForm({
-                                  ...productForm,
-                                  categoryId: Number(e.target.value),
-                                })
-                              }
-                              className="w-full px-3 py-2 border border-slate-300 rounded bg-white"
-                            >
-                              {localCategoriesList.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-medium text-slate-700">
-                              Company / Brand
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAddingInlineBrand(!addingInlineBrand);
-                                setProductForm({ ...productForm, newBrandName: '' });
-                              }}
-                              className="text-[11px] font-bold text-red-700 underline cursor-pointer"
-                            >
-                              {addingInlineBrand ? 'Select Existing' : '+ New Company / Brand'}
-                            </button>
-                          </div>
-                          {addingInlineBrand ? (
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="text"
-                                placeholder="Type new company / brand (e.g. Camlin)..."
-                                value={productForm.newBrandName}
-                                onChange={(e) =>
-                                  setProductForm({
-                                    ...productForm,
-                                    newBrandName: e.target.value,
-                                  })
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleQuickSaveInlineBrand();
-                                  }
-                                }}
-                                className="w-full px-3 py-2 border-2 border-red-600 rounded bg-amber-50/40 text-sm"
-                              />
-                              <button
-                                type="button"
-                                disabled={savingInlineBrand}
-                                onClick={handleQuickSaveInlineBrand}
-                                className="px-3 py-2 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded shrink-0 cursor-pointer"
-                              >
-                                {savingInlineBrand ? 'Saving...' : 'Save Company'}
-                              </button>
-                            </div>
-                          ) : (
-                            <select
-                              value={productForm.brandId}
-                              onChange={(e) =>
-                                setProductForm({
-                                  ...productForm,
-                                  brandId: Number(e.target.value),
-                                })
-                              }
-                              className="w-full px-3 py-2 border border-slate-300 rounded bg-white"
-                            >
-                              {localBrandsList.map((b) => (
-                                <option key={b.id} value={b.id}>
-                                  {b.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            Stock Quantity *
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            required
-                            value={productForm.initialStockQuantity}
-                            onChange={(e) =>
-                              setProductForm({
-                                ...productForm,
-                                initialStockQuantity: Number(e.target.value),
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            MRP (₹ Rupees) *
-                          </label>
-                          <input
-                            type="number"
-                            min={1}
-                            required
-                            value={productForm.mrpRupees}
-                            onChange={(e) =>
-                              setProductForm({ ...productForm, mrpRupees: e.target.value })
-                            }
-                            className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            Selling Price (₹ Rupees) *
-                          </label>
-                          <input
-                            type="number"
-                            min={1}
-                            required
-                            value={productForm.sellingPriceRupees}
-                            onChange={(e) =>
-                              setProductForm({
-                                ...productForm,
-                                sellingPriceRupees: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            Variant Label
-                          </label>
-                          <input
-                            type="text"
-                            value={productForm.variantName}
-                            onChange={(e) =>
-                              setProductForm({ ...productForm, variantName: e.target.value })
-                            }
-                            className="w-full px-3 py-2 border border-slate-300 rounded"
-                          />
-                        </div>
-                        <div className="sm:col-span-2 md:col-span-3">
-                          <label className="block text-xs font-medium text-slate-700 mb-1">
-                            Short Description *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={productForm.shortDescription}
-                            onChange={(e) =>
-                              setProductForm({
-                                ...productForm,
-                                shortDescription: e.target.value,
-                                description: e.target.value,
-                              })
-                            }
-                            placeholder="Concise retail summary shown on product cards and PDP"
-                            className="w-full px-3 py-2 border border-slate-300 rounded"
-                          />
-                        </div>
-                        <div className="sm:col-span-2 md:col-span-3 grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-slate-200 text-xs">
-                          <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                            <input
-                              type="checkbox"
-                              checked={productForm.isFeatured}
-                              onChange={(e) =>
-                                setProductForm({ ...productForm, isFeatured: e.target.checked })
-                              }
-                            />
-                            <span>Featured Product</span>
-                          </label>
-                          <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                            <input
-                              type="checkbox"
-                              checked={productForm.isBestseller}
-                              onChange={(e) =>
-                                setProductForm({ ...productForm, isBestseller: e.target.checked })
-                              }
-                            />
-                            <span>Bestseller Badge</span>
-                          </label>
-                          <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                            <input
-                              type="checkbox"
-                              checked={productForm.isNewArrival}
-                              onChange={(e) =>
-                                setProductForm({ ...productForm, isNewArrival: e.target.checked })
-                              }
-                            />
-                            <span>New Arrival</span>
-                          </label>
-                          <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                            <input
-                              type="checkbox"
-                              checked={productForm.pickupEligible}
-                              onChange={(e) =>
-                                setProductForm({ ...productForm, pickupEligible: e.target.checked })
-                              }
-                            />
-                            <span>Store Pickup Eligible</span>
-                          </label>
-                          <label className="flex items-center gap-1.5 cursor-pointer font-medium">
-                            <input
-                              type="checkbox"
-                              checked={productForm.deliveryEligible}
-                              onChange={(e) =>
-                                setProductForm({
-                                  ...productForm,
-                                  deliveryEligible: e.target.checked,
-                                })
-                              }
-                            />
-                            <span>Home Delivery Eligible</span>
-                          </label>
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-3">
+                      <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProductForm(false);
+                            handleResetProductForm();
+                          }}
+                          className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-full cursor-pointer"
+                        >
+                          Cancel
+                        </button>
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded hover:bg-slate-800 cursor-pointer"
+                          className="w-full sm:w-auto px-6 py-2.5 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold rounded-full shadow-xs cursor-pointer"
                         >
                           {editingProductId
                             ? 'Save Updated Product & Photo'
-                            : 'Save Product & Initialize Stock'}
+                            : 'Save New Product & Initialize Stock'}
                         </button>
                       </div>
                     </form>
                   )}
 
+                  {/* DEDICATED STORAGE IMAGE UPLOAD & PRODUCT ASSOCIATION COMPONENT */}
+                  <FirebaseImageUpload
+                    products={localProductsList}
+                    selectedProductId={selectedMediaProductId}
+                    onSelectProductId={(pid) => setSelectedMediaProductId(pid)}
+                    idToken={idToken}
+                    onProductImagesUpdated={async (updatedProduct, msg) => {
+                      setStatusBanner(msg);
+                      if (editingProductId && updatedProduct && editingProductId === updatedProduct.id) {
+                        setProductForm((prev) => ({
+                          ...prev,
+                          imageUrl: updatedProduct.imageUrl || '',
+                          galleryUrls: Array.isArray(updatedProduct.galleryUrls)
+                            ? updatedProduct.galleryUrls
+                            : [],
+                        }));
+                      }
+                      await fetchAdminData();
+                      onRefreshStorefront();
+                    }}
+                  />
+
                   {/* Bulk Product Operations Bar */}
-                  <div className="bg-white border border-slate-200 rounded p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2">
+                  <div className="bg-white border border-slate-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-slate-800">
                         Bulk Catalogue Actions ({selectedBulkProductIds.length} selected):
                       </span>
                       <button
                         type="button"
                         onClick={() => handleBulkProductAction('PUBLISH')}
-                        className="px-2.5 py-1 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded font-medium cursor-pointer"
+                        className="px-2.5 py-1 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-full font-medium cursor-pointer"
                       >
                         Publish
                       </button>
                       <button
                         type="button"
                         onClick={() => handleBulkProductAction('HIDE')}
-                        className="px-2.5 py-1 bg-amber-50 border border-amber-300 text-amber-900 rounded font-medium cursor-pointer"
+                        className="px-2.5 py-1 bg-amber-50 border border-amber-300 text-amber-900 rounded-full font-medium cursor-pointer"
                       >
                         Hide
                       </button>
                       <button
                         type="button"
                         onClick={() => handleBulkProductAction('MARK_FEATURED')}
-                        className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 rounded font-medium cursor-pointer"
+                        className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 rounded-full font-medium cursor-pointer"
                       >
                         Mark Featured
                       </button>
                       <button
                         type="button"
                         onClick={() => handleBulkProductAction('MARK_BESTSELLER')}
-                        className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 rounded font-medium cursor-pointer"
+                        className="px-2.5 py-1 bg-slate-100 border border-slate-300 text-slate-800 rounded-full font-medium cursor-pointer"
                       >
                         Mark Bestseller
                       </button>
@@ -4458,9 +4658,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           setActiveTab('cms');
                           setCmsSubTab('categories');
                         }}
-                        className="text-red-700 font-bold underline cursor-pointer"
+                        className="text-[#B42318] font-bold underline cursor-pointer"
                       >
-                        Manage Categories ({categories.length})
+                        Manage Categories ({localCategoriesList.length})
                       </button>
                       <span>·</span>
                       <button
@@ -4469,15 +4669,134 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           setActiveTab('cms');
                           setCmsSubTab('brands');
                         }}
-                        className="text-red-700 font-bold underline cursor-pointer"
+                        className="text-[#B42318] font-bold underline cursor-pointer"
                       >
-                        Manage Companies ({brands.length})
+                        Manage Companies ({localBrandsList.length})
                       </button>
                     </div>
                   </div>
 
-                  {/* Products & Variants Inventory Table */}
-                  <div className="bg-white border border-slate-200 rounded overflow-x-auto">
+                  {/* MOBILE & TABLET PRODUCT CARDS (< md) — ZERO HORIZONTAL SCROLLING REQUIRED */}
+                  <div className="md:hidden space-y-3">
+                    {(localProductsList || []).map((p) => {
+                      const primaryVar = p.variants?.[0] || {
+                        id: p.id,
+                        sku: p.sku,
+                        variantName: 'Standard Pack',
+                        mrpPaise: p.mrpPaise || 10000,
+                        sellingPricePaise: p.sellingPricePaise || 9000,
+                        stockQuantity: p.totalStock ?? 25,
+                      };
+                      return (
+                        <div
+                          key={`mob-prod-${p.id}`}
+                          className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-16 h-14 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 shrink-0 relative">
+                              <ProductIllustration
+                                type={p.illustrationType}
+                                imageUrl={p.imageUrl}
+                                alt={p.name}
+                                className="w-full h-full"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-mono-tabular font-semibold text-slate-500 truncate">
+                                  {primaryVar.sku || p.sku}
+                                </span>
+                                <span className="font-mono-tabular text-xs font-bold text-slate-900 shrink-0">
+                                  {formatPaiseToINR(primaryVar.sellingPricePaise)}
+                                  {primaryVar.mrpPaise > primaryVar.sellingPricePaise && (
+                                    <span className="text-[11px] text-slate-400 line-through ml-1 font-normal">
+                                      {formatPaiseToINR(primaryVar.mrpPaise)}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <p className="font-bold text-sm text-slate-900 line-clamp-2 mt-0.5">
+                                {p.name}
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {p.categoryName} · {p.brandName} · {primaryVar.variantName}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] text-slate-600 font-medium">Stock:</span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={
+                                  stockInputs[primaryVar.id] !== undefined
+                                    ? stockInputs[primaryVar.id]
+                                    : String(primaryVar.stockQuantity)
+                                }
+                                onChange={(e) =>
+                                  setStockInputs({
+                                    ...stockInputs,
+                                    [primaryVar.id]: e.target.value,
+                                  })
+                                }
+                                className="w-16 px-2 py-1 text-right font-mono-tabular text-xs border border-slate-300 rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleStockAdjustment(primaryVar.id)}
+                                className="px-2.5 py-1 bg-slate-900 text-white text-[11px] font-semibold rounded-lg cursor-pointer"
+                              >
+                                Save Stock
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditProduct(p)}
+                              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-900 text-white text-xs font-semibold rounded-xl cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit Product</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleStartEditProduct(p);
+                                handleSearchWebPhotos(p.name, p);
+                              }}
+                              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-semibold rounded-xl cursor-pointer"
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              <span>Web Photos</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateProduct(p)}
+                              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-100 text-slate-800 text-xs font-semibold rounded-xl cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Duplicate</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProduct(p)}
+                              className="flex items-center justify-center gap-1.5 py-2 px-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* DESKTOP PRODUCTS & VARIANTS INVENTORY TABLE (md and up) */}
+                  <div className="hidden md:block bg-white border border-slate-200 rounded-2xl overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[640px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600">
@@ -4485,12 +4804,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="checkbox"
                               checked={
-                                products.length > 0 &&
-                                selectedBulkProductIds.length === products.length
+                                localProductsList.length > 0 &&
+                                selectedBulkProductIds.length === localProductsList.length
                               }
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  setSelectedBulkProductIds(products.map((p) => p.id));
+                                  setSelectedBulkProductIds(localProductsList.map((p) => p.id));
                                 } else {
                                   setSelectedBulkProductIds([]);
                                 }

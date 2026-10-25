@@ -32,10 +32,10 @@ const HOME_DELIVERY_STAGES: Array<{
   sublabel: string;
 }> = [
   { status: 'ORDER_PLACED', label: 'Order Placed', sublabel: 'Stock reserved online' },
-  { status: 'CONFIRMED', label: 'Confirmed', sublabel: 'Verified for Shiprocket' },
+  { status: 'CONFIRMED', label: 'Confirmed', sublabel: 'Verified for courier dispatch' },
   { status: 'PROCESSING', label: 'Processing', sublabel: 'Items picked from shelf' },
-  { status: 'PACKED', label: 'Packed', sublabel: 'Shiprocket label generated' },
-  { status: 'DISPATCHED', label: 'Shipped via Shiprocket', sublabel: 'Handed to Shiprocket courier' },
+  { status: 'PACKED', label: 'Packed', sublabel: 'Shipping label generated' },
+  { status: 'DISPATCHED', label: 'Dispatched', sublabel: 'Handed to express courier' },
   { status: 'DELIVERED', label: 'Delivered', sublabel: 'Completed at doorstep' },
 ];
 
@@ -47,7 +47,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
 }) => {
   const [workflowNote, setWorkflowNote] = useState('');
   const [courierName, setCourierName] = useState(
-    orderEntry?.shipmentDetails?.courierName || 'Shiprocket Express'
+    orderEntry?.shipmentDetails?.courierName || 'Express Home Delivery'
   );
   const [trackingNumber, setTrackingNumber] = useState(
     orderEntry?.shipmentDetails?.trackingNumber || ''
@@ -144,7 +144,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
             >
               {isPickup
                 ? 'Get at Store (No Tracking — Direct Counter Collection)'
-                : 'Home Delivery via Shiprocket (Live Tracking)'}
+                : 'Express Home Delivery (Live Tracking)'}
             </span>
             <span>·</span>
             <span>Placed {new Date(order.createdAt).toLocaleString('en-IN')}</span>
@@ -162,7 +162,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
         <div className="flex flex-row sm:flex-col items-start sm:items-end justify-between gap-2 border-t sm:border-t-0 pt-3 sm:pt-0 border-stone-200">
           <div className="text-left sm:text-right">
             <span className="text-[11px] uppercase tracking-wider text-stone-500 block">
-              {isPickup ? 'Collection Status' : 'Shiprocket Stage'}
+              {isPickup ? 'Collection Status' : 'Delivery Stage'}
             </span>
             <span
               className={`font-mono-tabular text-sm sm:text-base font-bold ${
@@ -283,7 +283,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
             <div className="flex items-center justify-between text-xs text-stone-600 mb-3">
               <span className="font-semibold text-stone-900 flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-emerald-700" />
-                <span>Shiprocket Doorstep Delivery Tracking</span>
+                <span>Express Doorstep Delivery Tracking</span>
               </span>
               <span className="font-mono-tabular">
                 Step {Math.max(1, currentStageIndex + 1)} of {HOME_DELIVERY_STAGES.length}
@@ -391,7 +391,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 font-bold text-stone-900 text-sm">
                   <Truck className="w-4 h-4 text-emerald-700 shrink-0" />
-                  <span>Shiprocket Courier &amp; AWB Tracking</span>
+                  <span>Courier &amp; AWB Shipment Tracking</span>
                 </div>
                 <span className="font-mono-tabular font-semibold px-2.5 py-0.5 bg-white border border-emerald-300 rounded-full text-emerald-900">
                   PIN: {orderEntry.shipmentDetails.pincode}
@@ -411,7 +411,7 @@ export const OrderTrackingTimeline: React.FC<OrderTrackingTimelineProps> = ({
                 <div className="p-3.5 bg-white border border-emerald-200 rounded-2xl space-y-1.5 font-mono-tabular text-stone-900">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-bold text-xs">
-                      Courier: {orderEntry.shipmentDetails.courierName || 'Shiprocket Express'}
+                      Courier: {(orderEntry.shipmentDetails.courierName || 'Express Courier').replace(/Shiprocket/gi, 'Express')}
                     </p>
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded text-[11px] font-bold">
                       AWB: {orderEntry.shipmentDetails.trackingNumber}

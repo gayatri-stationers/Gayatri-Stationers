@@ -649,6 +649,62 @@ const DEFAULT_PRODUCTS = [
       { id: 15, variantName: 'Standard Metal Tin Box', sku: 'GS-GM-DOMG1-STD', mrpPaise: 16000, sellingPricePaise: 14500, pricePaise: 14500, stockQuantity: 60, inStock: true },
     ],
   },
+  {
+    id: 9,
+    name: 'Camlin Kokuyo Artist Water Colour Cakes Studio Palette (24 Shades + Brush)',
+    slug: 'camlin-kokuyo-artist-water-colour-cakes-24',
+    sku: 'GS-AR-CAM24',
+    categoryId: 3,
+    categoryName: 'Art & Craft Supplies',
+    categorySlug: 'art-and-craft-supplies',
+    brandId: 5,
+    brandName: 'Camlin Kokuyo',
+    brandSlug: 'camlin-kokuyo',
+    description: 'Vibrant transparent artist-grade watercolour cakes with mixing lid palette and synthetic round brush.',
+    shortDescription: '24 vibrant artist watercolour cakes with mixing palette & synthetic brush.',
+    illustrationType: 'paint_palette',
+    mrpPaise: 24000,
+    sellingPricePaise: 21500,
+    baseMrpPaise: 24000,
+    basePricePaise: 21500,
+    totalStock: 42,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: false,
+    isNewArrival: true,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 16, variantName: '24 Shades Studio Palette', sku: 'GS-AR-CAM24-STD', mrpPaise: 24000, sellingPricePaise: 21500, pricePaise: 21500, stockQuantity: 42, inStock: true },
+    ],
+  },
+  {
+    id: 10,
+    name: 'Faber-Castell Textliner 46 Superfluorescent Pastel Highlighter Set (Pack of 4)',
+    slug: 'faber-castell-textliner-pastel-highlighters-4',
+    sku: 'GS-PW-FAB04',
+    categoryId: 2,
+    categoryName: 'Pens & Writing Instruments',
+    categorySlug: 'pens-and-writing',
+    brandId: 6,
+    brandName: 'Faber-Castell',
+    brandSlug: 'faber-castell',
+    description: 'Smudge-proof water-based pastel highlighters with 3 line widths (1mm, 2mm, 5mm) for study notes and revision.',
+    shortDescription: 'Set of 4 smudge-proof chisel-tip pastel highlighters for revision notes.',
+    illustrationType: 'highlighter_set',
+    mrpPaise: 18000,
+    sellingPricePaise: 16000,
+    baseMrpPaise: 18000,
+    basePricePaise: 16000,
+    totalStock: 50,
+    isActive: true,
+    isFeatured: true,
+    isBestseller: false,
+    isNewArrival: true,
+    status: 'PUBLISHED',
+    variants: [
+      { id: 17, variantName: 'Pack of 4 Pastel Shades', sku: 'GS-PW-FAB04-SET', mrpPaise: 18000, sellingPricePaise: 16000, pricePaise: 16000, stockQuantity: 50, inStock: true },
+    ],
+  },
 ].map(normalizeCatalogueProduct);
 
   // Storefront data from PostgreSQL + LocalStorage persistence
@@ -2508,7 +2564,7 @@ const DEFAULT_PRODUCTS = [
         throw new Error(data.error || 'Failed to place order.');
       }
 
-      // Persist order to local storage history so My Orders always displays it immediately
+      // Persist order to local storage history so My Orders always displays it immediately + trigger Admin Notification
       if (data?.order) {
         try {
           const existingRaw = localStorage.getItem('gs_my_orders_v1');
@@ -2518,6 +2574,28 @@ const DEFAULT_PRODUCTS = [
             (o: any) => o?.order?.orderNumber !== data.order.orderNumber
           );
           localStorage.setItem('gs_my_orders_v1', JSON.stringify([data, ...filtered].slice(0, 100)));
+
+          const adminNotifsRaw = localStorage.getItem('gs_admin_order_alerts_v1');
+          const adminNotifs = adminNotifsRaw ? JSON.parse(adminNotifsRaw) : [];
+          const newAlert = {
+            id: Date.now(),
+            orderId: data.order.id,
+            orderNumber: data.order.orderNumber,
+            customerName: data.order.customerName,
+            customerPhone: data.order.customerPhone,
+            totalPaise: data.order.totalPaise,
+            fulfilmentMethod: data.order.fulfilmentMethod,
+            paymentMethod: data.order.paymentMethod,
+            subject: `New Order ${data.order.orderNumber} (${data.order.fulfilmentMethod === 'STORE_PICKUP' ? 'Get at Store' : 'Home Delivery'})`,
+            message: `${data.order.customerName} (${data.order.customerPhone}) placed Order ${data.order.orderNumber} for ${formatPaiseToINR(data.order.totalPaise)}.`,
+            isRead: false,
+            status: 'UNREAD',
+            createdAt: new Date().toISOString(),
+          };
+          localStorage.setItem(
+            'gs_admin_order_alerts_v1',
+            JSON.stringify([newAlert, ...(Array.isArray(adminNotifs) ? adminNotifs : [])].slice(0, 50))
+          );
         } catch {
           // Ignore storage error
         }
@@ -2734,7 +2812,10 @@ const DEFAULT_PRODUCTS = [
   const activeHeroBanners = useMemo(
     () =>
       banners.filter(
-        (b) => b.isActive !== false && b.status === 'PUBLISHED' && b.placement === 'HERO_MAIN'
+        (b) =>
+          b.isActive !== false &&
+          b.status !== 'HIDDEN' &&
+          (b.placement === 'HERO_MAIN' || b.placement === 'HERO' || !b.placement)
       ),
     [banners]
   );
@@ -3310,51 +3391,117 @@ const DEFAULT_PRODUCTS = [
                 {/* Dynamic CMS Storefront Hero & Promotional Banners */}
                 {selectedCategorySlug === 'ALL' && selectedBrandSlug === 'ALL' && !searchQuery.trim() && (
                   <section className="space-y-4">
-                    {/* Clean Editorial Hero Showcase */}
-                    <div className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 relative overflow-hidden shadow-xs">
-                      <div className="space-y-3 max-w-xl">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-800 shadow-2xs">
-                          <Sparkles className="w-3.5 h-3.5 text-[#B42318]" />
-                          <span>{currentHeroBanner?.badgeText || 'Gayatri Stationers · Premium Stationery Retail'}</span>
+                    {/* Clean Editorial Hero Showcase (Dynamically Driven by Admin CMS Banner) */}
+                    <div
+                      className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 relative overflow-hidden shadow-xs"
+                      style={
+                        currentHeroBanner?.backgroundColor &&
+                        currentHeroBanner.backgroundColor !== '#FFFFFF'
+                          ? {
+                              backgroundColor: currentHeroBanner.backgroundColor,
+                              color: currentHeroBanner.textColor || undefined,
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                        <div className={currentHeroBanner?.desktopImageUrl ? 'lg:col-span-7 space-y-3' : 'lg:col-span-12 space-y-3 max-w-xl'}>
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-800 shadow-2xs">
+                            <Sparkles className="w-3.5 h-3.5 text-[#B42318]" />
+                            <span>
+                              {currentHeroBanner?.badgeText ||
+                                'Gayatri Stationers · Kanpur’s Trusted Stationery Destination'}
+                            </span>
+                          </div>
+
+                          <h1
+                            className="font-serif-display text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-tight"
+                            style={
+                              currentHeroBanner?.textColor
+                                ? { color: currentHeroBanner.textColor }
+                                : undefined
+                            }
+                          >
+                            {currentHeroBanner?.title ||
+                              'Craft Your Story with Premium Stationery'}
+                          </h1>
+
+                          <p
+                            className="text-xs sm:text-sm text-slate-600 leading-relaxed"
+                            style={
+                              currentHeroBanner?.textColor
+                                ? { color: currentHeroBanner.textColor, opacity: 0.88 }
+                                : undefined
+                            }
+                          >
+                            {currentHeroBanner?.subtitle ||
+                              'Curated ruled Classmate registers, Flair & Unomax pens, DOMS & Camlin art sets, and office essentials at honest retail rates in Kanpur.'}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const link = (currentHeroBanner?.ctaLink || '').trim();
+                                if (link && link !== 'catalogue' && categories.some((c) => c.slug === link)) {
+                                  setSelectedCategorySlug(link);
+                                }
+                                const el = document.getElementById('catalogue-section');
+                                el?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className="px-5 py-2.5 rounded-full bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                            >
+                              <span>{currentHeroBanner?.ctaText || 'Explore Catalogue'}</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setActiveView('combos')}
+                              className="px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium cursor-pointer transition-colors"
+                            >
+                              School Kits
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setActiveView('bulk')}
+                              className="px-3.5 py-2 text-slate-700 text-xs font-medium hover:underline cursor-pointer"
+                            >
+                              Bulk Orders →
+                            </button>
+                          </div>
+
+                          {activeHeroBanners.length > 1 && (
+                            <div className="flex items-center gap-1.5 pt-2">
+                              {activeHeroBanners.map((b, idx) => (
+                                <button
+                                  key={b.id || idx}
+                                  type="button"
+                                  aria-label={`View banner ${idx + 1}`}
+                                  onClick={() => setActiveHeroBannerIdx(idx)}
+                                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                                    idx === activeHeroBannerIdx % activeHeroBanners.length
+                                      ? 'w-6 bg-[#B42318]'
+                                      : 'w-2 bg-slate-300 hover:bg-slate-400'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
 
-                        <h1 className="font-serif-display text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-tight">
-                          Craft Your Story with Premium Stationery
-                        </h1>
-
-                        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                          Curated ruled Classmate registers, Flair & Unomax pens, DOMS art sets, and office essentials at honest retail rates.
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const el = document.getElementById('catalogue-section');
-                              el?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className="px-5 py-2.5 rounded-full bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                          >
-                            <span>Explore Catalogue</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setActiveView('combos')}
-                            className="px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium cursor-pointer transition-colors"
-                          >
-                            School Kits
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setActiveView('bulk')}
-                            className="px-3.5 py-2 text-slate-700 text-xs font-medium hover:underline cursor-pointer"
-                          >
-                            Bulk Orders →
-                          </button>
-                        </div>
+                        {currentHeroBanner?.desktopImageUrl && (
+                          <div className="lg:col-span-5">
+                            <div className="aspect-16/10 rounded-[24px] overflow-hidden border border-slate-200/80 bg-slate-50 shadow-xs">
+                              <img
+                                src={currentHeroBanner.desktopImageUrl}
+                                alt={currentHeroBanner.title}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Quick Category Showcase Cards */}
@@ -3367,7 +3514,7 @@ const DEFAULT_PRODUCTS = [
                           <ProductIllustration type="ballpoint_pen" alt="Pastel Pens" className="w-full h-14 object-contain mx-auto" />
                           <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Pastel Pens</p>
                         </div>
-                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('diy-and-crafts')}>
+                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('art-and-craft-supplies')}>
                           <ProductIllustration type="drawing_book" alt="Fine Art Kits" className="w-full h-14 object-contain mx-auto" />
                           <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Fine Art Kits</p>
                         </div>
@@ -3401,7 +3548,7 @@ const DEFAULT_PRODUCTS = [
                             </h2>
                           </div>
                           <p className="text-xs text-stone-600 leading-relaxed">
-                            Reserve stock online and choose <strong>Pay at Store</strong> or Online Payment. Collect your packed bag at the counter using your 6-character Pickup Code once staff marks it <em>Ready for Pickup</em>.
+                            Reserve stock online and choose <strong>Pay at Store</strong> or Online Payment. Collect your packed bag at our Kanpur counter using your 6-character Pickup Code — no order tracking required.
                           </p>
                           <p className="text-[11px] text-stone-600 font-medium pt-1">
                             Visit Us: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
@@ -3425,14 +3572,14 @@ const DEFAULT_PRODUCTS = [
                           <div className="flex items-center gap-2">
                             <Truck className="w-4 h-4 text-stone-900 shrink-0" />
                             <h2 className="text-sm font-bold text-stone-900">
-                              Option 2: Pan-India Doorstep Delivery (Powered by Shiprocket)
+                              Option 2: Kanpur &amp; Pan-India Express Doorstep Delivery
                             </h2>
                           </div>
                           <p className="text-xs text-stone-600 leading-relaxed">
-                            Nationwide courier delivery across all Indian 6-digit PIN codes via <strong>Shiprocket</strong>. Enjoy reliable doorstep dispatch, live AWB shipment tracking, and Cash on Delivery or Online Prepaid options.
+                            Fast local delivery across Kanpur and nationwide courier dispatch across all Indian 6-digit PIN codes. Enjoy reliable doorstep delivery, live AWB shipment tracking, and Cash on Delivery or Online Prepaid options.
                           </p>
                           <p className="text-[11px] text-emerald-800 font-semibold pt-1">
-                            ✓ All Indian PIN Codes Serviceable via Shiprocket Express Partners
+                            ✓ All Kanpur &amp; Indian PIN Codes Serviceable with Live AWB Tracking
                           </p>
                         </div>
                       </div>
@@ -3452,40 +3599,53 @@ const DEFAULT_PRODUCTS = [
                           </div>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-                          {activeHomepageCategories.map((cat) => (
-                            <button
-                              key={cat.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedCategorySlug(cat.slug);
-                                setSelectedBrandSlug('ALL');
-                                document
-                                  .getElementById('catalogue-section')
-                                  ?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className="apple-card-btn p-4 bg-slate-50 border border-slate-200/90 hover:border-slate-800 rounded-[26px] text-left transition-all flex flex-col justify-between gap-2.5 cursor-pointer group hover:-translate-y-0.5"
-                            >
-                              <div>
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="font-bold text-xs sm:text-sm text-stone-900 group-hover:text-[#B42318]">
-                                    {cat.name}
-                                  </span>
-                                  {cat.slug === 'diy-and-crafts' && (
-                                    <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                                      DIY
+                          {activeHomepageCategories.map((cat) => {
+                            const cSlug = String(cat.slug || '').toLowerCase();
+                            const cName = String(cat.name || '').toLowerCase();
+                            const liveCatCount = products.filter((p) => {
+                              if (!p || p.isActive === false) return false;
+                              return (
+                                Number(p.categoryId) === Number(cat.id) ||
+                                (cSlug && String(p.categorySlug || '').toLowerCase() === cSlug) ||
+                                (cName && String(p.categoryName || '').toLowerCase() === cName)
+                              );
+                            }).length;
+                            const displayCatCount = Math.max(liveCatCount, Number(cat.productCount || 0));
+                            return (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCategorySlug(cat.slug);
+                                  setSelectedBrandSlug('ALL');
+                                  document
+                                    .getElementById('catalogue-section')
+                                    ?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="apple-card-btn p-4 bg-slate-50 border border-slate-200/90 hover:border-slate-800 rounded-[26px] text-left transition-all flex flex-col justify-between gap-2.5 cursor-pointer group hover:-translate-y-0.5"
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-bold text-xs sm:text-sm text-stone-900 group-hover:text-[#B42318]">
+                                      {cat.name}
                                     </span>
-                                  )}
+                                    {cat.slug === 'diy-and-crafts' && (
+                                      <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
+                                        DIY
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-stone-500 line-clamp-2 mt-1">
+                                    {cat.description}
+                                  </p>
                                 </div>
-                                <p className="text-[11px] text-stone-500 line-clamp-2 mt-1">
-                                  {cat.description}
-                                </p>
-                              </div>
-                              <div className="text-[10px] font-mono text-stone-700 font-semibold pt-1.5 border-t border-stone-200/70 flex items-center justify-between">
-                                <span>{cat.productCount ?? 0} Items</span>
-                                <span>Browse →</span>
-                              </div>
-                            </button>
-                          ))}
+                                <div className="text-[10px] font-mono text-stone-700 font-semibold pt-1.5 border-t border-stone-200/70 flex items-center justify-between">
+                                  <span>{displayCatCount} Items</span>
+                                  <span>Browse →</span>
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -3504,42 +3664,59 @@ const DEFAULT_PRODUCTS = [
                           </div>
                         </div>
                         <div className="flex items-center gap-3 overflow-x-auto pb-1">
-                          {activeBrands.map((brand) => (
-                            <button
-                              key={brand.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedBrandSlug(brand.slug);
-                                setSelectedCategorySlug('ALL');
-                                document
-                                  .getElementById('catalogue-section')
-                                  ?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className={`px-5 py-2.5 border rounded-full flex items-center gap-3 shrink-0 transition-all cursor-pointer ${
-                                selectedBrandSlug === brand.slug
-                                  ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                  : 'bg-slate-50 text-stone-900 border-slate-200/90 hover:border-slate-800'
-                              }`}
-                            >
-                              {brand.logoUrl ? (
-                                <img
-                                  src={brand.logoUrl}
-                                  alt={brand.name}
-                                  className="w-7 h-7 object-contain bg-white rounded-full p-0.5"
-                                />
-                              ) : (
-                                <span className="w-7 h-7 bg-stone-900 text-white text-[10px] font-mono font-bold flex items-center justify-center rounded-full">
-                                  {brand.name.slice(0, 2).toUpperCase()}
-                                </span>
-                              )}
-                              <div className="text-left">
-                                <div className="text-xs font-bold leading-tight">{brand.name}</div>
-                                <div className="text-[10px] opacity-75 font-mono">
-                                  {brand.productCount ?? 0} Products
+                          {activeBrands.map((brand) => {
+                            const bSlug = String(brand.slug || '').toLowerCase();
+                            const bName = String(brand.name || '').toLowerCase();
+                            const bToken = bName.split(/\s+/)[0] || '';
+                            const liveBrandCount = products.filter((p) => {
+                              if (!p || p.isActive === false) return false;
+                              const pSlug = String(p.brandSlug || '').toLowerCase();
+                              const pName = String(p.brandName || '').toLowerCase();
+                              return (
+                                Number(p.brandId) === Number(brand.id) ||
+                                (bSlug && pSlug === bSlug) ||
+                                (bName && pName === bName) ||
+                                (bToken.length >= 3 && (pName.includes(bToken) || bName.includes(pName)))
+                              );
+                            }).length;
+                            const displayBrandCount = Math.max(liveBrandCount, Number(brand.productCount || 0));
+                            return (
+                              <button
+                                key={brand.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBrandSlug(brand.slug);
+                                  setSelectedCategorySlug('ALL');
+                                  document
+                                    .getElementById('catalogue-section')
+                                    ?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className={`px-5 py-2.5 border rounded-full flex items-center gap-3 shrink-0 transition-all cursor-pointer ${
+                                  selectedBrandSlug === brand.slug
+                                    ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                                    : 'bg-slate-50 text-stone-900 border-slate-200/90 hover:border-slate-800'
+                                }`}
+                              >
+                                {brand.logoUrl ? (
+                                  <img
+                                    src={brand.logoUrl}
+                                    alt={brand.name}
+                                    className="w-7 h-7 object-contain bg-white rounded-full p-0.5"
+                                  />
+                                ) : (
+                                  <span className="w-7 h-7 bg-stone-900 text-white text-[10px] font-mono font-bold flex items-center justify-center rounded-full">
+                                    {brand.name.slice(0, 2).toUpperCase()}
+                                  </span>
+                                )}
+                                <div className="text-left">
+                                  <div className="text-xs font-bold leading-tight">{brand.name}</div>
+                                  <div className="text-[10px] opacity-75 font-mono">
+                                    {displayBrandCount} {displayBrandCount === 1 ? 'Product' : 'Products'}
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
-                          ))}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -5800,11 +5977,11 @@ const DEFAULT_PRODUCTS = [
                         </div>
                       )}
 
-                      {/* STEP 1: Payment Method Selection (Cashfree Online vs Cash on Delivery vs Store Counter) */}
+                      {/* STEP 1: Payment Method Selection (Online Payment vs Cash on Delivery vs Store Counter) */}
                       <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <h2 className="text-sm font-bold text-stone-900">
-                            01. Select Payment Method (Cashfree Online or Cash on Delivery)
+                            01. Select Payment Method (Online Payment or Cash on Delivery)
                           </h2>
                           <span className="text-[11px] font-mono-tabular text-stone-500">
                             Currency: INR (₹)
@@ -5830,14 +6007,14 @@ const DEFAULT_PRODUCTS = [
                             <div>
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <p className="font-bold text-stone-900 text-sm">
-                                  Cashfree Online Payment
+                                  Secure Online Payment
                                 </p>
                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
                                   UPI / CARDS / NETBANKING
                                 </span>
                               </div>
                               <p className="text-stone-600 mt-1 leading-relaxed">
-                                Pay instantly in INR (₹) via Google Pay, PhonePe, Paytm, BHIM UPI, Credit/Debit Cards, or NetBanking in the Cashfree Popup.
+                                Pay instantly in INR (₹) via Google Pay, PhonePe, Paytm, BHIM UPI, Credit/Debit Cards, or NetBanking.
                               </p>
                             </div>
                           </label>
@@ -5911,10 +6088,10 @@ const DEFAULT_PRODUCTS = [
                         </label>
                       </div>
 
-                      {/* STEP 2: Fulfilment Method (Get at Store vs Home Delivery via Shiprocket) */}
+                      {/* STEP 2: Fulfilment Method (Get at Store vs Express Home Delivery) */}
                       <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
                         <h2 className="text-sm font-bold text-stone-900">
-                          02. Choose Fulfilment Method (Get at Store or Shiprocket Home Delivery)
+                          02. Choose Fulfilment Method (Get at Store or Express Home Delivery)
                         </h2>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -5955,7 +6132,7 @@ const DEFAULT_PRODUCTS = [
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold uppercase tracking-wider">
-                                Option B: Home Delivery (Shiprocket)
+                                Option B: Express Home Delivery
                               </span>
                               <span className="font-mono-tabular text-xs font-semibold">
                                 {calculation.shippingPaise === 0
@@ -5970,7 +6147,7 @@ const DEFAULT_PRODUCTS = [
                                   : 'text-stone-600'
                               }`}
                             >
-                              Pan-India doorstep courier dispatch &amp; live AWB order tracking powered by Shiprocket.
+                              Kanpur &amp; Pan-India doorstep courier dispatch with live AWB order tracking.
                             </p>
                           </button>
                         </div>
@@ -6004,10 +6181,10 @@ const DEFAULT_PRODUCTS = [
                           <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-[24px] flex items-center justify-between gap-3 text-xs text-emerald-950">
                             <div>
                               <p className="font-bold text-sm">
-                                🚚 Doorstep Delivery &amp; Live AWB Tracking via Shiprocket
+                                🚚 Express Doorstep Delivery &amp; Live AWB Tracking
                               </p>
                               <p className="text-emerald-900 mt-0.5">
-                                Your order will be shipped via our Shiprocket courier partners (Delhivery, BlueDart, Xpressbees) with real-time AWB tracking.
+                                Your order will be dispatched via our express courier network with real-time AWB tracking.
                               </p>
                             </div>
                           </div>
@@ -6018,10 +6195,10 @@ const DEFAULT_PRODUCTS = [
                       {paymentMethod === 'CASHFREE_ONLINE' ? (
                         <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-[28px] space-y-1.5 text-xs text-emerald-950">
                           <p className="font-bold text-sm">
-                            ✓ Express Cashfree Gateway Mode Active
+                            ✓ Instant Online Checkout Mode Active
                           </p>
                           <p className="text-emerald-900 leading-relaxed">
-                            No manual form required here — click <strong>Pay Now via Cashfree Gateway</strong> on the right to open the Cashfree Drop-in Popup and complete your payment via <strong>UPI (GPay, PhonePe, Paytm, QR / UPI ID)</strong>, Cards, or NetBanking.
+                            No manual form required here — click <strong>Pay Online Now</strong> on the right to complete your payment via <strong>UPI (GPay, PhonePe, Paytm, QR / UPI ID)</strong>, Cards, or NetBanking.
                           </p>
                         </div>
                       ) : (
@@ -6095,7 +6272,7 @@ const DEFAULT_PRODUCTS = [
                                 <div className="flex items-end">
                                   {/^\d{6}$/.test(shippingAddress.pincode.trim()) ? (
                                     <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 w-full">
-                                      ✓ <strong>Shiprocket Pan-India Delivery:</strong> PIN{' '}
+                                      ✓ <strong>Express Doorstep Delivery:</strong> PIN{' '}
                                       <span className="font-mono-tabular font-bold">
                                         {shippingAddress.pincode.trim()}
                                       </span>{' '}
@@ -6103,7 +6280,7 @@ const DEFAULT_PRODUCTS = [
                                     </div>
                                   ) : (
                                     <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 w-full">
-                                      Enter any 6-digit Indian PIN code for Pan-India doorstep delivery via <strong>Shiprocket</strong>.
+                                      Enter any 6-digit Kanpur or Indian PIN code for doorstep delivery.
                                     </div>
                                   )}
                                 </div>
@@ -6318,10 +6495,10 @@ const DEFAULT_PRODUCTS = [
                       >
                         {checkoutSubmitting
                           ? paymentMethod === 'CASHFREE_ONLINE'
-                            ? 'Opening Cashfree Payment Gateway...'
+                            ? 'Opening Secure Payment Window...'
                             : 'Validating Stock & Placing Order...'
                           : paymentMethod === 'CASHFREE_ONLINE'
-                          ? `Pay Now via Cashfree Gateway (${formatPaiseToINR(calculation.totalPaise)})`
+                          ? `Pay Online Now (${formatPaiseToINR(calculation.totalPaise)})`
                           : `Complete Order (${formatPaiseToINR(calculation.totalPaise)})`}
                       </button>
                     </div>
@@ -6351,11 +6528,13 @@ const DEFAULT_PRODUCTS = [
                       <p className="font-bold text-stone-900">
                         {confirmedOrderData.order.fulfilmentMethod === 'STORE_PICKUP'
                           ? 'Fulfilment: Get at Store (Direct Collect)'
-                          : `Shiprocket Status: ${confirmedOrderData.order.orderStatus.replace(/_/g, ' ')}`}
+                          : `Delivery Status: ${confirmedOrderData.order.orderStatus.replace(/_/g, ' ')}`}
                       </p>
                       <p className="text-stone-600 mt-0.5">
                         Payment: {confirmedOrderData.order.paymentStatus} (
-                        {confirmedOrderData.order.paymentMethod.replace(/_/g, ' ')})
+                        {confirmedOrderData.order.paymentMethod === 'CASHFREE_ONLINE'
+                          ? 'ONLINE PAYMENT'
+                          : confirmedOrderData.order.paymentMethod.replace(/_/g, ' ')})
                       </p>
                     </div>
                   </div>
@@ -6381,10 +6560,10 @@ const DEFAULT_PRODUCTS = [
                       <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-[24px] space-y-1.5 text-xs">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <p className="font-bold text-emerald-950 text-sm">
-                            🚚 Home Delivery via Shiprocket (Live Tracking Enabled)
+                            🚚 Express Home Delivery (Live Tracking Enabled)
                           </p>
                           <span className="px-2.5 py-0.5 bg-white border border-emerald-300 rounded-full font-mono-tabular font-semibold text-emerald-900">
-                            Courier: {confirmedOrderData.shipmentDetails.courierName || 'Shiprocket Express'}
+                            Courier: {(confirmedOrderData.shipmentDetails.courierName || 'Express Home Delivery').replace(/Shiprocket/gi, 'Express')}
                           </span>
                         </div>
                         <p className="text-stone-800">
@@ -6409,7 +6588,7 @@ const DEFAULT_PRODUCTS = [
                         <span className="font-bold text-sm">
                           {confirmedOrderData.order.paymentStatus === 'PAID'
                             ? '✓ Online Payment Verified & Confirmed'
-                            : '⚡ Payment Pending — Complete via Cashfree Gateway'}
+                            : '⚡ Payment Pending — Complete Online Payment'}
                         </span>
                         <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-white/80 border border-current">
                           {confirmedOrderData.order.paymentStatus}
@@ -6418,7 +6597,7 @@ const DEFAULT_PRODUCTS = [
                       {confirmedOrderData.order.paymentStatus !== 'PAID' ? (
                         <>
                           <p className="text-amber-900 leading-relaxed">
-                            Your order is saved as <strong>Pending Payment</strong>. Click below to open the Cashfree Drop-in Payment Gateway to pay via <strong>UPI (GPay / PhonePe / Paytm / BHIM)</strong>, Credit/Debit Cards, or NetBanking.
+                            Your order is saved as <strong>Pending Payment</strong>. Click below to complete your payment via <strong>UPI (GPay / PhonePe / Paytm / BHIM)</strong>, Credit/Debit Cards, or NetBanking.
                           </p>
                           <button
                             type="button"
@@ -6426,12 +6605,12 @@ const DEFAULT_PRODUCTS = [
                             disabled={checkoutSubmitting}
                             className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-full shadow-md transition-all cursor-pointer flex items-center gap-2"
                           >
-                            <span>Pay Now via UPI / Cards / NetBanking (Cashfree)</span>
+                            <span>Pay Now via UPI / Cards / NetBanking</span>
                           </button>
                         </>
                       ) : (
                         <p className="text-emerald-800 text-[11px]">
-                          Payment was securely verified with Cashfree Payments PG. Thank you for your purchase!
+                          Your online payment has been securely verified. Thank you for shopping with Gayatri Stationers!
                         </p>
                       )}
                     </div>
@@ -6467,7 +6646,7 @@ const DEFAULT_PRODUCTS = [
                         }}
                         className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full cursor-pointer"
                       >
-                        Track Delivery via Shiprocket
+                        Track Home Delivery
                       </button>
                     )}
                     <button

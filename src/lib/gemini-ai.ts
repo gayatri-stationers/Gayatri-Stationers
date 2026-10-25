@@ -493,16 +493,16 @@ ${historyText}`;
     })
     .join('\n');
 
-  let answer = `Here is the live **Gayatri Stationers** catalogue & market comparison for your query:\n\n${bulletLines}\n\n**Market Trends & Reviews Summary:**\n• **Student & Exam Consensus**: 70 GSM+ elemental chlorine-free notebooks (like ITC Classmate Pulse) and 0.5mm–0.7mm low-viscosity waterproof pens (Unomax Ultron 2X & Flair Zoox F7) lead Indian student reviews for smudge-free speed writing.\n• **Price Advantage**: Gayatri Stationers offers direct below-MRP retail pricing plus **₹0 Store Pickup** in Kanpur and **Pan-India Shiprocket Home Delivery**.`;
+  let answer = `Here is the live **Gayatri Stationers** catalogue & market comparison for your query:\n\n${bulletLines}\n\n**Market Trends & Reviews Summary:**\n• **Student & Exam Consensus**: 70 GSM+ elemental chlorine-free notebooks (like ITC Classmate Pulse) and 0.5mm–0.7mm low-viscosity waterproof pens (Unomax Ultron 2X & Flair Zoox F7) lead Indian student reviews for smudge-free speed writing.\n• **Price Advantage**: Gayatri Stationers offers direct below-MRP retail pricing plus **₹0 Store Pickup** in Kanpur and **Pan-India Express Home Delivery**.`;
 
-  if (qLower.includes('pickup') || qLower.includes('delivery') || qLower.includes('shipping') || qLower.includes('shiprocket')) {
+  if (qLower.includes('pickup') || qLower.includes('delivery') || qLower.includes('shipping') || qLower.includes('courier')) {
     answer =
-      'At **Gayatri Stationers**, you can choose between two convenient fulfilment options:\n• **Store Pickup (₹0 Fee)**: Place your order online (Pay Online or Pay at Store Counter) and collect your packed stationery bag at our Kanpur store counter (Awas Vikas Market, Galla Mandi, Naubasta – 208021) using your 6-digit Pickup Code.\n• **Pan-India Home Delivery via Shiprocket**: Nationwide courier delivery to any 6-digit Indian PIN code with live AWB tracking and Cash on Delivery (COD) or Cashfree Online Payment.';
+      'At **Gayatri Stationers**, you can choose between two convenient fulfilment options:\n• **Store Pickup (₹0 Fee)**: Place your order online (Pay Online or Pay at Store Counter) and collect your packed stationery bag at our Kanpur store counter (Awas Vikas Market, Galla Mandi, Naubasta – 208021) using your 6-digit Pickup Code.\n• **Pan-India Express Home Delivery**: Nationwide courier delivery to any 6-digit Indian PIN code with live AWB tracking and Cash on Delivery (COD) or Secure Online Payment (UPI / Cards / NetBanking).';
   } else if (params.currentProduct) {
     const cp = params.currentProduct;
     const sell = Math.round(Number(cp.sellingPricePaise || 0) / 100);
     const mrp = Math.round(Number(cp.mrpPaise || cp.sellingPricePaise || 0) / 100);
-    answer = `**${cp.name}** by **${cp.brandName || 'Gayatri Stationers'}**\n• **Price Comparison**: **₹${sell}** at Gayatri Stationers vs **₹${mrp}** Market MRP (Direct retail savings of ₹${Math.max(0, mrp - sell)}).\n• **Product Review Highlights**: ${cp.shortDescription || cp.description || 'Highly rated by students and professionals for consistent daily quality.'}\n• **Fulfilment**: Available for **Instant Store Counter Pickup (₹0 fee)** and **Pan-India Shiprocket Delivery**.`;
+    answer = `**${cp.name}** by **${cp.brandName || 'Gayatri Stationers'}**\n• **Price Comparison**: **₹${sell}** at Gayatri Stationers vs **₹${mrp}** Market MRP (Direct retail savings of ₹${Math.max(0, mrp - sell)}).\n• **Product Review Highlights**: ${cp.shortDescription || cp.description || 'Highly rated by students and professionals for consistent daily quality.'}\n• **Fulfilment**: Available for **Instant Store Counter Pickup (₹0 fee)** and **Pan-India Express Home Delivery**.`;
   }
 
   return {

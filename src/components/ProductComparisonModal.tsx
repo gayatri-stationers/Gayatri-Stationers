@@ -1029,7 +1029,7 @@ export function ProductComparisonModal({
                             </div>
                             <div className="flex items-center gap-1.5">
                               <Truck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                              <span>Pan-India Shiprocket Home Delivery</span>
+                              <span>Pan-India Express Home Delivery</span>
                             </div>
                           </td>
                         ))}

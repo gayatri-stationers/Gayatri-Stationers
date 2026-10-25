@@ -107,12 +107,20 @@ export async function getStoreBootstrapData() {
 
     const enrichedCategories = allCategories.map((c) => {
       const parentCat = c.parentId ? categoryById[c.parentId] : undefined;
-      const productCount = allProducts.filter(
-        (p) =>
-          p.categoryId === c.id ||
-          p.subcategoryId === c.id ||
-          (Array.isArray(p.secondaryCategoryIds) && p.secondaryCategoryIds.includes(c.id))
-      ).length;
+      const cSlug = String(c.slug || '').toLowerCase();
+      const cName = String(c.name || '').toLowerCase();
+      const productCount = enrichedProducts.filter((p) => {
+        if (p.isActive === false) return false;
+        const pCatSlug = String(p.categorySlug || '').toLowerCase();
+        const pCatName = String(p.categoryName || '').toLowerCase();
+        return (
+          Number(p.categoryId) === Number(c.id) ||
+          Number(p.subcategoryId) === Number(c.id) ||
+          (Array.isArray(p.secondaryCategoryIds) && p.secondaryCategoryIds.includes(c.id)) ||
+          (cSlug && pCatSlug === cSlug) ||
+          (cName && pCatName === cName)
+        );
+      }).length;
       return {
         ...c,
         showOnHomepage: c.showOnHome,
@@ -123,7 +131,20 @@ export async function getStoreBootstrapData() {
     });
 
     const enrichedBrands = allBrands.map((b) => {
-      const productCount = allProducts.filter((p) => p.brandId === b.id).length;
+      const bSlug = String(b.slug || '').toLowerCase();
+      const bName = String(b.name || '').toLowerCase();
+      const bToken = bName.split(/\s+/)[0] || '';
+      const productCount = enrichedProducts.filter((p) => {
+        if (p.isActive === false) return false;
+        const pBrandSlug = String(p.brandSlug || '').toLowerCase();
+        const pBrandName = String(p.brandName || '').toLowerCase();
+        return (
+          Number(p.brandId) === Number(b.id) ||
+          (bSlug && pBrandSlug === bSlug) ||
+          (bName && pBrandName === bName) ||
+          (bToken.length >= 3 && (pBrandName.includes(bToken) || bName.includes(pBrandName)))
+        );
+      }).length;
       return {
         ...b,
         productCount,
@@ -760,7 +781,7 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
             city: input.shippingAddress.city.trim(),
             state: input.shippingAddress.state.trim(),
             pincode: input.shippingAddress.pincode.trim(),
-            courierName: 'Shiprocket Express',
+            courierName: 'Express Home Delivery',
           })
           .returning();
         createdShipment = shipment;
@@ -816,19 +837,30 @@ export async function placeOrderTransactionally(input: CreateOrderInput) {
         }
       }
 
-      // 10. Create In-App Notification Record
-      await tx.insert(notifications).values({
-        userId: input.userId || null,
-        orderId: createdOrder.id,
-        channel: 'IN_APP',
-        recipient: input.customerEmail || input.customerPhone,
-        subject: `Order ${orderNumber} Confirmed — Gayatri Stationers`,
-        message:
-          input.fulfilmentMethod === 'STORE_PICKUP'
-            ? `Your Get at Store order ${orderNumber} is ready for counter collection! Pickup Code: ${createdPickup?.pickupCode}. No tracking needed — simply visit our Kanpur counter and collect your items.`
-            : `Your Home Delivery order ${orderNumber} has been received and will be dispatched via Shiprocket to PIN code ${input.shippingAddress?.pincode}.`,
-        status: 'DELIVERED_IN_APP',
-      });
+      // 10. Create In-App Notification Records (Customer + Admin Order Alert)
+      await tx.insert(notifications).values([
+        {
+          userId: input.userId || null,
+          orderId: createdOrder.id,
+          channel: 'IN_APP',
+          recipient: input.customerEmail || input.customerPhone,
+          subject: `Order ${orderNumber} Confirmed — Gayatri Stationers`,
+          message:
+            input.fulfilmentMethod === 'STORE_PICKUP'
+              ? `Your Get at Store order ${orderNumber} is ready for counter collection! Pickup Code: ${createdPickup?.pickupCode}. No tracking needed — simply visit our Kanpur counter and collect your items.`
+              : `Your Home Delivery order ${orderNumber} has been received and will be dispatched to PIN code ${input.shippingAddress?.pincode}.`,
+          status: 'DELIVERED_IN_APP',
+        },
+        {
+          userId: null,
+          orderId: createdOrder.id,
+          channel: 'ADMIN_ALERT',
+          recipient: 'admin@gayatristationers.in',
+          subject: `New Order ${orderNumber} Placed (${input.fulfilmentMethod === 'STORE_PICKUP' ? 'Get at Store' : 'Home Delivery'})`,
+          message: `New order ${orderNumber} from ${input.customerName} (${input.customerPhone}) for ₹${(calculation.totalPaise / 100).toFixed(0)} via ${input.paymentMethod.replace(/_/g, ' ')}.`,
+          status: 'UNREAD',
+        },
+      ]);
 
       // 11. Clear user's and guest's persistent cart if applicable
       if (input.userId) {
@@ -1542,11 +1574,13 @@ export async function createOrUpdateProductByAdmin(params: {
     if (!cleanSku || !cleanName) {
       throw new Error('Product SKU and Product Name are required.');
     }
-    if (params.sellingPricePaise > params.mrpPaise) {
-      throw new Error('Selling price cannot exceed MRP.');
-    }
+    const safeSellingPricePaise = Math.max(100, Math.round(Number(params.sellingPricePaise) || 9000));
+    const safeMrpPaise = Math.max(safeSellingPricePaise, Math.round(Number(params.mrpPaise) || safeSellingPricePaise));
+    params.sellingPricePaise = safeSellingPricePaise;
+    params.mrpPaise = safeMrpPaise;
 
     return await db.transaction(async (tx) => {
+      const allCats = await tx.select().from(categories);
       let targetCategoryId = Number(params.categoryId);
       if (params.newCategoryName && params.newCategoryName.trim().length > 0) {
         const cleanCatName = params.newCategoryName.trim();
@@ -1555,7 +1589,6 @@ export async function createOrUpdateProductByAdmin(params: {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/(^-|-$)/g, '') || `category-${Date.now().toString().slice(-4)}`;
-        const allCats = await tx.select().from(categories);
         const existingCat = allCats.find(
           (c) => c.name.toLowerCase() === cleanCatName.toLowerCase() || c.slug === catSlug
         );
@@ -1579,8 +1612,31 @@ export async function createOrUpdateProductByAdmin(params: {
             .returning();
           targetCategoryId = createdCat.id;
         }
+      } else if (!allCats.some((c) => Number(c.id) === targetCategoryId)) {
+        // Fallback if client sent a local-only category ID not yet in DB
+        if (allCats.length > 0) {
+          targetCategoryId = allCats[0].id;
+        } else {
+          const [fallbackCat] = await tx
+            .insert(categories)
+            .values({
+              name: 'Notebooks & Registers',
+              slug: 'notebooks-and-registers',
+              description: 'Ruled registers, spiral notebooks, and stationery essentials',
+              sortOrder: 1,
+              showInNav: true,
+              showOnHome: true,
+              showInFooter: true,
+              status: 'PUBLISHED',
+              isActive: true,
+              isSampleData: false,
+            })
+            .returning();
+          targetCategoryId = fallbackCat.id;
+        }
       }
 
+      const allBrandsList = await tx.select().from(brands);
       let targetBrandId: number | null = params.brandId ? Number(params.brandId) : null;
       if (params.newBrandName && params.newBrandName.trim().length > 0) {
         const cleanBrandName = params.newBrandName.trim();
@@ -1589,7 +1645,6 @@ export async function createOrUpdateProductByAdmin(params: {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/(^-|-$)/g, '') || `brand-${Date.now().toString().slice(-4)}`;
-        const allBrandsList = await tx.select().from(brands);
         const existingBrand = allBrandsList.find(
           (b) => b.name.toLowerCase() === cleanBrandName.toLowerCase() || b.slug === brandSlug
         );
@@ -1612,6 +1667,8 @@ export async function createOrUpdateProductByAdmin(params: {
             .returning();
           targetBrandId = createdBrand.id;
         }
+      } else if (targetBrandId && !allBrandsList.some((b) => Number(b.id) === targetBrandId)) {
+        targetBrandId = allBrandsList[0]?.id ?? null;
       }
 
       const baseSlug =
