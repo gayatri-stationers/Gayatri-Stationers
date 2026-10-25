@@ -1735,6 +1735,9 @@ async function startServer() {
   // Bind port 3000 immediately so health checks succeed without waiting for Vite plugin initialization
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Gayatri Stationers server running on http://0.0.0.0:${PORT}`);
+    ensureSeeded().catch((err) => {
+      console.warn('Background seed warm-up warning:', err?.message || err);
+    });
   });
 
   // Vite middleware for development or static serving in production
