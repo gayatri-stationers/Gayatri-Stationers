@@ -213,6 +213,12 @@ async function startServer() {
       if (!email || !email.includes('@')) {
         return res.status(400).json({ error: 'A valid Google email address is required.' });
       }
+      if (!isAuthorizedAdminEmail(email)) {
+        return res.status(403).json({
+          error:
+            'Access Restricted: Only the verified Store Owner account (vainhavgupta20052014@gmail.com) is authorized to access the Admin Console.',
+        });
+      }
 
       const uid = uidInput || `google-admin-${email}`;
       const displayName = fullName || email.split('@')[0];
@@ -230,7 +236,7 @@ async function startServer() {
         user: dbUser,
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || 'Google Admin sign-up failed.' });
+      res.status(500).json({ error: error.message || 'Google Admin sign-in failed.' });
     }
   });
 
@@ -241,11 +247,12 @@ async function startServer() {
       const requestedRole = req.body?.role === 'staff' ? 'staff' : 'owner';
 
       if (!email || !email.includes('@')) {
-        return res.status(400).json({ error: 'A valid Google account email is required.' });
+        return res.status(400).json({ error: 'A valid Store Owner email is required.' });
       }
       if (!isAuthorizedAdminEmail(email)) {
         return res.status(403).json({
-          error: 'Please enter a valid Google email address.',
+          error:
+            'Access Restricted: Only the verified Store Owner account (vainhavgupta20052014@gmail.com) is authorized to access the Admin Console.',
         });
       }
 
@@ -279,16 +286,17 @@ async function startServer() {
         return res.status(400).json({ error: 'Please enter a valid email address.' });
       }
 
+      const targetRole = isAuthorizedAdminEmail(email) ? 'owner' : 'customer';
       const dbUser = await syncUserWithDatabase(
         `cust-${email}`,
         email,
         fullName || email.split('@')[0],
-        'customer'
+        targetRole
       );
       const session = createAdminSessionToken({
         uid: dbUser.uid,
         email: dbUser.email,
-        role: 'customer',
+        role: targetRole,
       });
 
       res.json({
@@ -307,7 +315,24 @@ async function startServer() {
       const phone = String(req.body?.phone || '').trim();
       const email = String(req.body?.email || req.dbUser?.email || '').trim().toLowerCase();
 
+      // If authenticated user is updating their own profile (and not a customer trying to overwrite owner)
       if (req.dbUser?.id) {
+        if (isAuthorizedAdminEmail(req.dbUser.email) && email && !isAuthorizedAdminEmail(email)) {
+          // A customer supplied a non-owner email while holding a stale session: create/update a separate customer record instead of overwriting the owner!
+          const customerRecord = await syncUserWithDatabase(
+            `cust-${email}`,
+            email,
+            fullName || email.split('@')[0],
+            'customer'
+          );
+          const updatedCust = await updateUserProfileById({
+            userId: customerRecord.id,
+            fullName: fullName || undefined,
+            phone,
+          });
+          return res.json({ user: updatedCust || customerRecord });
+        }
+
         const updated = await updateUserProfileById({
           userId: req.dbUser.id,
           fullName: fullName || undefined,
@@ -316,31 +341,24 @@ async function startServer() {
         return res.json({ user: updated || { ...req.dbUser, fullName, phone } });
       }
 
-      if (email && email.includes('@')) {
-        const synced = await syncUserWithDatabase(
-          `cust-${email}`,
-          email,
-          fullName || email.split('@')[0],
-          'customer'
-        );
-        const updated = await updateUserProfileById({
-          userId: synced.id,
-          fullName: fullName || undefined,
-          phone,
-        });
-        return res.json({ user: updated || synced });
-      }
+      // Unauthenticated profile update: never allow overwriting the owner email record
+      const safeCustomerEmail =
+        email && email.includes('@') && !isAuthorizedAdminEmail(email)
+          ? email
+          : 'customer@gayatristationers.com';
 
-      return res.json({
-        user: {
-          id: 2,
-          uid: 'cust-profile',
-          email: email || 'customer@gayatristationers.com',
-          fullName: fullName || 'Valued Customer',
-          phone,
-          role: 'customer',
-        },
+      const synced = await syncUserWithDatabase(
+        `cust-${safeCustomerEmail}`,
+        safeCustomerEmail,
+        fullName || safeCustomerEmail.split('@')[0],
+        'customer'
+      );
+      const updated = await updateUserProfileById({
+        userId: synced.id,
+        fullName: fullName || undefined,
+        phone,
       });
+      return res.json({ user: updated || synced });
     } catch (error: any) {
       res.status(400).json({ error: error.message || 'Failed to update profile.' });
     }
@@ -351,6 +369,14 @@ async function startServer() {
       const { role } = req.body;
       if (!['customer', 'staff', 'owner'].includes(role)) {
         return res.status(400).json({ error: 'Invalid role specified.' });
+      }
+      if (
+        (role === 'owner' || role === 'staff') &&
+        !isAuthorizedAdminEmail(req.dbUser?.email || '')
+      ) {
+        return res.status(403).json({
+          error: 'Only the verified Store Owner can switch to an Admin role.',
+        });
       }
 
       const targetUser = await updateUserRoleById(req.dbUser!.id, role);

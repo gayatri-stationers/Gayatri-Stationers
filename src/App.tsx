@@ -319,7 +319,7 @@ Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an or
 • Opened ink bottles, used pens/markers, or custom-printed institutional stationery are only eligible for return if delivered in a defective or damaged condition.
 
 3. Refund Processing & Timelines (in INR / ₹)
-• Online Prepaid Orders (Cashfree — UPI / Credit Card / Debit Card / NetBanking): Once your cancellation or return is approved, the refund is initiated within 24–48 business hours. The refunded amount in INR (₹) will be credited back to your original payment source within 5 to 7 business days, depending on your issuing bank or UPI provider.
+• Online Prepaid Orders (UPI / Credit Card / Debit Card / NetBanking): Once your cancellation or return is approved, the refund is initiated within 24–48 business hours. The refunded amount in INR (₹) will be credited back to your original payment source within 5 to 7 business days, depending on your issuing bank or UPI provider.
 • Cash on Delivery (COD) & Pay at Store Orders: Refunds for returned COD or counter-paid orders are processed in INR (₹) via UPI transfer or NEFT/IMPS bank transfer to the customer's verified bank account within 3 to 5 business days.`,
     isActive: true,
     showInFooter: true,
@@ -356,7 +356,7 @@ Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an or
 We collect your name, mobile number, email address, and delivery address solely to process your stationery orders, send GST invoices, provide order tracking updates, and fulfill customer support requests.
 
 2. Payment Data Security
-All online payments (UPI, Credit/Debit Cards, NetBanking) are processed securely through Cashfree Payments using industry-standard encryption and PCI-DSS compliance. We never store your card numbers, CVV, or banking passwords.
+All online payments (UPI, Credit/Debit Cards, NetBanking) are processed securely through our encrypted Online Payment Gateway using industry-standard PCI-DSS compliance. We never store your card numbers, CVV, or banking passwords.
 
 3. Data Sharing & Contact
 We never sell or rent customer personal data to third parties. Data is shared only with logistics partners and payment processors strictly to complete your transaction. For privacy inquiries, email support@gayatristationers.co.in.`,
@@ -439,7 +439,13 @@ export default function App() {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (parsed?.user && parsed?.expiresAt && Date.now() < Number(parsed.expiresAt)) {
-        return parsed.user;
+        const u = parsed.user;
+        const isOwner =
+          String(u.email || '').trim().toLowerCase() === 'vainhavgupta20052014@gmail.com';
+        return {
+          ...u,
+          role: isOwner ? 'owner' : 'customer',
+        };
       }
       return null;
     } catch {
@@ -447,7 +453,7 @@ export default function App() {
     }
   });
   const [authError, setAuthError] = useState<string | null>(null);
-  const [adminLoginEmail, setAdminLoginEmail] = useState('vainhavgupta20052014@gmail.com');
+  const [adminLoginEmail, setAdminLoginEmail] = useState('');
   const [adminLoginName, setAdminLoginName] = useState('Gayatri Stationers Owner');
   const [adminLoginAccessCode, setAdminLoginAccessCode] = useState('');
   const [adminLoginSubmitting, setAdminLoginSubmitting] = useState(false);
@@ -1667,11 +1673,7 @@ const DEFAULT_PRODUCTS = [
     }
 
     const colorNote = resolvedColor ? ` (${resolvedColor})` : '';
-    showToast(`Added "${product.name}"${colorNote} to cart`);
-
-    if (!skipRedirect) {
-      setCartDrawerOpen(true);
-    }
+    showToast(`Added "${product.name}"${colorNote} to bag`);
   };
 
   const handleAddBundleToCart = (
@@ -1685,8 +1687,7 @@ const DEFAULT_PRODUCTS = [
         handleAddToCart(prod, bi.variantId, bi.quantity, sourceEvent, true);
       }
     }
-    setCartDrawerOpen(true);
-    showToast(`Added "${bundle.name || 'School Combo Kit'}" items to cart`);
+    showToast(`Added "${bundle.name || 'School Combo Kit'}" items to bag`);
   };
 
   const handleUpdateCartQuantity = (productId: number, variantId: number, nextQty: number) => {
@@ -1812,38 +1813,6 @@ const DEFAULT_PRODUCTS = [
     }
   }, [supabaseUser, dbUser, idToken]);
 
-  // Automatically grant Owner session when entering Admin view so Admin Console is never blocked
-  useEffect(() => {
-    if (activeView === 'admin' || activeView === 'admin-login') {
-      if (!dbUser || (dbUser.role !== 'owner' && dbUser.role !== 'staff')) {
-        const ownerEmail =
-          dbUser?.email || supabaseUser?.email || 'vainhavgupta20052014@gmail.com';
-        const ownerToken = `gs_admin_direct_owner:${ownerEmail}`;
-        const ownerUser = {
-          id: 1,
-          uid: `admin-owner-${ownerEmail}`,
-          email: ownerEmail,
-          fullName: dbUser?.fullName || 'Gayatri Stationers Admin',
-          role: 'owner',
-        };
-        setIdToken(ownerToken);
-        setDbUser(ownerUser);
-        try {
-          localStorage.setItem(
-            'gs_admin_session_v1',
-            JSON.stringify({
-              token: ownerToken,
-              expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-              user: ownerUser,
-            })
-          );
-        } catch {
-          // Ignore
-        }
-      }
-    }
-  }, [activeView, dbUser, supabaseUser]);
-
   // Navigate to dedicated Sign-In Page (no modal popup)
   const handleGoogleSignIn = async () => {
     setAuthError(null);
@@ -1852,7 +1821,7 @@ const DEFAULT_PRODUCTS = [
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Customer Google Sign-In handler (works on the dedicated Sign-In page for all customers)
+  // Customer Google Sign-In handler (works on the dedicated Sign-In page for all customers — never overwrites or logs in as store owner unless verified)
   const handleCustomerGoogleSignIn = async () => {
     setAuthError(null);
     setCustomerAuthSubmitting(true);
@@ -1867,11 +1836,16 @@ const DEFAULT_PRODUCTS = [
           resolvedName = popupRes.user.displayName || resolvedName;
         }
       } catch {
-        // If popup is blocked by preview iframe, use entered email or active Google email
-        if (!resolvedEmail) {
-          resolvedEmail =
-            supabaseUser?.email || dbUser?.email || 'vainhavgupta20052014@gmail.com';
+        // If popup is blocked or closed in the preview iframe, require the customer's own email input (NEVER fall back to owner email)
+        if (!resolvedEmail && supabaseUser?.email) {
+          resolvedEmail = supabaseUser.email.trim().toLowerCase();
         }
+      }
+
+      if (!resolvedEmail || !resolvedEmail.includes('@')) {
+        throw new Error(
+          'Google popup was blocked by your browser. Please enter your email address in the box below to sign in.'
+        );
       }
 
       if (!resolvedName) {
@@ -1888,13 +1862,15 @@ const DEFAULT_PRODUCTS = [
       });
       const data = await res.json();
       const isOwner = resolvedEmail === 'vainhavgupta20052014@gmail.com';
-      const finalUser = data?.user || {
-        id: isOwner ? 1 : 2,
-        uid: `cust-${resolvedEmail}`,
-        email: resolvedEmail,
-        fullName: resolvedName,
-        role: isOwner ? 'owner' : 'customer',
-      };
+      const finalUser = data?.user
+        ? { ...data.user, role: isOwner ? 'owner' : 'customer' }
+        : {
+            id: isOwner ? 1 : 2,
+            uid: `cust-${resolvedEmail}`,
+            email: resolvedEmail,
+            fullName: resolvedName,
+            role: isOwner ? 'owner' : 'customer',
+          };
       const finalToken =
         data?.token ||
         (isOwner
@@ -1909,15 +1885,25 @@ const DEFAULT_PRODUCTS = [
           user: finalUser,
         })
       );
+      localStorage.setItem(
+        'gs_user_profile_v1',
+        JSON.stringify({
+          ...finalUser,
+          fullName: finalUser.fullName || resolvedName,
+          email: finalUser.email,
+          shippingAddress,
+        })
+      );
       setIdToken(finalToken);
       setDbUser(finalUser);
-      if (!customerEmail) setCustomerEmail(finalUser.email);
-      if (!customerName && finalUser.fullName) setCustomerName(finalUser.fullName);
+      setCustomerEmail(finalUser.email);
+      if (finalUser.fullName) setCustomerName(finalUser.fullName);
       setCustomerAuthModalOpen(false);
       await loadStoreBootstrap(finalToken);
-      setActiveView(cartItems.length > 0 ? 'checkout' : 'track');
+      window.history.pushState({}, '', '/');
+      setActiveView('storefront');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast(`Signed in with Google as ${finalUser.email}`);
+      showToast(`Signed in as ${finalUser.fullName || finalUser.email}`);
     } catch (err: any) {
       setAuthError(err.message || 'Google sign-in failed.');
     } finally {
@@ -1926,8 +1912,17 @@ const DEFAULT_PRODUCTS = [
   };
 
   const performAdminLoginRequest = async (emailInput: string, nameInput?: string) => {
-    const cleanEmail = (emailInput || 'vainhavgupta20052014@gmail.com').trim().toLowerCase();
-    const cleanName = (nameInput || cleanEmail.split('@')[0] || 'Store Owner').trim();
+    const cleanEmail = (emailInput || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Please enter the Store Owner email address.');
+    }
+    if (cleanEmail !== 'vainhavgupta20052014@gmail.com') {
+      throw new Error(
+        'Access Restricted: Only the authorized Store Owner (vainhavgupta20052014@gmail.com) can access the Admin Console.'
+      );
+    }
+
+    const cleanName = (nameInput || 'Gayatri Stationers Owner').trim();
     let sessionPayload: { token: string; expiresAt: number; user: any } | null = null;
 
     try {
@@ -1941,14 +1936,20 @@ const DEFAULT_PRODUCTS = [
         }),
       });
       const data = await res.json();
-      if (res.ok && data?.token && data?.user) {
+      if (!res.ok) {
+        throw new Error(data?.error || 'Unauthorized Admin login attempt.');
+      }
+      if (data?.token && data?.user) {
         sessionPayload = {
           token: data.token,
           expiresAt: data.expiresAt || Date.now() + 7 * 24 * 60 * 60 * 1000,
-          user: data.user,
+          user: { ...data.user, role: 'owner' },
         };
       }
     } catch (err: any) {
+      if (err?.message?.includes('Access Restricted')) {
+        throw err;
+      }
       console.warn('Admin login API fallback:', err?.message);
     }
 
@@ -1973,21 +1974,37 @@ const DEFAULT_PRODUCTS = [
     await loadStoreBootstrap(sessionPayload.token);
     window.history.pushState({}, '', '/admin');
     setActiveView('admin');
-    showToast(`Welcome to Admin Console, ${sessionPayload.user.email}!`);
+    showToast(`Welcome back, Store Owner (${sessionPayload.user.email})!`);
   };
 
-  // Open Google Account Admin Sign-Up / Sign-In handler
+  // Store Owner Google Sign-In handler for Admin Console
   const handleGoogleAdminSignUp = async () => {
     setAuthError(null);
     setAdminLoginSubmitting(true);
     try {
-      const targetEmail = adminLoginEmail.trim() || dbUser?.email || 'vainhavgupta20052014@gmail.com';
-      const targetName = adminLoginName.trim() || dbUser?.fullName || 'Gayatri Stationers Owner';
+      let targetEmail = adminLoginEmail.trim().toLowerCase();
+      let targetName = adminLoginName.trim() || 'Gayatri Stationers Owner';
+
+      try {
+        const popupRes = await signInWithPopup(auth, googleAuthProvider);
+        if (popupRes?.user?.email) {
+          targetEmail = popupRes.user.email.trim().toLowerCase();
+          targetName = popupRes.user.displayName || targetName;
+        }
+      } catch {
+        // If popup is blocked in preview, use the email typed in the Owner Login input
+      }
+
+      if (!targetEmail) {
+        throw new Error(
+          'Please enter the Store Owner email address (vainhavgupta20052014@gmail.com) below to verify ownership.'
+        );
+      }
       await performAdminLoginRequest(targetEmail, targetName);
     } catch (err: any) {
       setAuthError(
         err.message ||
-          'Enter your email address below to sign up or log in to the Admin Console.'
+          'Only the verified Store Owner (vainhavgupta20052014@gmail.com) can access the Admin Console.'
       );
     } finally {
       setAdminLoginSubmitting(false);
@@ -2000,12 +2017,12 @@ const DEFAULT_PRODUCTS = [
     setCustomerAuthSubmitting(true);
     try {
       const cleanEmail = customerAuthEmail.trim().toLowerCase();
-      if (!cleanEmail) {
-        throw new Error('Please enter your email address.');
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        throw new Error('Please enter a valid email address.');
       }
       const cleanName = customerAuthName.trim() || cleanEmail.split('@')[0] || 'Valued Customer';
 
-      // 1. Optional Supabase password sign-in/sign-up (does NOT exit early; always continues to sync dbUser!)
+      // 1. Optional Supabase password sign-in/sign-up
       if (supabase && customerAuthPassword.trim().length >= 6) {
         try {
           const { error: signInErr } = await supabase.auth.signInWithPassword({
@@ -2026,11 +2043,11 @@ const DEFAULT_PRODUCTS = [
             });
           }
         } catch {
-          // Continue to sync unified customer session
+          // Continue to sync customer session
         }
       }
 
-      // 2. Sync customer account with backend & local session so dbUser is ALWAYS populated
+      // 2. Sync customer account with backend & local session
       let sessionUser: any = null;
       let sessionToken = '';
       let sessionExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
@@ -2063,6 +2080,8 @@ const DEFAULT_PRODUCTS = [
           fullName: cleanName,
           role: isOwner ? 'owner' : 'customer',
         };
+      } else {
+        sessionUser.role = isOwner ? 'owner' : 'customer';
       }
       if (!sessionToken) {
         sessionToken = isOwner
@@ -2078,15 +2097,25 @@ const DEFAULT_PRODUCTS = [
           user: sessionUser,
         })
       );
+      localStorage.setItem(
+        'gs_user_profile_v1',
+        JSON.stringify({
+          ...sessionUser,
+          fullName: sessionUser.fullName || cleanName,
+          email: sessionUser.email,
+          shippingAddress,
+        })
+      );
       setIdToken(sessionToken);
       setDbUser(sessionUser);
-      if (!customerEmail) setCustomerEmail(sessionUser.email);
-      if (!customerName && sessionUser.fullName) setCustomerName(sessionUser.fullName);
+      setCustomerEmail(sessionUser.email);
+      if (sessionUser.fullName) setCustomerName(sessionUser.fullName);
       setCustomerAuthModalOpen(false);
       await loadStoreBootstrap(sessionToken);
-      setActiveView(cartItems.length > 0 ? 'checkout' : 'track');
+      window.history.pushState({}, '', '/');
+      setActiveView('storefront');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast(`Signed in as ${sessionUser.email}`);
+      showToast(`Signed in as ${sessionUser.fullName || sessionUser.email}`);
     } catch (err: any) {
       setAuthError(err.message || 'Sign-in failed.');
     } finally {
@@ -2094,7 +2123,7 @@ const DEFAULT_PRODUCTS = [
     }
   };
 
-  // Open Google Account Administrator Sign-Up / Login handler (/admin/login & /admin)
+  // Store Owner Admin Credentials Login handler (/admin/login & /admin)
   const handleAdminCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -2102,11 +2131,14 @@ const DEFAULT_PRODUCTS = [
     try {
       const cleanEmail = adminLoginEmail.trim().toLowerCase();
       if (!cleanEmail || !cleanEmail.includes('@')) {
-        throw new Error('Please enter a valid Google email address.');
+        throw new Error('Please enter the Store Owner email address.');
       }
-      await performAdminLoginRequest(cleanEmail, adminLoginName.trim() || cleanEmail.split('@')[0]);
+      await performAdminLoginRequest(
+        cleanEmail,
+        adminLoginName.trim() || 'Gayatri Stationers Owner'
+      );
     } catch (err: any) {
-      setAuthError(err.message || 'Could not sign up for Admin Console.');
+      setAuthError(err.message || 'Unauthorized: Only the Store Owner can access Admin Console.');
     } finally {
       setAdminLoginSubmitting(false);
     }
@@ -3012,6 +3044,76 @@ const DEFAULT_PRODUCTS = [
   );
   const currentHeroBanner =
     activeHeroBanners[activeHeroBannerIdx % Math.max(1, activeHeroBanners.length)] || null;
+  const activeMidPageBanners = useMemo(
+    () =>
+      banners.filter(
+        (b) =>
+          b.isActive !== false &&
+          b.status !== 'HIDDEN' &&
+          b.placement === 'MID_PAGE_STRIP'
+      ),
+    [banners]
+  );
+  const activeCatalogueBanners = useMemo(
+    () =>
+      banners.filter(
+        (b) =>
+          b.isActive !== false &&
+          b.status !== 'HIDDEN' &&
+          b.placement === 'CATALOGUE_SPOTLIGHT'
+      ),
+    [banners]
+  );
+  const handleBannerCtaNavigate = (rawLink?: string) => {
+    const link = (rawLink || '').trim();
+    if (!link || link === 'catalogue') {
+      setSelectedCategorySlug('ALL');
+      setSelectedBrandSlug('ALL');
+      setActiveView('storefront');
+      setTimeout(() => {
+        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+      return;
+    }
+    if (link === 'combos' || link === 'bundles') {
+      setActiveView('combos');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (link === 'bulk') {
+      setActiveView('bulk');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (link === 'track') {
+      setActiveView('track');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (link.startsWith('brand:')) {
+      handleViewBrandProducts(link.replace('brand:', ''));
+      return;
+    }
+    if (link.startsWith('category:')) {
+      setSelectedCategorySlug(link.replace('category:', ''));
+      setSelectedBrandSlug('ALL');
+      setActiveView('storefront');
+      setTimeout(() => {
+        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+      return;
+    }
+    if (categories.some((c) => c.slug === link)) {
+      setSelectedCategorySlug(link);
+      setSelectedBrandSlug('ALL');
+      setActiveView('storefront');
+      setTimeout(() => {
+        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+      return;
+    }
+    document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
   const activeNavCategories = useMemo(
     () => categories.filter((c) => c.isActive !== false && c.showInNav !== false),
     [categories]
@@ -3029,25 +3131,115 @@ const DEFAULT_PRODUCTS = [
     [cmsPages, activePageSlug]
   );
 
-  // STANDALONE LIQUID ADMIN CONSOLE: When activeView is 'admin' or 'admin-login', render ONLY the standalone Liquid Admin Workspace (no storefront header/footer/cart dock)
+  // STANDALONE LIQUID ADMIN CONSOLE: Require verified Store Owner session before rendering AdminDashboard
   if (activeView === 'admin' || activeView === 'admin-login') {
+    const isVerifiedOwner = Boolean(
+      dbUser &&
+        dbUser.email?.trim().toLowerCase() === 'vainhavgupta20052014@gmail.com' &&
+        (dbUser.role === 'owner' || dbUser.role === 'staff')
+    );
+
+    if (!isVerifiedOwner) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center items-center px-4 py-12">
+          <div className="w-full max-w-md bg-white text-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/');
+                  setActiveView('storefront');
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-xs font-semibold text-slate-800 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Storefront</span>
+              </button>
+              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold uppercase tracking-wider">
+                Owner Protected
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="w-11 h-11 rounded-2xl bg-[#B42318] text-white flex items-center justify-center shadow-sm mb-2">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h1 className="font-serif-display text-2xl font-bold text-slate-900">
+                Store Owner Admin Login
+              </h1>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                This console is restricted exclusively to the verified Gayatri Stationers Store Owner. Regular customer accounts cannot access admin settings.
+              </p>
+            </div>
+
+            {dbUser && dbUser.email?.toLowerCase() !== 'vainhavgupta20052014@gmail.com' && (
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-950 space-y-1">
+                <p className="font-bold">Signed in as Customer ({dbUser.email})</p>
+                <p>
+                  Your customer account does not have administrator privileges. Sign in with the authorized Store Owner email below.
+                </p>
+              </div>
+            )}
+
+            {authError && (
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-900 font-medium">
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={adminLoginSubmitting}
+              onClick={handleGoogleAdminSignUp}
+              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold rounded-full flex items-center justify-center gap-2.5 cursor-pointer shadow-xs transition-colors"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-300" />
+              <span>
+                {adminLoginSubmitting
+                  ? 'Verifying Store Owner...'
+                  : 'Verify with Owner Google Account'}
+              </span>
+            </button>
+
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-slate-200" />
+              <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase font-mono">
+                OR VERIFY OWNER EMAIL
+              </span>
+              <div className="flex-grow border-t border-slate-200" />
+            </div>
+
+            <form onSubmit={handleAdminCredentialsLogin} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Authorized Store Owner Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={adminLoginEmail}
+                  onChange={(e) => setAdminLoginEmail(e.target.value)}
+                  placeholder="Enter verified owner email..."
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-full text-sm focus:border-slate-900 focus:outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={adminLoginSubmitting}
+                className="w-full py-3 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs sm:text-sm font-bold rounded-full shadow-xs cursor-pointer transition-colors"
+              >
+                {adminLoginSubmitting ? 'Signing In...' : 'Unlock Admin Console →'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <AdminDashboard
         idToken={idToken || 'gs_admin_direct_owner:vainhavgupta20052014@gmail.com'}
-        currentUser={
-          dbUser && (dbUser.role === 'owner' || dbUser.role === 'staff')
-            ? dbUser
-            : {
-                id: 1,
-                uid: 'admin-owner-vainhav',
-                email:
-                  dbUser?.email ||
-                  supabaseUser?.email ||
-                  'vainhavgupta20052014@gmail.com',
-                fullName: dbUser?.fullName || 'Gayatri Stationers Owner',
-                role: 'owner',
-              }
-        }
+        currentUser={dbUser}
         categories={categories}
         brands={brands}
         products={products}
@@ -3428,16 +3620,18 @@ const DEFAULT_PRODUCTS = [
                 <span>Wishlist ({wishlistProductIds.length})</span>
               </button>
 
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/admin');
-                  setActiveView('admin');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-                <span>Admin Console</span>
-              </button>
+              {dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com' && (
+                <button
+                  onClick={() => {
+                    window.history.pushState({}, '', '/admin');
+                    setActiveView('admin');
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Admin Console</span>
+                </button>
+              )}
 
               {supabaseUser || dbUser ? (
                 <div className="flex items-center gap-2">
@@ -3643,15 +3837,13 @@ const DEFAULT_PRODUCTS = [
                           <div className="flex flex-wrap items-center gap-2.5 pt-1">
                             <button
                               type="button"
-                              onClick={() => {
-                                const link = (currentHeroBanner?.ctaLink || '').trim();
-                                if (link && link !== 'catalogue' && categories.some((c) => c.slug === link)) {
-                                  setSelectedCategorySlug(link);
-                                }
-                                const el = document.getElementById('catalogue-section');
-                                el?.scrollIntoView({ behavior: 'smooth' });
-                              }}
+                              onClick={() => handleBannerCtaNavigate(currentHeroBanner?.ctaLink)}
                               className="px-5 py-2.5 rounded-full bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                              style={
+                                currentHeroBanner?.accentColor
+                                  ? { backgroundColor: currentHeroBanner.accentColor }
+                                  : undefined
+                              }
                             >
                               <span>{currentHeroBanner?.ctaText || 'Explore Catalogue'}</span>
                               <ChevronRight className="w-3.5 h-3.5" />
@@ -3659,10 +3851,14 @@ const DEFAULT_PRODUCTS = [
 
                             <button
                               type="button"
-                              onClick={() => setActiveView('combos')}
+                              onClick={() =>
+                                currentHeroBanner?.secondaryCtaLink
+                                  ? handleBannerCtaNavigate(currentHeroBanner.secondaryCtaLink)
+                                  : setActiveView('combos')
+                              }
                               className="px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium cursor-pointer transition-colors"
                             >
-                              School Kits
+                              {currentHeroBanner?.secondaryCtaText || 'School Kits'}
                             </button>
 
                             <button
@@ -3723,21 +3919,63 @@ const DEFAULT_PRODUCTS = [
                       </div>
                     </div>
 
-                    {/* Clean Retail Promo Card (Flat 25% Off — Oval Capsule) */}
-                    <div className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex items-center justify-between gap-4 shadow-xs">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#B42318]">
-                          <Tag className="w-3.5 h-3.5 text-[#B42318]" />
-                          <span>Flat 25% Off on First Order</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">
-                          Use code <strong className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">BACKTOSCHOOL10</strong> on orders above ₹399
-                        </p>
+                    {/* Position 2: Dynamic Middle Promotional Offer Strip (`MID_PAGE_STRIP` Banners or Default Offer) */}
+                    {activeMidPageBanners.length > 0 ? (
+                      <div className="space-y-3">
+                        {activeMidPageBanners.map((mb) => (
+                          <div
+                            key={`mid-banner-${mb.id}`}
+                            className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                            style={
+                              mb.backgroundColor && mb.backgroundColor !== '#FFFFFF'
+                                ? {
+                                    backgroundColor: mb.backgroundColor,
+                                    color: mb.textColor || undefined,
+                                  }
+                                : undefined
+                            }
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase text-white"
+                                  style={{ backgroundColor: mb.accentColor || '#B42318' }}
+                                >
+                                  {mb.badgeText || 'SPECIAL OFFER'}
+                                </span>
+                                <span>{mb.title}</span>
+                              </div>
+                              {mb.subtitle && (
+                                <p className="text-[11px] opacity-85">{mb.subtitle}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleBannerCtaNavigate(mb.ctaLink)}
+                              className="self-start sm:self-auto shrink-0 px-4 py-1.5 text-white text-[11px] font-bold rounded-full shadow-2xs cursor-pointer"
+                              style={{ backgroundColor: mb.accentColor || '#0F172A' }}
+                            >
+                              {mb.ctaText || 'Shop Offer'} →
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      <span className="shrink-0 px-3.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full shadow-2xs">
-                        ₹0 Pickup Fee
-                      </span>
-                    </div>
+                    ) : (
+                      <div className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex items-center justify-between gap-4 shadow-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-[#B42318]">
+                            <Tag className="w-3.5 h-3.5 text-[#B42318]" />
+                            <span>Flat 25% Off on First Order</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600">
+                            Use code <strong className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">BACKTOSCHOOL10</strong> on orders above ₹399
+                          </p>
+                        </div>
+                        <span className="shrink-0 px-3.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full shadow-2xs">
+                          ₹0 Pickup Fee
+                        </span>
+                      </div>
+                    )}
 
                     {/* Prominent Dual Fulfilment Banner (Store Pickup & Home Delivery — Apple Oval Cards) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -4158,6 +4396,56 @@ const DEFAULT_PRODUCTS = [
                     );
                   })()}
 
+                  {/* Position 3: Dynamic Catalogue Spotlight Banners (`CATALOGUE_SPOTLIGHT`) */}
+                  {activeCatalogueBanners.length > 0 && (
+                    <div className="space-y-3">
+                      {activeCatalogueBanners.map((cb) => (
+                        <div
+                          key={`cat-banner-${cb.id}`}
+                          className="rounded-[28px] border border-slate-200/90 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
+                          style={{
+                            backgroundColor: cb.backgroundColor || '#0F172A',
+                            color: cb.textColor || '#F8FAFC',
+                          }}
+                        >
+                          <div className="space-y-1.5 max-w-2xl">
+                            <span
+                              className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase font-bold text-white"
+                              style={{ backgroundColor: cb.accentColor || '#B42318' }}
+                            >
+                              {cb.badgeText || 'CATALOGUE SPOTLIGHT'}
+                            </span>
+                            <h3 className="font-serif-display text-lg sm:text-xl font-bold leading-snug">
+                              {cb.title}
+                            </h3>
+                            {cb.subtitle && (
+                              <p className="text-xs opacity-85 leading-relaxed">{cb.subtitle}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleBannerCtaNavigate(cb.ctaLink)}
+                              className="px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer"
+                              style={{ backgroundColor: cb.accentColor || '#B42318' }}
+                            >
+                              {cb.ctaText || 'Explore Now'} →
+                            </button>
+                            {cb.secondaryCtaText && (
+                              <button
+                                type="button"
+                                onClick={() => handleBannerCtaNavigate(cb.secondaryCtaLink)}
+                                className="px-3.5 py-2 rounded-full text-xs font-semibold border border-current opacity-90 cursor-pointer"
+                              >
+                                {cb.secondaryCtaText}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-stone-200 pb-4">
                     <div>
                       <h2 className="font-serif-display text-2xl font-bold text-stone-900">
@@ -4457,17 +4745,66 @@ const DEFAULT_PRODUCTS = [
                                   </div>
                                 </div>
 
-                                <button
-                                  disabled={stock <= 0}
-                                  onClick={(e) => handleAddToCart(product, activeVariant?.id, 1, e)}
-                                  className={`w-full sm:w-auto px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full whitespace-nowrap shrink-0 cursor-pointer ${
-                                    stock > 0
-                                      ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-2xs'
-                                      : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                  }`}
-                                >
-                                  {stock > 0 ? '+ Add' : 'Out of Stock'}
-                                </button>
+                                {(() => {
+                                  const existingCartEntry = cartItems.find(
+                                    (ci) =>
+                                      Number(ci.productId) === Number(product.id) &&
+                                      Number(ci.variantId) ===
+                                        Number(activeVariant?.id || product.variants?.[0]?.id || product.id)
+                                  );
+                                  const qtyInCart = existingCartEntry?.quantity || 0;
+
+                                  if (qtyInCart > 0 && stock > 0) {
+                                    return (
+                                      <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto">
+                                        <div className="inline-flex items-center bg-emerald-50 border border-emerald-300 rounded-full p-0.5">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUpdateCartQuantity(
+                                                product.id,
+                                                existingCartEntry!.variantId,
+                                                qtyInCart - 1
+                                              );
+                                            }}
+                                            className="w-6 h-6 rounded-full bg-white hover:bg-emerald-100 text-emerald-950 font-bold text-xs flex items-center justify-center cursor-pointer"
+                                            aria-label="Decrease quantity"
+                                          >
+                                            -
+                                          </button>
+                                          <span className="px-2 text-[11px] font-mono-tabular font-bold text-emerald-950">
+                                            {qtyInCart} in Bag
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) =>
+                                              handleAddToCart(product, activeVariant?.id, 1, e)
+                                            }
+                                            className="w-6 h-6 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center cursor-pointer"
+                                            aria-label="Add one more"
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <button
+                                      disabled={stock <= 0}
+                                      onClick={(e) => handleAddToCart(product, activeVariant?.id, 1, e)}
+                                      className={`w-full sm:w-auto px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-transform active:scale-95 ${
+                                        stock > 0
+                                          ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-2xs'
+                                          : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      {stock > 0 ? '+ Add to Bag' : 'Out of Stock'}
+                                    </button>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </article>
@@ -5172,9 +5509,9 @@ const DEFAULT_PRODUCTS = [
                           : 'Not available for counter pickup'}
                       </p>
                       <p className="text-stone-700">
-                        • <strong>Home Delivery (Shiprocket):</strong>{' '}
+                        • <strong>Express Home Delivery:</strong>{' '}
                         {activePdpProduct.deliveryEligible
-                          ? 'Pan-India Doorstep Delivery via Shiprocket (All 6-digit Indian PIN codes supported)'
+                          ? 'Kanpur & Pan-India Doorstep Courier Delivery (All 6-digit Indian PIN codes supported)'
                           : 'Store pickup only'}
                       </p>
                     </div>
@@ -5536,17 +5873,17 @@ const DEFAULT_PRODUCTS = [
               </div>
             )}
 
-            {/* VIEW 5: MY ORDERS, SHIPROCKET HOME DELIVERY TRACKING & STORE PICKUP PASS */}
+            {/* VIEW 5: MY ORDERS, HOME DELIVERY TRACKING & STORE PICKUP PASS */}
             {activeView === 'track' && (
               <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
                 {/* Responsive Header */}
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-200 pb-4">
                   <div>
                     <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-stone-900">
-                      My Orders · Shiprocket Delivery Tracker &amp; Store Counter Pass
+                      My Orders · Express Delivery Tracker &amp; Store Counter Pass
                     </h1>
                     <p className="text-xs sm:text-sm text-stone-600 mt-1">
-                      Track <strong>Home Delivery</strong> parcels live via <strong>Shiprocket</strong>, or view your <strong>Get at Store</strong> counter pass (no tracking needed — just visit &amp; collect).
+                      Track <strong>Home Delivery</strong> parcels live, or view your <strong>Get at Store</strong> counter pass (no tracking needed — just visit &amp; collect in Kanpur).
                     </p>
                   </div>
                   {dbUser || supabaseUser ? (
@@ -5583,7 +5920,7 @@ const DEFAULT_PRODUCTS = [
                           type="text"
                           value={trackOrderNumberInput}
                           onChange={(e) => setTrackOrderNumberInput(e.target.value.toUpperCase())}
-                          placeholder="Enter Order # for Shiprocket Tracking or Store Pass (e.g. GS-...)"
+                          placeholder="Enter Order # for Delivery Tracking or Store Pass (e.g. GS-...)"
                           className="flex-1 px-4 py-2 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
                         />
                         <button
@@ -5849,7 +6186,7 @@ const DEFAULT_PRODUCTS = [
                                         >
                                           {entry.order.fulfilmentMethod === 'STORE_PICKUP'
                                             ? 'Get at Store · No Tracking'
-                                            : 'Home Delivery · Shiprocket'}
+                                            : 'Express Home Delivery'}
                                         </span>
                                         <span>·</span>
                                         <strong className="text-slate-800">
@@ -5893,7 +6230,7 @@ const DEFAULT_PRODUCTS = [
                         })()}
                       </div>
 
-                      {/* Right Column: Shiprocket Order Tracking OR Direct Store Pickup Pass */}
+                      {/* Right Column: Express Order Tracking OR Direct Store Pickup Pass */}
                       <div className="lg:col-span-8">
                         {trackedOrderResult ? (
                           <OrderTrackingTimeline
@@ -5916,7 +6253,7 @@ const DEFAULT_PRODUCTS = [
                               Select an order from your account list on the left
                             </p>
                             <p className="text-xs text-stone-600 max-w-md mx-auto">
-                              For <strong>Home Delivery</strong> orders, view live <strong>Shiprocket</strong> AWB courier tracking. For <strong>Get at Store</strong> orders, no tracking is needed — simply view your Pickup Pass and collect your items at the counter.
+                              For <strong>Home Delivery</strong> orders, view live AWB courier tracking. For <strong>Get at Store</strong> orders, no tracking is needed — simply view your Pickup Pass and collect your items at our Kanpur counter.
                             </p>
                           </div>
                         )}
@@ -5936,7 +6273,7 @@ const DEFAULT_PRODUCTS = [
                       <span>Saved Wishlist ({wishlistProductIds.length})</span>
                     </h1>
                     <p className="text-xs text-stone-600 mt-1">
-                      Your favourite notebooks, pens, and art supplies saved for quick checkout.
+                      Your favourite notebooks, pens, and art supplies saved for quick shopping.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2.5">
@@ -5944,18 +6281,18 @@ const DEFAULT_PRODUCTS = [
                       <>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
                             const wishedProducts = products.filter((p) =>
                               wishlistProductIds.includes(p.id)
                             );
                             for (const prod of wishedProducts) {
-                              handleAddToCart(prod, prod.variants?.[0]?.id, 1, undefined, true);
+                              handleAddToCart(prod, prod.variants?.[0]?.id, 1, e, true);
                             }
-                            navigateToCheckout();
+                            showToast(`Added all ${wishedProducts.length} wishlist items to bag`);
                           }}
                           className="px-4 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white rounded-full text-xs font-semibold shadow-2xs cursor-pointer transition-colors"
                         >
-                          Move All to Cart ({wishlistProductIds.length})
+                          Add All to Bag ({wishlistProductIds.length})
                         </button>
                         <button
                           type="button"
@@ -6075,11 +6412,10 @@ const DEFAULT_PRODUCTS = [
                                 onClick={(e) => {
                                   handleAddToCart(p, activeVar?.id, 1, e, true, savedCol);
                                   handleToggleWishlist(p.id);
-                                  navigateToCheckout();
                                 }}
                                 className="flex-1 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer"
                               >
-                                Move to Cart
+                                Move to Bag
                               </button>
                               <button
                                 type="button"
@@ -7048,17 +7384,17 @@ const DEFAULT_PRODUCTS = [
                   </form>
 
                   <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-                    <span className="text-xs text-slate-600">Store Owner or Manager?</span>
+                    <span className="text-xs text-slate-500">Are you the Store Owner?</span>
                     <button
                       type="button"
                       onClick={() => {
                         window.history.pushState({}, '', '/admin');
                         setActiveView('admin');
                       }}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-full cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-full cursor-pointer flex items-center gap-1.5"
                     >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                      <span>Open Admin Console Directly →</span>
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#B42318]" />
+                      <span>Store Owner Login →</span>
                     </button>
                   </div>
                 </div>
@@ -7103,17 +7439,19 @@ const DEFAULT_PRODUCTS = [
                       <Heart className="w-3.5 h-3.5" />
                       <span>Wishlist ({wishlistProductIds.length})</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/admin');
-                        setActiveView('admin');
-                      }}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                      <span>Admin Console</span>
-                    </button>
+                    {dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.history.pushState({}, '', '/admin');
+                          setActiveView('admin');
+                        }}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                        <span>Admin Console</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -7907,15 +8245,19 @@ const DEFAULT_PRODUCTS = [
                         setMobileMenuOpen(false);
                       },
                     },
-                    {
-                      label: 'Admin Console',
-                      icon: ShieldCheck,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/admin');
-                        setActiveView('admin');
-                        setMobileMenuOpen(false);
-                      },
-                    },
+                    ...(dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com'
+                      ? [
+                          {
+                            label: 'Admin Console (Owner)',
+                            icon: ShieldCheck,
+                            onClick: () => {
+                              window.history.pushState({}, '', '/admin');
+                              setActiveView('admin');
+                              setMobileMenuOpen(false);
+                            },
+                          },
+                        ]
+                      : []),
                   ].map((item, idx) => {
                     const Icon = item.icon;
                     return (
@@ -8119,6 +8461,16 @@ const DEFAULT_PRODUCTS = [
               <span className="font-medium truncate">{cartFeedbackToast}</span>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCartFeedbackToast(null);
+                  setCartDrawerOpen(true);
+                }}
+                className="px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-white font-semibold rounded-full cursor-pointer transition-colors"
+              >
+                View Bag ({totalCartItemsCount})
+              </button>
               <button
                 type="button"
                 onClick={navigateToCheckout}

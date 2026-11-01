@@ -2850,363 +2850,805 @@ export const CmsStudioManager: React.FC<CmsStudioManagerProps> = ({
 
       {/* 5. HERO & PROMO BANNERS MANAGER */}
       {activeSubTab === 'banners' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <form
-            onSubmit={handleSaveBanner}
-            className="lg:col-span-5 bg-white border border-[#141413] p-5 space-y-4"
-          >
-            <div className="border-b border-[#E5E0D8] pb-3">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-[#D9381E] font-bold">
-                HERO & CAMPAIGN BANNER STUDIO
-              </span>
-              <h4 className="text-base font-bold">
-                {bannerForm.id ? 'Edit Promotional Banner' : 'Create Hero / Campaign Banner'}
-              </h4>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
-                Banner Headline *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Back to School & Fine Art Supply Festival"
-                value={bannerForm.title}
-                onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
-                className="w-full px-3 py-2 border border-[#141413] text-sm bg-[#FAF7F2]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
-                Subtitle / Offer Details
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Explain the discount, pickup speed, or featured stationery brands..."
-                value={bannerForm.subtitle}
-                onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
-                className="w-full px-3 py-2 border border-[#D6D1C7] text-sm bg-[#FAF7F2]"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-6">
+          {/* VISUAL GUIDE: WHERE EACH BANNER APPEARS ON THE WEBSITE + 1-CLICK EXAMPLES */}
+          <div className="bg-white border-2 border-[#141413] p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E5E0D8] pb-3">
               <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Eyebrow Badge
-                </label>
-                <input
-                  type="text"
-                  value={bannerForm.badgeText}
-                  onChange={(e) => setBannerForm({ ...bannerForm, badgeText: e.target.value })}
-                  className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs font-mono bg-[#FAF7F2]"
-                />
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#D9381E] font-bold">
+                  STEP 1 · CHOOSE WHERE YOUR BANNER WILL BE VISIBLE ON THE WEBSITE
+                </span>
+                <h4 className="text-base sm:text-lg font-bold text-[#141413] mt-0.5">
+                  Where Will Customers See This Banner? (Click Any Position Below for an Instant Example)
+                </h4>
               </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Placement
+              {onPreviewStorefront && (
+                <button
+                  type="button"
+                  onClick={() => onPreviewStorefront({ view: 'home' })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#141413] text-white text-xs font-bold hover:bg-[#D9381E] transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>See Banners on Live Website</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              {/* Placement Option 1: HERO_MAIN */}
+              <div
+                onClick={() =>
+                  setBannerForm((prev) => ({
+                    ...prev,
+                    placement: 'HERO_MAIN',
+                  }))
+                }
+                className={`p-4 border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  bannerForm.placement === 'HERO_MAIN'
+                    ? 'border-[#D9381E] bg-amber-50/40 shadow-xs'
+                    : 'border-[#D6D1C7] bg-[#FAF7F2] hover:border-[#141413]'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2 py-0.5 bg-[#141413] text-white font-mono text-[10px] font-bold uppercase">
+                      Position 1 · Top of Homepage
+                    </span>
+                    {bannerForm.placement === 'HERO_MAIN' && (
+                      <span className="px-2 py-0.5 bg-[#D9381E] text-white font-mono text-[10px] font-bold">
+                        ✓ SELECTED
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Mini Visual Wireframe showing Top Hero */}
+                  <div className="p-2 bg-white border border-[#D6D1C7] space-y-1">
+                    <div className="h-2 bg-stone-200 w-full" title="Top Navigation Header" />
+                    <div className="p-2 bg-[#D9381E] text-white font-mono text-[9px] font-bold text-center">
+                      ★ YOUR BANNER IS VISIBLE HERE (BIG TOP HERO BOX)
+                    </div>
+                    <div className="h-2 bg-stone-100 w-full" />
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="h-3 bg-stone-100" />
+                      <div className="h-3 bg-stone-100" />
+                      <div className="h-3 bg-stone-100" />
+                    </div>
+                  </div>
+
+                  <p className="font-bold text-sm text-[#141413]">
+                    1. Main Homepage Hero Banner (`HERO_MAIN`)
+                  </p>
+                  <p className="text-[#57534E] leading-relaxed">
+                    <strong>Where it is visible:</strong> The large main showcase box right at the top of the homepage when customers open Gayatri Stationers. Supports big headline, right-side photo, and 2 buttons.
+                  </p>
+                  <p className="text-[11px] text-[#141413] bg-white p-2 border border-[#E5E0D8]">
+                    <strong>Example Use:</strong> <em>&quot;Back to School &amp; Board Exam Stationery Festival — Up to 20% Off Classmate &amp; DOMS&quot;</em>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBannerForm({
+                      id: bannerForm.id,
+                      placement: 'HERO_MAIN',
+                      badgeText: 'KANPUR SCHOOL & EXAM FESTIVAL',
+                      title: 'Back to School & Board Exam Stationery Sale — Up to 20% Off',
+                      subtitle:
+                        'Get original ITC Classmate spiral registers, DOMS geometry kits, and Unomax gel pens with ₹0 Counter Pickup in Naubasta, Kanpur or fast home delivery.',
+                      ctaText: 'Shop Exam Stationery',
+                      ctaLink: 'catalogue',
+                      secondaryCtaText: 'View School Combo Kits',
+                      secondaryCtaLink: 'combos',
+                      desktopImageUrl:
+                        bannerForm.desktopImageUrl ||
+                        'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?auto=format&fit=crop&w=1000&q=80',
+                      backgroundColor: '#141413',
+                      textColor: '#FAF7F2',
+                      accentColor: '#D9381E',
+                      textAlignment: 'LEFT',
+                      startAt: '',
+                      endAt: '',
+                      sortOrder: 1,
+                      status: 'PUBLISHED',
+                    });
+                    notify('Loaded Example #1: Main Homepage Hero Banner! Click "Publish Banner" below to save.');
+                  }}
+                  className="w-full py-2 px-3 bg-[#141413] hover:bg-[#D9381E] text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  ✨ Choose Position 1 &amp; Fill Example
+                </button>
+              </div>
+
+              {/* Placement Option 2: MID_PAGE_STRIP */}
+              <div
+                onClick={() =>
+                  setBannerForm((prev) => ({
+                    ...prev,
+                    placement: 'MID_PAGE_STRIP',
+                  }))
+                }
+                className={`p-4 border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  bannerForm.placement === 'MID_PAGE_STRIP'
+                    ? 'border-[#D9381E] bg-amber-50/40 shadow-xs'
+                    : 'border-[#D6D1C7] bg-[#FAF7F2] hover:border-[#141413]'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2 py-0.5 bg-amber-700 text-white font-mono text-[10px] font-bold uppercase">
+                      Position 2 · Below Hero Box
+                    </span>
+                    {bannerForm.placement === 'MID_PAGE_STRIP' && (
+                      <span className="px-2 py-0.5 bg-[#D9381E] text-white font-mono text-[10px] font-bold">
+                        ✓ SELECTED
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Mini Visual Wireframe showing Mid-Page Strip */}
+                  <div className="p-2 bg-white border border-[#D6D1C7] space-y-1">
+                    <div className="h-2 bg-stone-200 w-full" />
+                    <div className="h-5 bg-stone-200 w-full flex items-center justify-center text-[8px] font-mono text-stone-500">
+                      Main Hero Box
+                    </div>
+                    <div className="p-1.5 bg-[#D9381E] text-white font-mono text-[9px] font-bold text-center rounded-full">
+                      ★ YOUR BANNER IS VISIBLE HERE (OFFER STRIP)
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="h-3 bg-stone-100" />
+                      <div className="h-3 bg-stone-100" />
+                      <div className="h-3 bg-stone-100" />
+                    </div>
+                  </div>
+
+                  <p className="font-bold text-sm text-[#141413]">
+                    2. Middle Promotional Offer Strip (`MID_PAGE_STRIP`)
+                  </p>
+                  <p className="text-[#57534E] leading-relaxed">
+                    <strong>Where it is visible:</strong> The wide oval promotional strip directly underneath the main Hero banner on the homepage. Ideal for coupon codes and special deals.
+                  </p>
+                  <p className="text-[11px] text-[#141413] bg-white p-2 border border-[#E5E0D8]">
+                    <strong>Example Use:</strong> <em>&quot;Flat 15% Off on Orders Above ₹399 — Use Coupon Code KANPUR15 at Checkout&quot;</em>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBannerForm({
+                      id: bannerForm.id,
+                      placement: 'MID_PAGE_STRIP',
+                      badgeText: 'SPECIAL COUPON OFFER',
+                      title: 'Flat 15% Off on Stationery Orders Above ₹399',
+                      subtitle:
+                        'Use code BACKTOSCHOOL10 at checkout · ₹0 Store Pickup Fee at our Naubasta, Kanpur Counter',
+                      ctaText: 'Claim Offer Now',
+                      ctaLink: 'catalogue',
+                      secondaryCtaText: '',
+                      secondaryCtaLink: '',
+                      desktopImageUrl: '',
+                      backgroundColor: '#FFFFFF',
+                      textColor: '#141413',
+                      accentColor: '#B42318',
+                      textAlignment: 'LEFT',
+                      startAt: '',
+                      endAt: '',
+                      sortOrder: 2,
+                      status: 'PUBLISHED',
+                    });
+                    notify('Loaded Example #2: Middle Promotional Offer Strip! Click "Publish Banner" below to save.');
+                  }}
+                  className="w-full py-2 px-3 bg-[#141413] hover:bg-[#D9381E] text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  ✨ Choose Position 2 &amp; Fill Example
+                </button>
+              </div>
+
+              {/* Placement Option 3: CATALOGUE_SPOTLIGHT */}
+              <div
+                onClick={() =>
+                  setBannerForm((prev) => ({
+                    ...prev,
+                    placement: 'CATALOGUE_SPOTLIGHT',
+                  }))
+                }
+                className={`p-4 border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  bannerForm.placement === 'CATALOGUE_SPOTLIGHT'
+                    ? 'border-[#D9381E] bg-amber-50/40 shadow-xs'
+                    : 'border-[#D6D1C7] bg-[#FAF7F2] hover:border-[#141413]'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="px-2 py-0.5 bg-emerald-800 text-white font-mono text-[10px] font-bold uppercase">
+                      Position 3 · Above Products Grid
+                    </span>
+                    {bannerForm.placement === 'CATALOGUE_SPOTLIGHT' && (
+                      <span className="px-2 py-0.5 bg-[#D9381E] text-white font-mono text-[10px] font-bold">
+                        ✓ SELECTED
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Mini Visual Wireframe showing Catalogue Spotlight */}
+                  <div className="p-2 bg-white border border-[#D6D1C7] space-y-1">
+                    <div className="h-3 bg-stone-200 w-full flex items-center justify-center text-[8px] font-mono text-stone-500">
+                      Top Hero &amp; Categories
+                    </div>
+                    <div className="p-1.5 bg-[#D9381E] text-white font-mono text-[9px] font-bold text-center">
+                      ★ YOUR BANNER IS VISIBLE HERE (ABOVE PRODUCTS)
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      <div className="h-5 bg-stone-200 flex items-center justify-center text-[7px] font-mono">Item 1</div>
+                      <div className="h-5 bg-stone-200 flex items-center justify-center text-[7px] font-mono">Item 2</div>
+                      <div className="h-5 bg-stone-200 flex items-center justify-center text-[7px] font-mono">Item 3</div>
+                    </div>
+                  </div>
+
+                  <p className="font-bold text-sm text-[#141413]">
+                    3. Above Product Catalogue Spotlight (`CATALOGUE_SPOTLIGHT`)
+                  </p>
+                  <p className="text-[#57534E] leading-relaxed">
+                    <strong>Where it is visible:</strong> Right above the <strong>Stationery &amp; School Supply Catalogue</strong> product cards so shoppers browsing items always see it.
+                  </p>
+                  <p className="text-[11px] text-[#141413] bg-white p-2 border border-[#E5E0D8]">
+                    <strong>Example Use:</strong> <em>&quot;Need Bulk School Notebooks or Office Files? Get Instant Wholesale GST Quotes&quot;</em>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setBannerForm({
+                      id: bannerForm.id,
+                      placement: 'CATALOGUE_SPOTLIGHT',
+                      badgeText: 'WHOLESALE & SCHOOL SUPPLY DESK',
+                      title: 'Ordering for a School, Coaching Institute, or Office in Kanpur?',
+                      subtitle:
+                        'Get special institutional rates on Classmate notebooks, A4 copier paper, and exam kits with official GST tax invoices.',
+                      ctaText: 'Request Bulk Quote',
+                      ctaLink: 'bulk',
+                      secondaryCtaText: 'Explore School Combos',
+                      secondaryCtaLink: 'combos',
+                      desktopImageUrl: '',
+                      backgroundColor: '#0F172A',
+                      textColor: '#F8FAFC',
+                      accentColor: '#D9381E',
+                      textAlignment: 'LEFT',
+                      startAt: '',
+                      endAt: '',
+                      sortOrder: 3,
+                      status: 'PUBLISHED',
+                    });
+                    notify('Loaded Example #3: Above Product Catalogue Spotlight Banner! Click "Publish Banner" below to save.');
+                  }}
+                  className="w-full py-2 px-3 bg-[#141413] hover:bg-[#D9381E] text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  ✨ Choose Position 3 &amp; Fill Example
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <form
+              onSubmit={handleSaveBanner}
+              className="lg:col-span-5 bg-white border border-[#141413] p-5 space-y-4"
+            >
+              <div className="border-b border-[#E5E0D8] pb-3 flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#D9381E] font-bold">
+                    STEP 2 · CUSTOMIZE BANNER TEXT, PHOTO &amp; LINK
+                  </span>
+                  <h4 className="text-base font-bold">
+                    {bannerForm.id ? 'Edit Promotional Banner' : 'Create Hero / Campaign Banner'}
+                  </h4>
+                </div>
+                {bannerForm.id && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBannerForm({
+                        id: undefined,
+                        placement: 'HERO_MAIN',
+                        title: '',
+                        subtitle: '',
+                        badgeText: 'FESTIVE & ACADEMIC ESSENTIALS',
+                        ctaText: 'Shop Catalogue',
+                        ctaLink: 'catalogue',
+                        secondaryCtaText: 'School Combo Kits',
+                        secondaryCtaLink: 'combos',
+                        desktopImageUrl: '',
+                        backgroundColor: '#141413',
+                        textColor: '#FAF7F2',
+                        accentColor: '#D9381E',
+                        textAlignment: 'LEFT',
+                        startAt: '',
+                        endAt: '',
+                        sortOrder: banners.length + 1,
+                        status: 'PUBLISHED',
+                      })
+                    }
+                    className="px-2.5 py-1 bg-stone-100 border border-stone-300 text-xs font-bold cursor-pointer"
+                  >
+                    + New Banner
+                  </button>
+                )}
+              </div>
+
+              {/* Placement Selector with clear explanation of where it will appear */}
+              <div className="p-3 bg-[#FAF7F2] border border-[#141413] space-y-1.5">
+                <label className="block text-[11px] font-mono uppercase text-[#141413] font-bold">
+                  Where Will This Banner Be Visible? (Placement) *
                 </label>
                 <select
                   value={bannerForm.placement}
                   onChange={(e) => setBannerForm({ ...bannerForm, placement: e.target.value })}
-                  className="w-full px-2.5 py-1.5 border border-[#141413] text-xs font-bold bg-[#FAF7F2]"
+                  className="w-full px-3 py-2 border border-[#141413] text-xs font-bold bg-white"
                 >
-                  <option value="HERO_MAIN">Main Homepage Hero</option>
-                  <option value="MID_PAGE_STRIP">Mid-Page Promo Strip</option>
+                  <option value="HERO_MAIN">
+                    Position 1: Top Homepage Main Hero Box (Big Showcase at Top of Website)
+                  </option>
+                  <option value="MID_PAGE_STRIP">
+                    Position 2: Middle Offer Strip (Oval Promo Bar Directly Below Hero)
+                  </option>
+                  <option value="CATALOGUE_SPOTLIGHT">
+                    Position 3: Catalogue Spotlight (Banner Right Above All Products Grid)
+                  </option>
                 </select>
+                <p className="text-[11px] text-[#57534E]">
+                  {bannerForm.placement === 'MID_PAGE_STRIP'
+                    ? '📍 Visible on Homepage right below the main Hero banner as a wide coupon/offer bar.'
+                    : bannerForm.placement === 'CATALOGUE_SPOTLIGHT'
+                    ? '📍 Visible right above the Stationery & School Supply Catalogue product cards.'
+                    : '📍 Visible at the very top of the Homepage as the primary large Hero banner.'}
+                </p>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Primary Button Label
+                <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
+                  Banner Headline * <span className="text-stone-400">(Main big text)</span>
                 </label>
                 <input
                   type="text"
-                  value={bannerForm.ctaText}
-                  onChange={(e) => setBannerForm({ ...bannerForm, ctaText: e.target.value })}
-                  className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
+                  required
+                  placeholder="Example: Back to School & Fine Art Supply Festival"
+                  value={bannerForm.title}
+                  onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-[#141413] text-sm bg-[#FAF7F2]"
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Primary Target (Slug / View)
-                </label>
-                <input
-                  type="text"
-                  placeholder="catalogue or category:diy-and-crafts"
-                  value={bannerForm.ctaLink}
-                  onChange={(e) => setBannerForm({ ...bannerForm, ctaLink: e.target.value })}
-                  className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs font-mono bg-[#FAF7F2]"
-                />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                Banner Image(s) (Upload Single or Multiple Photos / Paste URL)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="https://... or upload banner graphic(s)"
-                  value={bannerForm.desktopImageUrl}
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[#57534E] mb-1">
+                  Subtitle / Offer Details <span className="text-stone-400">(Smaller text below headline)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Example: Use code KANPUR10 for 10% off above ₹299 · Free 2-hour pickup at our Naubasta shop."
+                  value={bannerForm.subtitle}
+                  onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })}
+                  className="w-full px-3 py-2 border border-[#D6D1C7] text-sm bg-[#FAF7F2]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
+                    Small Top Badge Text
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Example: LIMITED TIME OFFER"
+                    value={bannerForm.badgeText}
+                    onChange={(e) => setBannerForm({ ...bannerForm, badgeText: e.target.value })}
+                    className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs font-mono bg-[#FAF7F2]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
+                    Button Text (What Customer Clicks)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Example: Shop Now"
+                    value={bannerForm.ctaText}
+                    onChange={(e) => setBannerForm({ ...bannerForm, ctaText: e.target.value })}
+                    className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
+                  />
+                </div>
+              </div>
+
+              {/* Easy Destination Picker with Examples */}
+              <div className="p-3 bg-[#FAF7F2] border border-[#D6D1C7] space-y-2">
+                <label className="block text-[10px] font-mono uppercase text-[#141413] font-bold">
+                  Where Should Clicking the Banner Button Take the Customer?
+                </label>
+                <select
+                  value={
+                    [
+                      'catalogue',
+                      'combos',
+                      'bulk',
+                      'track',
+                      ...categories.map((c) => c.slug),
+                      ...localBrands.map((b) => `brand:${b.slug}`),
+                    ].includes(bannerForm.ctaLink)
+                      ? bannerForm.ctaLink
+                      : 'custom'
+                  }
                   onChange={(e) => {
-                    const val = e.target.value;
-                    setBannerForm({ ...bannerForm, desktopImageUrl: val });
-                    if (val.trim()) {
-                      setBannerGalleryUrls((prev) => Array.from(new Set([val.trim(), ...prev])));
+                    if (e.target.value !== 'custom') {
+                      setBannerForm({ ...bannerForm, ctaLink: e.target.value });
                     }
                   }}
-                  className="flex-1 px-2.5 py-1.5 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
+                  className="w-full px-2.5 py-2 border border-[#141413] text-xs font-bold bg-white"
+                >
+                  <option value="catalogue">All Stationery Products Catalogue (Default)</option>
+                  <option value="combos">School Combo Kits Page (/combos)</option>
+                  <option value="bulk">School &amp; Office Bulk Order Page (/bulk)</option>
+                  <option value="track">Order Tracking &amp; Pickup Pass Page (/track)</option>
+                  <optgroup label="Filter Catalogue to a Specific Category">
+                    {categories.map((c) => (
+                      <option key={`bcat-${c.id}`} value={c.slug}>
+                        Category: {c.name} ({c.slug})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Filter Catalogue to a Specific Brand">
+                    {localBrands.map((b) => (
+                      <option key={`bbrand-${b.id}`} value={`brand:${b.slug}`}>
+                        Brand: {b.name} (brand:{b.slug})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <option value="custom">Custom Link / Slug...</option>
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="Example: catalogue, combos, bulk, or notebooks-and-diaries"
+                  value={bannerForm.ctaLink}
+                  onChange={(e) => setBannerForm({ ...bannerForm, ctaLink: e.target.value })}
+                  className="w-full px-2.5 py-1.5 border border-[#D6D1C7] text-xs font-mono bg-white"
                 />
-                <label className="px-3 py-1.5 bg-[#141413] text-white text-xs font-bold cursor-pointer">
-                  {uploadingBannerImg ? 'Uploading...' : 'Upload Photo(s)'}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={async (e) => {
-                      const files = Array.from(e.target.files || []) as File[];
-                      if (files.length === 0) return;
-                      setUploadingBannerImg(true);
-                      try {
-                        const uploaded: string[] = [];
-                        for (const file of files) {
-                          const res = await uploadImageToSupabaseStorage(file, {
-                            productSku: 'BANNER-HERO',
-                          });
-                          uploaded.push(res.downloadUrl);
-                        }
-                        if (uploaded.length > 0) {
-                          setBannerForm((prev) => ({
-                            ...prev,
-                            desktopImageUrl: prev.desktopImageUrl || uploaded[0],
-                          }));
-                          setBannerGalleryUrls((prev) =>
-                            Array.from(new Set([...uploaded, ...prev]))
-                          );
-                          notify(
-                            uploaded.length > 1
-                              ? `Uploaded ${uploaded.length} banner photos. Click any thumbnail to switch active banner graphic.`
-                              : 'Banner image uploaded.'
-                          );
-                        }
-                      } catch (err: any) {
-                        notify(err.message || 'Upload failed', 'error');
-                      } finally {
-                        setUploadingBannerImg(false);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                </label>
-              </div>
-              {bannerGalleryUrls.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 pt-2">
-                  {bannerGalleryUrls.map((url, idx) => (
-                    <div
-                      key={`${url}-${idx}`}
-                      className={`relative w-14 h-10 border overflow-hidden cursor-pointer ${
-                        bannerForm.desktopImageUrl === url
-                          ? 'border-2 border-[#D9381E]'
-                          : 'border-[#D6D1C7]'
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  <span className="text-[10px] text-[#57534E] mr-1">Quick Examples:</span>
+                  {[
+                    { label: 'All Products', val: 'catalogue' },
+                    { label: 'School Combos', val: 'combos' },
+                    { label: 'Bulk Orders', val: 'bulk' },
+                    { label: 'Notebooks', val: categories[0]?.slug || 'notebooks-and-diaries' },
+                  ].map((ex) => (
+                    <button
+                      key={ex.label}
+                      type="button"
+                      onClick={() => setBannerForm({ ...bannerForm, ctaLink: ex.val })}
+                      className={`px-2 py-0.5 text-[10px] font-mono border cursor-pointer ${
+                        bannerForm.ctaLink === ex.val
+                          ? 'bg-[#141413] text-white border-[#141413]'
+                          : 'bg-white text-[#141413] border-[#D6D1C7]'
                       }`}
                     >
-                      <img
-                        src={url}
-                        alt={`Banner graphic ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                        onClick={() =>
-                          setBannerForm((prev) => ({ ...prev, desktopImageUrl: url }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBannerGalleryUrls((prev) => prev.filter((item) => item !== url))
-                        }
-                        className="absolute top-0 right-0 bg-red-600 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center"
-                      >
-                        ×
-                      </button>
-                    </div>
+                      {ex.label}
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Background
+                  Banner Image (Optional — Best for Position 1 Top Hero)
                 </label>
-                <input
-                  type="color"
-                  value={bannerForm.backgroundColor}
-                  onChange={(e) => setBannerForm({ ...bannerForm, backgroundColor: e.target.value })}
-                  className="w-full h-8 border border-[#141413] cursor-pointer"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Text Color
-                </label>
-                <input
-                  type="color"
-                  value={bannerForm.textColor}
-                  onChange={(e) => setBannerForm({ ...bannerForm, textColor: e.target.value })}
-                  className="w-full h-8 border border-[#141413] cursor-pointer"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
-                  Accent Button
-                </label>
-                <input
-                  type="color"
-                  value={bannerForm.accentColor}
-                  onChange={(e) => setBannerForm({ ...bannerForm, accentColor: e.target.value })}
-                  className="w-full h-8 border border-[#141413] cursor-pointer"
-                />
-              </div>
-            </div>
-
-            {/* Live Banner Preview Inside Form */}
-            <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
-              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
-                <span>LIVE BANNER PREVIEW ({bannerForm.placement})</span>
-                <span className="font-bold text-[#D9381E]">Real-Time Colors &amp; Copy</span>
-              </div>
-              <div
-                className="p-4 border border-[#141413] space-y-2 transition-colors"
-                style={{
-                  backgroundColor: bannerForm.backgroundColor || '#141413',
-                  color: bannerForm.textColor || '#FAF7F2',
-                }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="text-[9px] font-mono uppercase px-2 py-0.5 font-bold"
-                    style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
-                  >
-                    {bannerForm.badgeText || 'PROMO BANNER'}
-                  </span>
-                  <span className="text-[10px] font-mono opacity-75">{bannerForm.status}</span>
-                </div>
-                <h5 className="text-base font-bold tracking-tight">
-                  {bannerForm.title || 'Your Banner Headline Will Appear Here'}
-                </h5>
-                <p className="text-xs opacity-85 line-clamp-2">
-                  {bannerForm.subtitle || 'Subtitle and promotional offer details preview...'}
-                </p>
-                {bannerForm.desktopImageUrl && (
-                  <img
-                    src={bannerForm.desktopImageUrl}
-                    alt="Banner preview"
-                    className="w-full h-24 object-cover border border-white/20 my-1.5"
-                  />
-                )}
-                <div className="pt-1 flex items-center gap-2">
-                  <span
-                    className="px-3 py-1 text-[11px] font-bold"
-                    style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
-                  >
-                    {bannerForm.ctaText || 'Shop Now'} →
-                  </span>
-                  {bannerForm.secondaryCtaText && (
-                    <span className="px-2.5 py-1 text-[11px] font-bold border border-current">
-                      {bannerForm.secondaryCtaText}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full py-2.5 bg-[#D9381E] text-white font-bold text-xs uppercase tracking-wider hover:bg-[#141413] transition-colors cursor-pointer"
-            >
-              {saving ? 'Saving Banner...' : bannerForm.id ? 'Update Banner' : 'Publish Banner'}
-            </button>
-          </form>
-
-          <div className="lg:col-span-7 space-y-4">
-            {banners.map((b) => (
-              <div
-                key={b.id}
-                className="border border-[#141413] p-5 flex flex-col justify-between gap-4"
-                style={{ backgroundColor: b.backgroundColor || '#141413', color: b.textColor || '#FAF7F2' }}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span
-                      className="text-[10px] font-mono uppercase px-2 py-0.5 font-bold"
-                      style={{ backgroundColor: b.accentColor || '#D9381E', color: '#FFFFFF' }}
-                    >
-                      {b.badgeText || b.placement}
-                    </span>
-                    <span className="text-xs font-mono opacity-80">
-                      {b.status} · Sort #{b.sortOrder}
-                    </span>
-                  </div>
-                  <h4 className="text-xl font-bold tracking-tight">{b.title}</h4>
-                  <p className="text-xs opacity-85 max-w-xl">{b.subtitle}</p>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-white/20">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="px-3 py-1 text-xs font-bold"
-                      style={{ backgroundColor: b.accentColor || '#D9381E', color: '#FFFFFF' }}
-                    >
-                      {b.ctaText} → {b.ctaLink}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBannerForm({
-                          id: b.id,
-                          placement: b.placement || 'HERO_MAIN',
-                          title: b.title || '',
-                          subtitle: b.subtitle || '',
-                          badgeText: b.badgeText || '',
-                          ctaText: b.ctaText || 'Shop Now',
-                          ctaLink: b.ctaLink || 'catalogue',
-                          secondaryCtaText: b.secondaryCtaText || '',
-                          secondaryCtaLink: b.secondaryCtaLink || '',
-                          desktopImageUrl: b.desktopImageUrl || '',
-                          backgroundColor: b.backgroundColor || '#141413',
-                          textColor: b.textColor || '#FAF7F2',
-                          accentColor: b.accentColor || '#D9381E',
-                          textAlignment: b.textAlignment || 'LEFT',
-                          startAt: b.startAt || '',
-                          endAt: b.endAt || '',
-                          sortOrder: b.sortOrder || 1,
-                          status: b.status || 'PUBLISHED',
-                        })
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://... or click Upload Photo(s)"
+                    value={bannerForm.desktopImageUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBannerForm({ ...bannerForm, desktopImageUrl: val });
+                      if (val.trim()) {
+                        setBannerGalleryUrls((prev) => Array.from(new Set([val.trim(), ...prev])));
                       }
-                      className="px-3 py-1 bg-white text-[#141413] text-xs font-bold"
+                    }}
+                    className="flex-1 px-2.5 py-1.5 border border-[#D6D1C7] text-xs bg-[#FAF7F2]"
+                  />
+                  <label className="px-3 py-1.5 bg-[#141413] text-white text-xs font-bold cursor-pointer shrink-0">
+                    {uploadingBannerImg ? 'Uploading...' : 'Upload Photo(s)'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []) as File[];
+                        if (files.length === 0) return;
+                        setUploadingBannerImg(true);
+                        try {
+                          const uploaded: string[] = [];
+                          for (const file of files) {
+                            const res = await uploadImageToSupabaseStorage(file, {
+                              productSku: 'BANNER-HERO',
+                            });
+                            uploaded.push(res.downloadUrl);
+                          }
+                          if (uploaded.length > 0) {
+                            setBannerForm((prev) => ({
+                              ...prev,
+                              desktopImageUrl: prev.desktopImageUrl || uploaded[0],
+                            }));
+                            setBannerGalleryUrls((prev) =>
+                              Array.from(new Set([...uploaded, ...prev]))
+                            );
+                            notify(
+                              uploaded.length > 1
+                                ? `Uploaded ${uploaded.length} banner photos. Click any thumbnail to switch active banner graphic.`
+                                : 'Banner image uploaded.'
+                            );
+                          }
+                        } catch (err: any) {
+                          notify(err.message || 'Upload failed', 'error');
+                        } finally {
+                          setUploadingBannerImg(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {bannerGalleryUrls.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                    {bannerGalleryUrls.map((url, idx) => (
+                      <div
+                        key={`${url}-${idx}`}
+                        className={`relative w-14 h-10 border overflow-hidden cursor-pointer ${
+                          bannerForm.desktopImageUrl === url
+                            ? 'border-2 border-[#D9381E]'
+                            : 'border-[#D6D1C7]'
+                        }`}
+                      >
+                        <img
+                          src={url}
+                          alt={`Banner graphic ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                          onClick={() =>
+                            setBannerForm((prev) => ({ ...prev, desktopImageUrl: url }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBannerGalleryUrls((prev) => prev.filter((item) => item !== url))
+                          }
+                          className="absolute top-0 right-0 bg-red-600 text-white text-[9px] w-3.5 h-3.5 flex items-center justify-center"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
+                    Background
+                  </label>
+                  <input
+                    type="color"
+                    value={bannerForm.backgroundColor}
+                    onChange={(e) => setBannerForm({ ...bannerForm, backgroundColor: e.target.value })}
+                    className="w-full h-8 border border-[#141413] cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
+                    Text Color
+                  </label>
+                  <input
+                    type="color"
+                    value={bannerForm.textColor}
+                    onChange={(e) => setBannerForm({ ...bannerForm, textColor: e.target.value })}
+                    className="w-full h-8 border border-[#141413] cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-[#57534E] mb-1">
+                    Button Color
+                  </label>
+                  <input
+                    type="color"
+                    value={bannerForm.accentColor}
+                    onChange={(e) => setBannerForm({ ...bannerForm, accentColor: e.target.value })}
+                    className="w-full h-8 border border-[#141413] cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Live Banner Preview Inside Form */}
+              <div className="p-3 border border-dashed border-[#141413] bg-[#FAF7F2] space-y-2">
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase text-[#57534E]">
+                  <span>
+                    LIVE PREVIEW (
+                    {bannerForm.placement === 'MID_PAGE_STRIP'
+                      ? 'POSITION 2 · MIDDLE OFFER STRIP'
+                      : bannerForm.placement === 'CATALOGUE_SPOTLIGHT'
+                      ? 'POSITION 3 · ABOVE PRODUCT CATALOGUE'
+                      : 'POSITION 1 · TOP HOMEPAGE HERO'}
+                    )
+                  </span>
+                  <span className="font-bold text-[#D9381E]">Real-Time Preview</span>
+                </div>
+                <div
+                  className="p-4 border border-[#141413] space-y-2 transition-colors"
+                  style={{
+                    backgroundColor: bannerForm.backgroundColor || '#141413',
+                    color: bannerForm.textColor || '#FAF7F2',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="text-[9px] font-mono uppercase px-2 py-0.5 font-bold"
+                      style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
                     >
-                      Edit Banner
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBanner(b.id)}
-                      className="px-2.5 py-1 bg-red-700 text-white text-xs font-bold"
+                      {bannerForm.badgeText || 'PROMO BANNER'}
+                    </span>
+                    <span className="text-[10px] font-mono opacity-75">{bannerForm.status}</span>
+                  </div>
+                  <h5 className="text-base font-bold tracking-tight">
+                    {bannerForm.title || 'Your Banner Headline Will Appear Here'}
+                  </h5>
+                  <p className="text-xs opacity-85 line-clamp-2">
+                    {bannerForm.subtitle || 'Subtitle and promotional offer details preview...'}
+                  </p>
+                  {bannerForm.desktopImageUrl && (
+                    <img
+                      src={bannerForm.desktopImageUrl}
+                      alt="Banner preview"
+                      className="w-full h-24 object-cover border border-white/20 my-1.5"
+                    />
+                  )}
+                  <div className="pt-1 flex items-center gap-2">
+                    <span
+                      className="px-3 py-1 text-[11px] font-bold"
+                      style={{ backgroundColor: bannerForm.accentColor || '#D9381E', color: '#FFFFFF' }}
                     >
-                      Delete
-                    </button>
+                      {bannerForm.ctaText || 'Shop Now'} →
+                    </span>
+                    {bannerForm.secondaryCtaText && (
+                      <span className="px-2.5 py-1 text-[11px] font-bold border border-current">
+                        {bannerForm.secondaryCtaText}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full py-2.5 bg-[#D9381E] text-white font-bold text-xs uppercase tracking-wider hover:bg-[#141413] transition-colors cursor-pointer"
+              >
+                {saving ? 'Saving Banner...' : bannerForm.id ? 'Update Banner' : 'Publish Banner to Website'}
+              </button>
+            </form>
+
+            <div className="lg:col-span-7 space-y-4">
+              <div className="bg-white border border-[#141413] p-4 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-[#57534E] font-bold">
+                    ACTIVE WEBSITE BANNERS ({banners.length})
+                  </span>
+                  <h4 className="text-sm font-bold text-[#141413]">
+                    Published Banners &amp; Where Each One Is Visible
+                  </h4>
+                </div>
+              </div>
+
+              {banners.map((b) => {
+                const placementLabel =
+                  b.placement === 'MID_PAGE_STRIP'
+                    ? '📍 Visible at: Position 2 — Homepage Middle Offer Strip (Below Hero)'
+                    : b.placement === 'CATALOGUE_SPOTLIGHT'
+                    ? '📍 Visible at: Position 3 — Above Product Catalogue Grid'
+                    : '📍 Visible at: Position 1 — Top of Homepage (Main Hero Box)';
+
+                return (
+                  <div
+                    key={b.id}
+                    className="border border-[#141413] p-5 flex flex-col justify-between gap-4"
+                    style={{
+                      backgroundColor: b.backgroundColor || '#141413',
+                      color: b.textColor || '#FAF7F2',
+                    }}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className="text-[10px] font-mono uppercase px-2 py-0.5 font-bold"
+                            style={{ backgroundColor: b.accentColor || '#D9381E', color: '#FFFFFF' }}
+                          >
+                            {b.badgeText || b.placement}
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 bg-black/30 border border-white/25 rounded">
+                            {placementLabel}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono opacity-80">
+                          {b.status} · Sort #{b.sortOrder}
+                        </span>
+                      </div>
+                      <h4 className="text-xl font-bold tracking-tight">{b.title}</h4>
+                      <p className="text-xs opacity-85 max-w-xl">{b.subtitle}</p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/20">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="px-3 py-1 text-xs font-bold"
+                          style={{ backgroundColor: b.accentColor || '#D9381E', color: '#FFFFFF' }}
+                        >
+                          Button: &quot;{b.ctaText}&quot; → Opens: {b.ctaLink || 'catalogue'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {onPreviewStorefront && (
+                          <button
+                            type="button"
+                            onClick={() => onPreviewStorefront({ view: 'home' })}
+                            className="px-2.5 py-1 bg-black/40 border border-white/30 text-white text-xs font-bold cursor-pointer"
+                          >
+                            View on Site
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBannerForm({
+                              id: b.id,
+                              placement: b.placement || 'HERO_MAIN',
+                              title: b.title || '',
+                              subtitle: b.subtitle || '',
+                              badgeText: b.badgeText || '',
+                              ctaText: b.ctaText || 'Shop Now',
+                              ctaLink: b.ctaLink || 'catalogue',
+                              secondaryCtaText: b.secondaryCtaText || '',
+                              secondaryCtaLink: b.secondaryCtaLink || '',
+                              desktopImageUrl: b.desktopImageUrl || '',
+                              backgroundColor: b.backgroundColor || '#141413',
+                              textColor: b.textColor || '#FAF7F2',
+                              accentColor: b.accentColor || '#D9381E',
+                              textAlignment: b.textAlignment || 'LEFT',
+                              startAt: b.startAt || '',
+                              endAt: b.endAt || '',
+                              sortOrder: b.sortOrder || 1,
+                              status: b.status || 'PUBLISHED',
+                            })
+                          }
+                          className="px-3 py-1 bg-white text-[#141413] text-xs font-bold cursor-pointer"
+                        >
+                          Edit Banner
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBanner(b.id)}
+                          className="px-2.5 py-1 bg-red-700 text-white text-xs font-bold cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

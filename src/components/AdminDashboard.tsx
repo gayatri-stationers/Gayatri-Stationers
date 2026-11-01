@@ -2651,11 +2651,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto px-2.5 sm:px-5 pt-2 gap-5 items-start">
         {/* Floating Liquid Glass Sidebar / Mobile Oval Pill Navigation */}
         <aside className="w-full lg:w-64 liquid-admin-glass-sidebar p-2 sm:p-4 shrink-0 lg:sticky lg:top-20">
+          <div className="hidden lg:block px-3 pb-2 mb-2 border-b border-slate-200/80">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+              STORE OWNER CONSOLE
+            </p>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Simple 7-step menu — no duplicate tabs
+            </p>
+          </div>
           <nav className="flex lg:flex-col gap-1.5 overflow-x-auto no-scrollbar pb-0.5 lg:pb-0">
             {[
               {
                 key: 'home',
-                label: 'Overview',
+                label: '1. Overview & Sales',
                 icon: ClipboardList,
                 badge: 0,
                 isActive: activeTab === 'overview',
@@ -2663,7 +2671,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'orders',
-                label: 'Orders & Pickup',
+                label: '2. Orders & Pickup',
                 icon: Store,
                 badge: dashboardData?.metrics?.pendingOrdersCount || 0,
                 isActive: activeTab === 'orders',
@@ -2671,63 +2679,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               },
               {
                 key: 'products',
-                label: 'Products & Stock',
+                label: '3. Products & Stock',
                 icon: Package,
                 badge: dashboardData?.lowStockVariants?.length || 0,
-                isActive: activeTab === 'products',
+                isActive: activeTab === 'products' || activeTab === 'csv',
                 onClick: () => setActiveTab('products'),
               },
               {
                 key: 'categories',
-                label: 'Categories',
+                label: '4. Categories & Brands',
                 icon: FolderTree,
                 badge: 0,
-                isActive: activeTab === 'cms' && cmsSubTab === 'categories',
+                isActive:
+                  activeTab === 'cms' &&
+                  (cmsSubTab === 'categories' || cmsSubTab === 'brands'),
                 onClick: () => {
                   setActiveTab('cms');
                   setCmsSubTab('categories');
                 },
               },
               {
-                key: 'brands',
-                label: 'Brands',
-                icon: Tag,
-                badge: 0,
-                isActive: activeTab === 'cms' && cmsSubTab === 'brands',
-                onClick: () => {
-                  setActiveTab('cms');
-                  setCmsSubTab('brands');
-                },
-              },
-              {
                 key: 'storefront',
-                label: 'Website Builder',
+                label: '5. Banners & Website',
                 icon: LayoutTemplate,
                 badge: 0,
                 isActive:
                   activeTab === 'cms' &&
-                  ['navigation', 'homepage', 'banners', 'bundles', 'appearance'].includes(
+                  ['navigation', 'homepage', 'banners', 'bundles', 'appearance', 'pages'].includes(
                     cmsSubTab
                   ),
                 onClick: () => {
                   setActiveTab('cms');
-                  setCmsSubTab('homepage');
+                  setCmsSubTab('banners');
                 },
               },
               {
-                key: 'pages',
-                label: 'Policy Pages',
-                icon: Compass,
-                badge: 0,
-                isActive: activeTab === 'cms' && cmsSubTab === 'pages',
-                onClick: () => {
-                  setActiveTab('cms');
-                  setCmsSubTab('pages');
-                },
+                key: 'promotions',
+                label: '6. Coupons & Bulk',
+                icon: Tag,
+                badge: dashboardData?.bulkEnquiries?.length || 0,
+                isActive: activeTab === 'promotions' || activeTab === 'bulk',
+                onClick: () => setActiveTab('promotions'),
               },
               {
                 key: 'settings',
-                label: 'Settings & Gateway',
+                label: '7. Store Settings',
                 icon: Settings,
                 badge: 0,
                 isActive: activeTab === 'settings',
@@ -2739,7 +2735,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   key={item.key}
                   onClick={item.onClick}
-                  className={`flex items-center justify-between gap-2 px-3.5 py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                     item.isActive
                       ? 'bg-slate-900 text-white shadow-sm font-semibold'
                       : 'text-slate-700 hover:bg-slate-200/60 hover:text-slate-950'
@@ -2764,43 +2760,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               );
             })}
           </nav>
-
-          {/* Storefront Sub-Sections & Operational Tools (Clean & Non-Duplicate) */}
-          <div className="hidden lg:block mt-5 pt-4 border-t border-slate-200/80 space-y-1.5">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-3 font-bold">
-              OPERATIONS & TOOLS
-            </div>
-            {[
-              {
-                label: 'Coupons & Discounts',
-                active: activeTab === 'promotions',
-                onClick: () => setActiveTab('promotions'),
-              },
-              {
-                label: 'Bulk Order Enquiries',
-                active: activeTab === 'bulk',
-                onClick: () => setActiveTab('bulk'),
-              },
-              {
-                label: 'CSV Catalogue Import/Export',
-                active: activeTab === 'csv',
-                onClick: () => setActiveTab('csv'),
-              },
-            ].map((q) => (
-              <button
-                key={q.label}
-                type="button"
-                onClick={q.onClick}
-                className={`w-full text-left px-3.5 py-1.5 rounded-full text-xs transition-all cursor-pointer ${
-                  q.active
-                    ? 'bg-[#B42318] text-white font-semibold shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
-                }`}
-              >
-                • {q.label}
-              </button>
-            ))}
-          </div>
         </aside>
 
         {/* Main Liquid Admin Workspace */}
@@ -3174,7 +3133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span>REVENUE PERFORMANCE LEDGER</span>
                               </span>
                               <h2 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
-                                Monthly Revenue Trend (Store Pickup vs Shiprocket Delivery)
+                                Monthly Revenue Trend (Store Pickup vs Home Delivery)
                               </h2>
                             </div>
                             <div className="text-left sm:text-right font-mono-tabular">
@@ -3238,7 +3197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <Line
                                   type="monotone"
                                   dataKey="shiprocketRevenueINR"
-                                  name="Shiprocket Delivery (₹)"
+                                  name="Home Delivery (₹)"
                                   stroke="#047857"
                                   strokeWidth={2}
                                   strokeDasharray="4 4"
@@ -3381,276 +3340,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* LIVE ADMIN NOTIFICATIONS FEED ON OVERVIEW */}
-                  <div className="bg-white border border-slate-200 rounded p-4 sm:p-5 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                      <div className="flex items-center gap-2">
-                        <Bell className="w-4 h-4 text-[#B42318]" />
-                        <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                          Live Admin Notifications ({unreadDbNotificationsCount} Unread)
+                  {/* SIMPLE OWNER QUICK GUIDE WITH EXAMPLES (Replaces Duplicate Lists) */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+                          SIMPLE HOW-TO GUIDE &amp; EXAMPLES
+                        </span>
+                        <h2 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
+                          How to Manage Your Store in 4 Easy Steps
                         </h2>
                       </div>
-                      <div className="flex items-center gap-3 text-xs">
-                        {unreadDbNotificationsCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleMarkAllNotificationsRead}
-                            className="font-semibold text-emerald-700 hover:underline cursor-pointer"
-                          >
-                            Mark All as Read
-                          </button>
-                        )}
+                      <span className="text-xs text-slate-500">
+                        Click any card below to jump straight to that tool
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">
+                            Step 1 · Add / Edit Products
+                          </span>
+                          <p className="font-bold text-slate-900 text-sm">
+                            Add Stationery &amp; Photos
+                          </p>
+                          <p className="text-slate-600 leading-relaxed">
+                            <strong>Example:</strong> Add <em>&quot;DOMS Ball Pen Pack of 10&quot;</em> at ₹90 (MRP ₹100) and click <strong>Search Web Photos</strong> or upload from your phone.
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setNotificationsOpen(true)}
-                          className="font-semibold text-slate-900 underline cursor-pointer"
+                          onClick={() => {
+                            handleResetProductForm();
+                            setShowProductForm(true);
+                            setActiveTab('products');
+                          }}
+                          className="w-full py-2 px-3 bg-[#B42318] hover:bg-[#991B1B] text-white font-semibold rounded-lg cursor-pointer text-center"
                         >
-                          Open Notification Drawer →
+                          Open Product Form →
                         </button>
                       </div>
-                    </div>
 
-                    {dbNotifications.length === 0 ? (
-                      <p className="text-xs text-slate-500 py-2">
-                        No notifications logged yet. New customer orders, status updates, low-stock events, and bulk enquiries appear here automatically from PostgreSQL.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {dbNotifications.slice(0, 6).map((n: any) => (
-                          <div
-                            key={n.id}
-                            className={`p-3 rounded border text-xs flex flex-col justify-between gap-2 ${
-                              n.isRead
-                                ? 'bg-slate-50/70 border-slate-200 text-slate-600'
-                                : 'bg-amber-50/50 border-amber-300 text-slate-900'
-                            }`}
-                          >
-                            <div className="space-y-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="font-bold text-slate-900 line-clamp-1">
-                                  {n.subject}
-                                </span>
-                                {!n.isRead && (
-                                  <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[9px] font-mono uppercase rounded shrink-0">
-                                    UNREAD
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-slate-600 line-clamp-2">{n.message}</p>
-                            </div>
-                            <div className="flex items-center justify-between pt-1 border-t border-slate-200/70 text-[11px]">
-                              <span className="font-mono-tabular text-slate-400">
-                                {new Date(n.createdAt).toLocaleTimeString('en-IN', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                {n.orderId && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const ord = (dashboardData.orders || []).find(
-                                        (o: any) => o.order.id === n.orderId
-                                      );
-                                      if (ord) setSelectedOrder(ord);
-                                      setActiveTab('orders');
-                                      if (!n.isRead) handleMarkNotificationRead(n.id);
-                                    }}
-                                    className="font-semibold text-slate-900 underline cursor-pointer"
-                                  >
-                                    Inspect Order
-                                  </button>
-                                )}
-                                {!n.isRead && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMarkNotificationRead(n.id)}
-                                    className="text-emerald-700 font-semibold hover:underline cursor-pointer"
-                                  >
-                                    Done
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Low Stock (with 1-Click Fast Restock) & Recent Orders (with 1-Click Actions) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white border border-slate-200 rounded p-4 sm:p-5">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-sm sm:text-base font-semibold text-slate-900">
-                          Low-Stock Alert &amp; 1-Click Restock ({dashboardData.lowStockVariants.length})
-                        </h2>
-                        <button
-                          onClick={() => setActiveTab('products')}
-                          className="text-xs font-medium text-slate-700 underline cursor-pointer"
-                        >
-                          Full Inventory
-                        </button>
-                      </div>
-                      {dashboardData.lowStockVariants.length === 0 ? (
-                        <p className="text-xs sm:text-sm text-slate-500">
-                          All product variants are currently stocked above their minimum threshold.
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-slate-200">
-                          {dashboardData.lowStockVariants.map((v: any) => (
-                            <div
-                              key={v.id}
-                              className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm"
-                            >
-                              <div>
-                                <p className="font-medium text-slate-900">{v.productName}</p>
-                                <p className="text-xs text-slate-500 font-mono-tabular">
-                                  {v.sku} · {v.variantName}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="font-mono-tabular font-semibold text-red-700">
-                                  {v.stockQuantity} left
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickRestock(v.id, v.stockQuantity, 10)}
-                                  className="px-2 py-1 bg-slate-900 text-white text-[11px] font-semibold rounded hover:bg-slate-800 cursor-pointer"
-                                >
-                                  +10
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickRestock(v.id, v.stockQuantity, 25)}
-                                  className="px-2 py-1 bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-semibold rounded hover:bg-slate-200 cursor-pointer"
-                                >
-                                  +25
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-bold">
+                            Step 2 · Orders &amp; Counter Pickup
+                          </span>
+                          <p className="font-bold text-slate-900 text-sm">
+                            Hand Over or Dispatch Orders
+                          </p>
+                          <p className="text-slate-600 leading-relaxed">
+                            <strong>Example:</strong> When a customer comes to the Naubasta shop, check their 6-digit code (e.g. <code className="font-mono">GS-482910</code>) and click <strong>Collected at Store</strong>.
+                          </p>
                         </div>
-                      )}
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded p-4 sm:p-5">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-sm sm:text-base font-semibold text-slate-900">
-                          Recent Store Orders &amp; 1-Click Actions
-                        </h2>
                         <button
+                          type="button"
                           onClick={() => setActiveTab('orders')}
-                          className="text-xs font-medium text-slate-700 underline cursor-pointer"
+                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg cursor-pointer text-center"
                         >
-                          Open Order Desk
+                          View Orders ({dashboardData.orders.length}) →
                         </button>
                       </div>
-                      {dashboardData.orders.length === 0 ? (
-                        <p className="text-xs sm:text-sm text-slate-500">
-                          No orders placed yet. Place a Store Pickup or Home Delivery order from the storefront to inspect the workflow.
-                        </p>
-                      ) : (
-                        <div className="divide-y divide-slate-200">
-                          {dashboardData.orders.slice(0, 6).map((entry: any) => {
-                            const o = entry.order;
-                            const isStorePickup = o.fulfilmentMethod === 'STORE_PICKUP';
-                            return (
-                              <div
-                                key={o.id}
-                                className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm"
-                              >
-                                <div>
-                                  <button
-                                    onClick={() => {
-                                      setSelectedOrder(entry);
-                                      setActiveTab('orders');
-                                    }}
-                                    className="font-mono-tabular font-semibold text-slate-900 hover:underline cursor-pointer"
-                                  >
-                                    {o.orderNumber}
-                                  </button>
-                                  <p className="text-xs text-slate-500">
-                                    {o.customerName} ·{' '}
-                                    {isStorePickup
-                                      ? 'Get at Store (No Tracking)'
-                                      : 'Home Delivery (Shiprocket)'}{' '}
-                                    ·{' '}
-                                    <strong>
-                                      {isStorePickup
-                                        ? o.orderStatus === 'COLLECTED'
-                                          ? 'COLLECTED AT STORE'
-                                          : 'VISIT & COLLECT'
-                                        : o.orderStatus.replace(/_/g, ' ')}
-                                    </strong>
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {isStorePickup &&
-                                    o.orderStatus !== 'COLLECTED' &&
-                                    o.orderStatus !== 'CANCELLED' && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleQuickOrderWorkflowUpdate(
-                                            o.id,
-                                            'COLLECTED',
-                                            'PAID',
-                                            'Collected at store counter via 1-click action'
-                                          )
-                                        }
-                                        className="px-2 py-1 bg-amber-600 text-white text-[11px] font-semibold rounded hover:bg-amber-700 cursor-pointer"
-                                      >
-                                        ✓ Collected at Store
-                                      </button>
-                                    )}
-                                  {!isStorePickup &&
-                                    o.orderStatus !== 'DISPATCHED' &&
-                                    o.orderStatus !== 'DELIVERED' &&
-                                    o.orderStatus !== 'CANCELLED' && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleQuickOrderWorkflowUpdate(
-                                            o.id,
-                                            'DISPATCHED',
-                                            undefined,
-                                            'Dispatched via Shiprocket'
-                                          )
-                                        }
-                                        className="px-2 py-1 bg-emerald-700 text-white text-[11px] font-semibold rounded hover:bg-emerald-800 cursor-pointer"
-                                      >
-                                        Shiprocket Dispatch
-                                      </button>
-                                    )}
-                                  {o.paymentStatus === 'PENDING' &&
-                                    o.orderStatus !== 'CANCELLED' && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleQuickOrderWorkflowUpdate(
-                                            o.id,
-                                            undefined,
-                                            'PAID',
-                                            'Payment collected via 1-click Overview action'
-                                          )
-                                        }
-                                        className="px-2 py-1 bg-slate-900 text-white text-[11px] font-semibold rounded hover:bg-slate-800 cursor-pointer"
-                                      >
-                                        Mark Paid
-                                      </button>
-                                    )}
-                                  <div className="text-right font-mono-tabular">
-                                    <p className="font-semibold">{formatPaiseToINR(o.totalPaise)}</p>
-                                    <p className="text-[11px] text-slate-500">{o.paymentStatus}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
+
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold">
+                            Step 3 · Categories &amp; Brands
+                          </span>
+                          <p className="font-bold text-slate-900 text-sm">
+                            Organize Shop Brands
+                          </p>
+                          <p className="text-slate-600 leading-relaxed">
+                            <strong>Example:</strong> Add brands like <em>Classmate, DOMS, Camlin, Luxor</em> or categories like <em>Notebooks, Art &amp; Craft</em> with 1 click.
+                          </p>
                         </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('cms');
+                            setCmsSubTab('categories');
+                          }}
+                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg cursor-pointer text-center"
+                        >
+                          Manage Categories &amp; Brands →
+                        </button>
+                      </div>
+
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block px-2 py-0.5 rounded bg-indigo-700 text-white text-[10px] font-bold">
+                            Step 4 · Banners &amp; Coupons
+                          </span>
+                          <p className="font-bold text-slate-900 text-sm">
+                            Run Exam &amp; School Offers
+                          </p>
+                          <p className="text-slate-600 leading-relaxed">
+                            <strong>Example:</strong> Create coupon <code className="font-mono">KANPUR10</code> for 10% off above ₹299, or update the homepage festival banner.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('promotions')}
+                          className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg cursor-pointer text-center"
+                        >
+                          Create Coupon / Offer →
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3695,15 +3491,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* 2. ORDERS, SHIPROCKET TRACKER & STORE COUNTER DESK TAB */}
+              {/* 2. ORDERS, COURIER TRACKER & STORE COUNTER DESK TAB */}
               {activeTab === 'orders' && (
                 <div className="space-y-6">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                      Shiprocket Home Delivery Tracking &amp; Get at Store Counter Desk
+                      Home Delivery Tracking &amp; Get at Store Counter Desk
                     </h1>
                     <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-                      <strong>Get at Store</strong> orders require no tracking — simply verify the Pickup Code and mark Collected at Counter. <strong>Home Delivery</strong> orders use <strong>Shiprocket</strong> for courier dispatch and live AWB tracking.
+                      <strong>Get at Store</strong> orders require no courier tracking — simply verify the customer&apos;s 6-digit Pickup Code and mark Collected at Counter. <strong>Home Delivery</strong> orders support courier dispatch and live AWB tracking.
                     </p>
                   </div>
 
@@ -3713,7 +3509,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="text"
                       value={orderSearch}
                       onChange={(e) => setOrderSearch(e.target.value)}
-                      placeholder="Search Order #, Customer Name, Phone, Shiprocket AWB, or Pickup Code..."
+                      placeholder="Search Order # (e.g. GS-...), Customer Name, Phone, Courier AWB, or Pickup Code..."
                       className="sm:col-span-6 px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded"
                     />
                     <select
@@ -3722,8 +3518,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       className="sm:col-span-3 px-3 py-2 text-xs sm:text-sm border border-slate-300 rounded bg-white"
                     >
                       <option value="ALL">All Fulfilment Types</option>
-                      <option value="STORE_PICKUP">Get at Store (No Tracking)</option>
-                      <option value="HOME_DELIVERY">Home Delivery (Shiprocket)</option>
+                      <option value="STORE_PICKUP">Get at Store (Counter Pickup)</option>
+                      <option value="HOME_DELIVERY">Home Delivery (Courier)</option>
                     </select>
                     <select
                       value={paymentFilter}
@@ -3742,7 +3538,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[540px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600">
-                          <th className="py-3 px-4">Order # &amp; Code / Shiprocket AWB</th>
+                          <th className="py-3 px-4">Order # &amp; Pickup Code / AWB</th>
                           <th className="py-3 px-4">Customer &amp; Fulfilment</th>
                           <th className="py-3 px-4">Status</th>
                           <th className="py-3 px-4 text-right">Total &amp; Payment</th>
@@ -3777,7 +3573,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     </div>
                                   ) : entry.shipmentDetails?.trackingNumber ? (
                                     <div className="text-xs text-emerald-800 mt-0.5">
-                                      Shiprocket AWB: {entry.shipmentDetails.trackingNumber}
+                                      Courier AWB: {entry.shipmentDetails.trackingNumber}
                                     </div>
                                   ) : null}
                                 </td>
@@ -3786,8 +3582,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div className="text-xs text-slate-500">
                                     {o.customerPhone} ·{' '}
                                     {isStorePickup
-                                      ? 'Get at Store (No Tracking)'
-                                      : 'Home Delivery (Shiprocket)'}
+                                      ? 'Get at Store (Counter Pickup)'
+                                      : 'Home Delivery (Courier)'}
                                   </div>
                                 </td>
                                 <td className="py-3 px-4">
@@ -3829,8 +3625,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         ? 'Store Pass Open'
                                         : 'Counter Handover'
                                       : isSelected
-                                      ? 'Shiprocket Open'
-                                      : 'Shiprocket & Track'}
+                                      ? 'Tracking Open'
+                                      : 'Dispatch & Track'}
                                   </button>
                                 </td>
                               </tr>
@@ -3841,13 +3637,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </table>
                   </div>
 
-                  {/* Full Order Details / Shiprocket Tracking / Store Counter Panel */}
+                  {/* Full Order Details / Courier Tracking / Store Counter Panel */}
                   {selectedOrder && (
                     <div className="space-y-2">
                       <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700">
                         {selectedOrder.order.fulfilmentMethod === 'STORE_PICKUP'
                           ? `Get at Store Counter Pass — ${selectedOrder.order.orderNumber}`
-                          : `Shiprocket Delivery & Live Tracking — ${selectedOrder.order.orderNumber}`}
+                          : `Home Delivery & Live Tracking — ${selectedOrder.order.orderNumber}`}
                       </h2>
                       <OrderTrackingTimeline
                         orderEntry={selectedOrder}
@@ -3939,6 +3735,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                          {!editingProductId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProductForm((prev) => ({
+                                  ...prev,
+                                  sku: `GS-PEN-${Math.floor(100 + Math.random() * 899)}`,
+                                  name: 'DOMS Inxtra Super Dark Ball Pen (Pack of 10)',
+                                  sellingPriceRupees: '90',
+                                  mrpRupees: '100',
+                                  initialStockQuantity: 50,
+                                  variantName: 'Pack of 10 Pens (Blue)',
+                                  shortDescription:
+                                    'Smooth 0.7mm needle-tip ball pens for school & exam writing.',
+                                  description:
+                                    'Smooth 0.7mm needle-tip ball pens for school & exam writing.',
+                                }));
+                                setStatusBanner(
+                                  'Filled sample product example! Review the fields below and click "Save Product".'
+                                );
+                              }}
+                              className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-full text-xs font-bold cursor-pointer"
+                            >
+                              ✨ Fill Example Product
+                            </button>
+                          )}
                           {editingProductId && (
                             <button
                               type="button"
@@ -3990,7 +3812,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-sm">
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            SKU Code *
+                            SKU Code * <span className="font-normal text-slate-400">(e.g. GS-101)</span>
                           </label>
                           <input
                             type="text"
@@ -3999,13 +3821,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             onChange={(e) =>
                               setProductForm({ ...productForm, sku: e.target.value })
                             }
-                            placeholder="e.g. GS-011-20"
+                            placeholder="Example: GS-NB-101"
                             className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-mono-tabular text-sm focus:border-slate-900 focus:outline-none"
                           />
                         </div>
                         <div className="sm:col-span-1 lg:col-span-3">
                           <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            Product Name *
+                            Product Name * <span className="font-normal text-slate-400">(Brand + Item + Pack Size)</span>
                           </label>
                           <input
                             type="text"
@@ -4014,7 +3836,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             onChange={(e) =>
                               setProductForm({ ...productForm, name: e.target.value })
                             }
-                            placeholder="e.g. Classmate Pulse 6-Subject Spiral Notebook (300 Pages)"
+                            placeholder="Example: Classmate Pulse 6-Subject Spiral Notebook (300 Pages)"
                             className="w-full px-3.5 py-2 border border-slate-300 rounded-xl text-sm focus:border-slate-900 focus:outline-none"
                           />
                         </div>
@@ -4610,28 +4432,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </form>
                   )}
 
-                  {/* DEDICATED STORAGE IMAGE UPLOAD & PRODUCT ASSOCIATION COMPONENT */}
-                  <FirebaseImageUpload
-                    products={localProductsList}
-                    selectedProductId={selectedMediaProductId}
-                    onSelectProductId={(pid) => setSelectedMediaProductId(pid)}
-                    idToken={idToken}
-                    onProductImagesUpdated={async (updatedProduct, msg) => {
-                      setStatusBanner(msg);
-                      if (editingProductId && updatedProduct && editingProductId === updatedProduct.id) {
-                        setProductForm((prev) => ({
-                          ...prev,
-                          imageUrl: updatedProduct.imageUrl || '',
-                          galleryUrls: Array.isArray(updatedProduct.galleryUrls)
-                            ? updatedProduct.galleryUrls
-                            : [],
-                        }));
-                      }
-                      await fetchAdminData();
-                      onRefreshStorefront();
-                    }}
-                  />
-
                   {/* Bulk Product Operations Bar */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
@@ -5088,19 +4888,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* 5. PROMOTIONS & COUPONS TAB */}
+              {/* 5. PROMOTIONS, COUPONS & BULK ENQUIRIES TAB */}
               {activeTab === 'promotions' && (
                 <div className="space-y-6">
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                    Coupons & Promotional Rules
-                  </h1>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
+                        Coupons, Discounts &amp; School Bulk Enquiries
+                      </h1>
+                      <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
+                        Create discount codes for students &amp; parents (e.g. KANPUR10 for 10% off) or review bulk school order requests.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCouponForm({
+                            code: 'KANPUR10',
+                            description: '10% off on school & office stationery above ₹299',
+                            discountType: 'PERCENTAGE',
+                            discountValueInput: '10',
+                            minOrderRupees: '299',
+                            maxDiscountRupees: '150',
+                            usageLimit: '200',
+                          });
+                          setStatusBanner('Filled example coupon KANPUR10! Click "Save Coupon" to activate.');
+                        }}
+                        className="px-3.5 py-2 bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 rounded-full text-xs font-bold cursor-pointer"
+                      >
+                        ✨ Fill Example Coupon
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('bulk')}
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold cursor-pointer"
+                      >
+                        View Bulk Order Enquiries ({dashboardData.bulkEnquiries.length}) →
+                      </button>
+                    </div>
+                  </div>
                   <form
                     onSubmit={handleSaveCoupon}
                     className="bg-white border border-slate-200 rounded p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm"
                   >
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Coupon Code *
+                        Coupon Code * <span className="text-slate-400">(Example: EXAM15)</span>
                       </label>
                       <input
                         type="text"
@@ -5109,7 +4943,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) =>
                           setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })
                         }
-                        placeholder="e.g. EXAM15"
+                        placeholder="Example: EXAM15 or KANPUR10"
                         className="w-full px-3 py-2 border border-slate-300 rounded font-mono-tabular"
                       />
                     </div>
@@ -5127,8 +4961,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         }
                         className="w-full px-3 py-2 border border-slate-300 rounded bg-white"
                       >
-                        <option value="PERCENTAGE">Percentage (%)</option>
-                        <option value="FLAT_PAISE">Flat Amount (₹)</option>
+                        <option value="PERCENTAGE">Percentage (%) — e.g. 10% Off</option>
+                        <option value="FLAT_PAISE">Flat Amount (₹) — e.g. ₹50 Off</option>
                       </select>
                     </div>
                     <div>
@@ -5143,12 +4977,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) =>
                           setCouponForm({ ...couponForm, discountValueInput: e.target.value })
                         }
+                        placeholder={couponForm.discountType === 'PERCENTAGE' ? 'Example: 10' : 'Example: 50'}
                         className="w-full px-3 py-2 border border-slate-300 rounded"
                       />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Min Order Value (₹)
+                        Min Order Value (₹) <span className="text-slate-400">(Example: 299)</span>
                       </label>
                       <input
                         type="number"
@@ -5157,12 +4992,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) =>
                           setCouponForm({ ...couponForm, minOrderRupees: e.target.value })
                         }
+                        placeholder="Example: 299"
                         className="w-full px-3 py-2 border border-slate-300 rounded"
                       />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Description *
+                        Description Shown to Customers *
                       </label>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
@@ -5172,12 +5008,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onChange={(e) =>
                             setCouponForm({ ...couponForm, description: e.target.value })
                           }
-                          placeholder="e.g. 15% off on exam stationery above ₹399"
+                          placeholder="Example: 15% off on exam stationery above ₹399"
                           className="flex-1 px-3 py-2 border border-slate-300 rounded"
                         />
                         <button
                           type="submit"
-                          className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded hover:bg-slate-800 whitespace-nowrap"
+                          className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded hover:bg-slate-800 whitespace-nowrap cursor-pointer"
                         >
                           Save Coupon
                         </button>
@@ -5293,14 +5129,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="space-y-6">
                   <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                      Store Pickup Configuration & Staff Permissions
+                      Store Pickup Configuration &amp; Online Payment Settings
                     </h1>
                     <p className="text-xs sm:text-sm text-slate-600">
-                      Configure verified physical counter address, operating hours, Cashfree payment gateway, and staff roles.
+                      Configure verified physical counter address, operating hours, online payment gateway credentials, and staff permissions.
                     </p>
                   </div>
 
-                  {/* CASHFREE PAYMENT GATEWAY MANAGER */}
+                  {/* ONLINE PAYMENT GATEWAY MANAGER */}
                   <form
                     onSubmit={handleSaveCashfreeConfig}
                     className="bg-white border border-slate-200 rounded-lg p-5 space-y-4 shadow-2xs"
@@ -5308,10 +5144,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                       <div>
                         <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-700 font-bold">
-                          INDIAN ONLINE PAYMENTS · CASHFREE PG
+                          INDIAN ONLINE PAYMENTS · UPI / CARDS / NETBANKING
                         </span>
                         <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                          <span>Cashfree Payment Gateway Integration</span>
+                          <span>Online Payment Gateway Integration</span>
                           <span
                             className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                               cashfreeAppId && cashfreeSecretKey
@@ -5322,9 +5158,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {cashfreeAppId && cashfreeSecretKey ? 'Configured' : 'Needs Setup'}
                           </span>
                         </h2>
-                      </div>
-                      <div className="text-xs text-slate-500 font-mono">
-                        Webhook: <code className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">/api/webhooks/cashfree</code>
                       </div>
                     </div>
 
@@ -5345,26 +5178,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       <div>
                         <label className="block font-semibold text-slate-700 mb-1">
-                          Cashfree App ID (Client ID)
+                          Merchant App ID (Client ID)
                         </label>
                         <input
                           type="text"
                           value={cashfreeAppId}
                           onChange={(e) => setCashfreeAppId(e.target.value)}
-                          placeholder="TEST... or PROD..."
+                          placeholder="Example: TEST10293847..."
                           className="w-full px-3 py-2 border border-slate-300 rounded font-mono text-xs"
                         />
                       </div>
 
                       <div>
                         <label className="block font-semibold text-slate-700 mb-1">
-                          Cashfree Secret Key
+                          Merchant Secret Key
                         </label>
                         <input
                           type="password"
                           value={cashfreeSecretKey}
                           onChange={(e) => setCashfreeSecretKey(e.target.value)}
-                          placeholder="cfsk_ma_..."
+                          placeholder="Enter Merchant Secret Key..."
                           className="w-full px-3 py-2 border border-slate-300 rounded font-mono text-xs"
                         />
                       </div>
@@ -5406,20 +5239,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         disabled={cashfreeSaving}
                         className="px-4 py-2 bg-emerald-700 text-white text-xs font-semibold rounded hover:bg-emerald-800 disabled:opacity-50 cursor-pointer"
                       >
-                        {cashfreeSaving ? 'Saving...' : 'Save Cashfree Gateway Credentials'}
+                        {cashfreeSaving ? 'Saving...' : 'Save Payment Gateway Credentials'}
                       </button>
-                    </div>
-
-                    {/* How to get Cashfree keys helper */}
-                    <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded text-xs text-slate-600 space-y-2">
-                      <p className="font-bold text-slate-900">Where do I find my Cashfree App ID and Secret Key?</p>
-                      <ol className="list-decimal list-inside space-y-1 text-slate-700">
-                        <li>Log in to your <a href="https://merchant.cashfree.com" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-semibold">Cashfree Merchant Dashboard</a>.</li>
-                        <li>Switch the toggle at the top bar to <strong>Test/Sandbox</strong> or <strong>Production</strong>.</li>
-                        <li>In the left sidebar, navigate to <strong>Payment Gateway &gt; Developers &gt; API Keys</strong>.</li>
-                        <li>Click <strong>Generate API Keys</strong> to copy your <strong>App ID</strong> and <strong>Secret Key</strong>.</li>
-                        <li>In Cashfree Webhook settings, set URL to <code>https://{typeof window !== 'undefined' ? window.location.host : 'your-app-domain'}/api/webhooks/cashfree</code> with API Version <code>2023-08-01</code>.</li>
-                      </ol>
                     </div>
                   </form>
 

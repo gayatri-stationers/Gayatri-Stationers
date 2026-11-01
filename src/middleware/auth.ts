@@ -58,6 +58,12 @@ export function createAdminSessionToken(user: {
   };
 }
 
+export function isAuthorizedAdminEmail(email: string): boolean {
+  const clean = (email || '').trim().toLowerCase();
+  if (!clean || !clean.includes('@')) return false;
+  return DEFAULT_OWNER_EMAILS.includes(clean);
+}
+
 export function verifyAdminSessionToken(token: string): {
   uid: string;
   email: string;
@@ -66,7 +72,13 @@ export function verifyAdminSessionToken(token: string): {
 } | null {
   if (!token) return null;
   if (token === 'gs_admin_direct_owner' || token.startsWith('gs_admin_direct_owner:')) {
-    const emailPart = token.split(':')[1]?.trim().toLowerCase() || DEFAULT_OWNER_EMAILS[0] || 'vainhavgupta20052014@gmail.com';
+    const emailPart =
+      token.split(':')[1]?.trim().toLowerCase() ||
+      DEFAULT_OWNER_EMAILS[0] ||
+      'vainhavgupta20052014@gmail.com';
+    if (!isAuthorizedAdminEmail(emailPart)) {
+      return null;
+    }
     return {
       uid: `admin-owner-${emailPart}`,
       email: emailPart,
@@ -75,11 +87,13 @@ export function verifyAdminSessionToken(token: string): {
     };
   }
   if (token.startsWith('gs_customer_direct:')) {
-    const emailPart = token.slice('gs_customer_direct:'.length).trim().toLowerCase() || 'customer@gayatristationers.com';
+    const emailPart =
+      token.slice('gs_customer_direct:'.length).trim().toLowerCase() ||
+      'customer@gayatristationers.com';
     return {
       uid: `customer-${emailPart}`,
       email: emailPart,
-      role: DEFAULT_OWNER_EMAILS.includes(emailPart) ? 'owner' : 'customer',
+      role: isAuthorizedAdminEmail(emailPart) ? 'owner' : 'customer',
       exp: Date.now() + ADMIN_SESSION_TTL_MS,
     };
   }
@@ -98,15 +112,16 @@ export function verifyAdminSessionToken(token: string): {
     if (!parsed || typeof parsed.exp !== 'number' || Date.now() > parsed.exp) {
       return null;
     }
+    if (
+      (parsed.role === 'owner' || parsed.role === 'staff') &&
+      !isAuthorizedAdminEmail(parsed.email || '')
+    ) {
+      parsed.role = 'customer';
+    }
     return parsed;
   } catch {
     return null;
   }
-}
-
-export function isAuthorizedAdminEmail(email: string): boolean {
-  const clean = (email || '').trim().toLowerCase();
-  return Boolean(clean && clean.includes('@'));
 }
 
 export async function syncUserWithDatabase(
@@ -117,8 +132,14 @@ export async function syncUserWithDatabase(
 ): Promise<AuthenticatedUserRecord> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    const isOwnerEmail = DEFAULT_OWNER_EMAILS.includes(normalizedEmail);
-    const targetRole = forceRole || (isOwnerEmail ? 'owner' : 'customer');
+    const isOwnerEmail = isAuthorizedAdminEmail(normalizedEmail);
+    const safeForceRole =
+      forceRole === 'owner' || forceRole === 'staff'
+        ? isOwnerEmail
+          ? forceRole
+          : 'customer'
+        : forceRole;
+    const targetRole = safeForceRole || (isOwnerEmail ? 'owner' : 'customer');
 
     const existing = await db
       .select()
@@ -132,7 +153,9 @@ export async function syncUserWithDatabase(
         displayName && displayName.trim() && (!record.fullName || record.fullName === 'Gayatri Stationers User')
           ? displayName.trim()
           : record.fullName;
-      const updatedRole = isOwnerEmail && record.role === 'customer' ? 'owner' : (forceRole || record.role);
+      const updatedRole = isOwnerEmail
+        ? 'owner'
+        : safeForceRole || (record.role === 'owner' ? 'customer' : record.role);
 
       if (updatedRole !== record.role || nextName !== record.fullName || record.email !== normalizedEmail) {
         const [updated] = await db
@@ -162,7 +185,7 @@ export async function syncUserWithDatabase(
         target: users.uid,
         set: {
           email: normalizedEmail,
-          ...(forceRole ? { role: forceRole } : {}),
+          ...(safeForceRole ? { role: safeForceRole } : {}),
           updatedAt: new Date(),
         },
       })
@@ -171,14 +194,14 @@ export async function syncUserWithDatabase(
     return result[0];
   } catch (error) {
     console.warn('Database user synchronization fallback activated:', error);
-    const normalizedEmail = (email || 'admin@gayatristationers.com').trim().toLowerCase();
-    const isOwnerEmail = DEFAULT_OWNER_EMAILS.includes(normalizedEmail);
-    const targetRole = forceRole || (isOwnerEmail ? 'owner' : 'customer');
+    const normalizedEmail = (email || 'customer@gayatristationers.com').trim().toLowerCase();
+    const isOwnerEmail = isAuthorizedAdminEmail(normalizedEmail);
+    const targetRole = isOwnerEmail ? 'owner' : 'customer';
     return {
-      id: 1,
+      id: isOwnerEmail ? 1 : 2,
       uid: uid || `user-${normalizedEmail}`,
       email: normalizedEmail,
-      fullName: displayName || normalizedEmail.split('@')[0] || 'Store Admin',
+      fullName: displayName || normalizedEmail.split('@')[0] || 'Customer',
       phone: null,
       role: targetRole,
     };
@@ -210,10 +233,12 @@ async function resolveUserFromBearerToken(
       const { data, error } = await supabaseAdmin.auth.getUser(token);
       if (!error && data?.user) {
         const sbUser = data.user;
+        const sbEmail = (sbUser.email || 'user@example.com').trim().toLowerCase();
         const dbUser = await syncUserWithDatabase(
           sbUser.id,
-          sbUser.email || 'user@example.com',
-          sbUser.user_metadata?.full_name || sbUser.user_metadata?.name
+          sbEmail,
+          sbUser.user_metadata?.full_name || sbUser.user_metadata?.name,
+          isAuthorizedAdminEmail(sbEmail) ? 'owner' : 'customer'
         );
         return { dbUser };
       }
@@ -226,11 +251,12 @@ async function resolveUserFromBearerToken(
   try {
     if (adminAuth) {
       const decodedToken = await adminAuth.verifyIdToken(token);
+      const fbEmail = (decodedToken.email || 'user@example.com').trim().toLowerCase();
       const dbUser = await syncUserWithDatabase(
         decodedToken.uid,
-        decodedToken.email || 'user@example.com',
+        fbEmail,
         decodedToken.name,
-        'owner'
+        isAuthorizedAdminEmail(fbEmail) ? 'owner' : 'customer'
       );
       return { decoded: decodedToken, dbUser };
     }
@@ -285,19 +311,24 @@ export const requireAuth = async (
       }
     }
 
-    // Fallback: check x-customer-email or body email so customer checkout & order history never fail with 401
-    const fallbackEmail =
+    // Fallback: check x-customer-email or body email for guest/customer actions — NEVER fall back to owner email!
+    const rawFallbackEmail =
       (req.headers['x-customer-email'] as string) ||
       req.body?.customerEmail ||
       req.body?.email ||
-      DEFAULT_OWNER_EMAILS[0] ||
-      'vainhavgupta20052014@gmail.com';
-    const cleanEmail = String(fallbackEmail).trim().toLowerCase();
-    const fallbackName = req.body?.customerName || req.body?.fullName || cleanEmail.split('@')[0];
+      'guest@gayatristationers.co.in';
+    const cleanEmail = String(rawFallbackEmail).trim().toLowerCase();
+    // Prevent unauthenticated requests from impersonating the owner email
+    const safeGuestEmail = isAuthorizedAdminEmail(cleanEmail)
+      ? 'guest@gayatristationers.co.in'
+      : cleanEmail;
+    const fallbackName =
+      req.body?.customerName || req.body?.fullName || safeGuestEmail.split('@')[0];
     const dbUser = await syncUserWithDatabase(
-      `user-${cleanEmail}`,
-      cleanEmail,
-      fallbackName
+      `cust-${safeGuestEmail}`,
+      safeGuestEmail,
+      fallbackName,
+      'customer'
     );
     req.dbUser = dbUser;
     return next();
@@ -309,7 +340,7 @@ export const requireAuth = async (
 
 export const requireStaffOrOwner = async (
   req: AuthRequest,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
@@ -319,6 +350,12 @@ export const requireStaffOrOwner = async (
     if (token) {
       const resolved = await resolveUserFromBearerToken(token);
       if (resolved?.dbUser) {
+        if (!isAuthorizedAdminEmail(resolved.dbUser.email)) {
+          return res.status(403).json({
+            error:
+              'Access Restricted: Only the verified Store Owner can access the Admin Console.',
+          });
+        }
         if (resolved.dbUser.role !== 'owner' && resolved.dbUser.role !== 'staff') {
           resolved.dbUser = await syncUserWithDatabase(
             resolved.dbUser.uid,
@@ -333,25 +370,13 @@ export const requireStaffOrOwner = async (
       }
     }
 
-    const ownerEmail = DEFAULT_OWNER_EMAILS[0] || 'vainhavgupta20052014@gmail.com';
-    req.dbUser = await syncUserWithDatabase(
-      `admin-${ownerEmail}`,
-      ownerEmail,
-      'Gayatri Stationers Admin',
-      'owner'
-    );
-    return next();
+    return res.status(403).json({
+      error: 'Store Owner authentication is required to access Admin Console operations.',
+    });
   } catch {
-    const ownerEmail = DEFAULT_OWNER_EMAILS[0] || 'vainhavgupta20052014@gmail.com';
-    req.dbUser = {
-      id: 1,
-      uid: `admin-${ownerEmail}`,
-      email: ownerEmail,
-      fullName: 'Gayatri Stationers Admin',
-      phone: null,
-      role: 'owner',
-    };
-    return next();
+    return res.status(403).json({
+      error: 'Store Owner authentication is required to access Admin Console operations.',
+    });
   }
 };
 
