@@ -174,6 +174,12 @@ interface FlyingCartItem {
   startY: number;
   endX: number;
   endY: number;
+  xKeyframes: number[];
+  yKeyframes: number[];
+  scaleKeyframes: number[];
+  rotateKeyframes: number[];
+  opacityKeyframes: number[];
+  times: number[];
 }
 
 function normalizeCatalogueProduct(p: any): any {
@@ -1063,21 +1069,36 @@ const DEFAULT_PRODUCTS = [
   const [compareModalOpen, setCompareModalOpen] = useState<boolean>(false);
   const [compareToastMessage, setCompareToastMessage] = useState<string | null>(null);
 
-  // Checkout & Customer Profile state (pre-populated from saved profile/session so Full Name & Email are freely editable)
+  // Helper: only restore saved profile fields if an active, non-expired login session exists
+  const getValidActiveSession = () => {
+    try {
+      const rawSess = localStorage.getItem('gs_admin_session_v1');
+      if (!rawSess) return null;
+      const parsedSess = JSON.parse(rawSess);
+      if (parsedSess?.token && parsedSess?.expiresAt && Date.now() < Number(parsedSess.expiresAt)) {
+        return parsedSess;
+      }
+      localStorage.removeItem('gs_admin_session_v1');
+      localStorage.removeItem('gs_user_profile_v1');
+    } catch {
+      // ignore
+    }
+    return null;
+  };
+
+  // Checkout & Customer Profile state (only pre-populated when actively signed in)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASHFREE_ONLINE');
   const [customerName, setCustomerName] = useState<string>(() => {
     try {
+      const activeSess = getValidActiveSession();
+      if (!activeSess) return '';
       const savedProf = localStorage.getItem('gs_user_profile_v1');
       if (savedProf) {
         const parsed = JSON.parse(savedProf);
         if (parsed?.fullName) return String(parsed.fullName);
       }
-      const savedSess = localStorage.getItem('gs_admin_session_v1');
-      if (savedSess) {
-        const parsed = JSON.parse(savedSess);
-        if (parsed?.user?.fullName) return String(parsed.user.fullName);
-      }
+      if (activeSess?.user?.fullName) return String(activeSess.user.fullName);
     } catch {
       // ignore
     }
@@ -1085,11 +1106,14 @@ const DEFAULT_PRODUCTS = [
   });
   const [customerPhone, setCustomerPhone] = useState<string>(() => {
     try {
+      const activeSess = getValidActiveSession();
+      if (!activeSess) return '';
       const savedProf = localStorage.getItem('gs_user_profile_v1');
       if (savedProf) {
         const parsed = JSON.parse(savedProf);
         if (parsed?.phone) return String(parsed.phone);
       }
+      if (activeSess?.user?.phone) return String(activeSess.user.phone);
     } catch {
       // ignore
     }
@@ -1097,16 +1121,14 @@ const DEFAULT_PRODUCTS = [
   });
   const [customerEmail, setCustomerEmail] = useState<string>(() => {
     try {
+      const activeSess = getValidActiveSession();
+      if (!activeSess) return '';
       const savedProf = localStorage.getItem('gs_user_profile_v1');
       if (savedProf) {
         const parsed = JSON.parse(savedProf);
         if (parsed?.email) return String(parsed.email);
       }
-      const savedSess = localStorage.getItem('gs_admin_session_v1');
-      if (savedSess) {
-        const parsed = JSON.parse(savedSess);
-        if (parsed?.user?.email) return String(parsed.user.email);
-      }
+      if (activeSess?.user?.email) return String(activeSess.user.email);
     } catch {
       // ignore
     }
@@ -1115,18 +1137,21 @@ const DEFAULT_PRODUCTS = [
   const [pickupWindow, setPickupWindow] = useState('Direct Counter Collection (Mon–Sat: 10:00 AM – 8:00 PM)');
   const [shippingAddress, setShippingAddress] = useState(() => {
     try {
-      const savedProf = localStorage.getItem('gs_user_profile_v1');
-      if (savedProf) {
-        const parsed = JSON.parse(savedProf);
-        if (parsed?.shippingAddress) {
-          return {
-            addressLine1: parsed.shippingAddress.addressLine1 || '',
-            addressLine2: parsed.shippingAddress.addressLine2 || '',
-            landmark: parsed.shippingAddress.landmark || '',
-            city: parsed.shippingAddress.city || 'Kanpur',
-            state: parsed.shippingAddress.state || 'Uttar Pradesh',
-            pincode: parsed.shippingAddress.pincode || '208021',
-          };
+      const activeSess = getValidActiveSession();
+      if (activeSess) {
+        const savedProf = localStorage.getItem('gs_user_profile_v1');
+        if (savedProf) {
+          const parsed = JSON.parse(savedProf);
+          if (parsed?.shippingAddress) {
+            return {
+              addressLine1: parsed.shippingAddress.addressLine1 || '',
+              addressLine2: parsed.shippingAddress.addressLine2 || '',
+              landmark: parsed.shippingAddress.landmark || '',
+              city: parsed.shippingAddress.city || 'Kanpur',
+              state: parsed.shippingAddress.state || 'Uttar Pradesh',
+              pincode: parsed.shippingAddress.pincode || '208021',
+            };
+          }
         }
       }
     } catch {
@@ -1148,13 +1173,17 @@ const DEFAULT_PRODUCTS = [
   const hasInitializedProfileFieldsRef = useRef<boolean>(false);
 
   useEffect(() => {
-    if (!hasInitializedProfileFieldsRef.current && (dbUser || supabaseUser)) {
-      hasInitializedProfileFieldsRef.current = true;
-      setCustomerName((prev) => prev || dbUser?.fullName || '');
-      setCustomerEmail((prev) => prev || dbUser?.email || supabaseUser?.email || '');
-      if (dbUser?.phone) {
-        setCustomerPhone((prev) => prev || dbUser.phone || '');
+    if (dbUser || supabaseUser) {
+      if (!hasInitializedProfileFieldsRef.current) {
+        hasInitializedProfileFieldsRef.current = true;
+        setCustomerName((prev) => prev || dbUser?.fullName || '');
+        setCustomerEmail((prev) => prev || dbUser?.email || supabaseUser?.email || '');
+        if (dbUser?.phone) {
+          setCustomerPhone((prev) => prev || dbUser.phone || '');
+        }
       }
+    } else {
+      hasInitializedProfileFieldsRef.current = false;
     }
   }, [dbUser, supabaseUser]);
 
@@ -1622,29 +1651,126 @@ const DEFAULT_PRODUCTS = [
       }
     });
 
-    // Spawn smooth Flying-to-Cart animation toward the header Cart pill
+    // Spawn smooth Parabolic Flying-to-Cart animation from source product element to header Cart button
     if (typeof window !== 'undefined') {
-      let startX = window.innerWidth / 2;
-      let startY = window.innerHeight / 2;
+      const vw = Math.max(320, window.innerWidth || 1024);
+      const vh = Math.max(480, window.innerHeight || 768);
+      const isMobileViewport = vw < 768;
 
+      let startX = vw / 2;
+      let startY = vh * 0.55;
+
+      // 1. Resolve accurate source coordinates from product card thumbnail or trigger button
       if (sourceEventOrEl) {
-        if ('currentTarget' in sourceEventOrEl && sourceEventOrEl.currentTarget) {
-          const rect = sourceEventOrEl.currentTarget.getBoundingClientRect();
-          startX = rect.left + rect.width / 2;
-          startY = rect.top + rect.height / 2;
+        let domEl: HTMLElement | null = null;
+        if ('currentTarget' in sourceEventOrEl && sourceEventOrEl.currentTarget instanceof HTMLElement) {
+          domEl = sourceEventOrEl.currentTarget;
+        } else if (sourceEventOrEl instanceof HTMLElement) {
+          domEl = sourceEventOrEl;
+        }
+
+        if (domEl) {
+          const btnRect = domEl.getBoundingClientRect();
+          // Check if inside a product card with an illustration container visible in viewport
+          const parentCard = domEl.closest('article, [data-product-card]');
+          const thumbContainer = parentCard?.querySelector('[data-product-thumb], .aspect-square') as HTMLElement | null;
+          const thumbRect = thumbContainer?.getBoundingClientRect();
+
+          if (
+            thumbRect &&
+            thumbRect.width > 0 &&
+            thumbRect.height > 0 &&
+            thumbRect.bottom > 0 &&
+            thumbRect.top < vh
+          ) {
+            // Launch from the lower-middle of the product thumbnail toward the button
+            startX = thumbRect.left + thumbRect.width * 0.5;
+            startY = thumbRect.top + thumbRect.height * 0.65;
+          } else if (btnRect.width > 0 && btnRect.height > 0) {
+            startX = btnRect.left + btnRect.width / 2;
+            startY = btnRect.top + btnRect.height / 2;
+          }
         } else if ('clientX' in sourceEventOrEl && typeof sourceEventOrEl.clientX === 'number') {
           startX = sourceEventOrEl.clientX;
           startY = sourceEventOrEl.clientY;
-        } else if ('getBoundingClientRect' in sourceEventOrEl) {
-          const rect = sourceEventOrEl.getBoundingClientRect();
-          startX = rect.left + rect.width / 2;
-          startY = rect.top + rect.height / 2;
         }
       }
 
-      const cartRect = cartButtonRef.current?.getBoundingClientRect();
-      const endX = cartRect ? cartRect.left + cartRect.width / 2 : window.innerWidth - 80;
-      const endY = cartRect ? cartRect.top + cartRect.height / 2 : 28;
+      startX = Math.max(24, Math.min(vw - 24, startX));
+      startY = Math.max(24, Math.min(vh - 24, startY));
+
+      // 2. Resolve accurate destination coordinates from the header Cart button (mobile & desktop)
+      const fallbackCartBtn = document.querySelector(
+        '[aria-label="Open Shopping Bag Drawer"]'
+      ) as HTMLElement | null;
+      const cartRect = (cartButtonRef.current || fallbackCartBtn)?.getBoundingClientRect();
+      const rawEndX =
+        cartRect && cartRect.width > 0
+          ? cartRect.left + cartRect.width / 2
+          : vw - (isMobileViewport ? 48 : 88);
+      const rawEndY =
+        cartRect && cartRect.height > 0
+          ? cartRect.top + cartRect.height / 2
+          : isMobileViewport
+            ? 34
+            : 28;
+
+      const endX = Math.max(20, Math.min(vw - 20, rawEndX));
+      const endY = Math.max(16, Math.min(vh - 20, rawEndY));
+
+      // 3. Precompute explicit 11-step Quadratic Bézier / Parabolic trajectory P(t)
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const distance = Math.hypot(dx, dy);
+      const arcLift = isMobileViewport
+        ? Math.max(65, Math.min(140, distance * 0.34))
+        : Math.max(110, Math.min(220, distance * 0.38));
+
+      // Control point (apex guide) for smooth upward parabolic launch and descent into cart
+      const controlX = startX + dx * 0.46;
+      const controlY = Math.max(16, Math.min(startY, endY) - arcLift);
+      const flightDir = dx >= 0 ? 1 : -1;
+
+      const steps = 10;
+      const xKeyframes: number[] = [];
+      const yKeyframes: number[] = [];
+      const scaleKeyframes: number[] = [];
+      const rotateKeyframes: number[] = [];
+      const opacityKeyframes: number[] = [];
+      const times: number[] = [];
+
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const oneMinusT = 1 - t;
+        // Parabolic / Quadratic Bézier coordinates
+        const px =
+          oneMinusT * oneMinusT * startX +
+          2 * oneMinusT * t * controlX +
+          t * t * endX;
+        const py =
+          oneMinusT * oneMinusT * startY +
+          2 * oneMinusT * t * controlY +
+          t * t * endY;
+
+        xKeyframes.push(Math.round(px * 10) / 10);
+        yKeyframes.push(Math.round(py * 10) / 10);
+        times.push(Number(t.toFixed(2)));
+
+        // Smooth scale curve: pop up to 1.12 near launch apex, then taper to 0.28 entering cart
+        const scaleVal =
+          t < 0.25
+            ? 1 + (t / 0.25) * 0.12
+            : 1.12 - ((t - 0.25) / 0.75) * 0.84;
+        scaleKeyframes.push(Number(scaleVal.toFixed(3)));
+
+        // Subtle banking rotation along the parabolic arc
+        const rotVal = Math.sin(t * Math.PI) * 8 * flightDir;
+        rotateKeyframes.push(Number(rotVal.toFixed(2)));
+
+        // Keep full opacity for 80% of flight, then fade into the cart badge
+        const opacityVal = t < 0.8 ? 1 : Math.max(0.15, 1 - ((t - 0.8) / 0.2) * 0.85);
+        opacityKeyframes.push(Number(opacityVal.toFixed(2)));
+      }
 
       const flyId = `fly_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const unitPrice = Number(variant.sellingPricePaise ?? product.sellingPricePaise ?? 0);
@@ -1658,18 +1784,24 @@ const DEFAULT_PRODUCTS = [
         startY,
         endX,
         endY,
+        xKeyframes,
+        yKeyframes,
+        scaleKeyframes,
+        rotateKeyframes,
+        opacityKeyframes,
+        times,
       };
 
       setFlyingCartItems((prev) => [...prev.slice(-4), newFlyingItem]);
 
       setTimeout(() => {
         setCartButtonBouncing(true);
-        setTimeout(() => setCartButtonBouncing(false), 650);
-      }, 420);
+        setTimeout(() => setCartButtonBouncing(false), 620);
+      }, 520);
 
       setTimeout(() => {
         setFlyingCartItems((prev) => prev.filter((f) => f.id !== flyId));
-      }, 850);
+      }, 820);
     }
 
     const colorNote = resolvedColor ? ` (${resolvedColor})` : '';
@@ -2153,22 +2285,48 @@ const DEFAULT_PRODUCTS = [
       // ignore
     }
     try {
-      localStorage.removeItem('gs_admin_session_v1');
+      if (auth) {
+        await auth.signOut();
+      }
     } catch {
       // ignore
     }
+    try {
+      localStorage.removeItem('gs_admin_session_v1');
+      localStorage.removeItem('gs_user_profile_v1');
+      localStorage.removeItem('gs_my_orders_v1');
+    } catch {
+      // ignore
+    }
+    hasInitializedProfileFieldsRef.current = false;
     setSupabaseUser(null);
     setIdToken(null);
     setDbUser(null);
+    setCustomerName('');
+    setCustomerEmail('');
+    setCustomerPhone('');
+    setCustomerAuthEmail('');
+    setCustomerAuthName('');
+    setCustomerAuthPassword('');
+    setAdminLoginEmail('');
+    setShippingAddress({
+      addressLine1: '',
+      addressLine2: '',
+      landmark: '',
+      city: 'Kanpur',
+      state: 'Uttar Pradesh',
+      pincode: '208021',
+    });
     setMyOrdersList([]);
     setTrackedOrderResult(null);
     setConfirmedOrderData(null);
     setTrackError(null);
+    setProfileSuccessMsg(null);
     if (activeView === 'admin' || activeView === 'admin-login') {
-      window.history.pushState({}, '', '/admin/login');
-      setActiveView('admin-login');
+      window.history.pushState({}, '', '/');
+      setActiveView('storefront');
     }
-    showToast('Signed out.');
+    showToast('Signed out successfully.');
   };
 
   // Seamless 1-Click Role Switcher (preserves exact same current interface without redirecting)
@@ -2890,19 +3048,27 @@ const DEFAULT_PRODUCTS = [
   };
 
   const handleLoadMyOrders = useCallback(async () => {
+    const isCurrentlySignedIn = Boolean(dbUser || supabaseUser || idToken);
+    if (!isCurrentlySignedIn && !trackPhoneInput.trim()) {
+      setMyOrdersList([]);
+      return;
+    }
+
     let localOrders: any[] = [];
-    try {
-      const raw = localStorage.getItem('gs_my_orders_v1');
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) localOrders = parsed;
-    } catch {
-      localOrders = [];
+    if (isCurrentlySignedIn) {
+      try {
+        const raw = localStorage.getItem('gs_my_orders_v1');
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) localOrders = parsed;
+      } catch {
+        localOrders = [];
+      }
     }
 
     try {
       const headers: Record<string, string> = {};
       if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const activeEmail = dbUser?.email || supabaseUser?.email || customerEmail || '';
+      const activeEmail = dbUser?.email || supabaseUser?.email || '';
       if (activeEmail) headers['x-customer-email'] = activeEmail;
 
       const params = new URLSearchParams();
@@ -2938,7 +3104,7 @@ const DEFAULT_PRODUCTS = [
       setMyOrdersList(localOrders);
       setTrackedOrderResult((prev: any) => prev || (localOrders.length > 0 ? localOrders[0] : null));
     }
-  }, [idToken, dbUser, supabaseUser, customerEmail, trackPhoneInput]);
+  }, [idToken, dbUser, supabaseUser, trackPhoneInput]);
 
   useEffect(() => {
     if (activeView === 'track' || activeView === 'profile') {
@@ -3302,9 +3468,14 @@ const DEFAULT_PRODUCTS = [
         >
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
             <p className="text-[11px] sm:text-xs font-medium leading-tight truncate sm:overflow-visible">
-              {themeConfig.announcementText ||
+              {(
+                themeConfig.announcementText ||
                 storeSettings?.promo_banner?.text ||
-                'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'}
+                'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'
+              )
+                .replace(/Powered by Shiprocket/gi, 'Express Dispatch')
+                .replace(/Shiprocket/gi, 'Express Courier')
+                .replace(/Cashfree/gi, 'Online')}
             </p>
             <span className="hidden md:inline opacity-80 whitespace-nowrap shrink-0 text-[11px]">
               Kanpur &amp; Pan-India Express Home Delivery · Free Store Pickup
@@ -3474,7 +3645,9 @@ const DEFAULT_PRODUCTS = [
               >
                 <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                 <span className="font-bold hidden sm:inline max-w-[140px] truncate">
-                  {(customerName || dbUser?.fullName || 'Profile').split(' ')[0]}
+                  {dbUser || supabaseUser
+                    ? (customerName || dbUser?.fullName || dbUser?.email || 'Profile').split(' ')[0]
+                    : 'Profile'}
                 </span>
               </button>
               <motion.button
@@ -7439,7 +7612,10 @@ const DEFAULT_PRODUCTS = [
                       <Heart className="w-3.5 h-3.5" />
                       <span>Wishlist ({wishlistProductIds.length})</span>
                     </button>
-                    {dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com' && (
+                    {Boolean(
+                      (dbUser || supabaseUser) &&
+                        dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com'
+                    ) && (
                       <button
                         type="button"
                         onClick={() => {
@@ -7459,38 +7635,57 @@ const DEFAULT_PRODUCTS = [
                 <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif-display text-2xl font-bold shrink-0">
-                      {(customerName || dbUser?.fullName || dbUser?.email || 'G')
-                        .trim()
-                        .slice(0, 1)
-                        .toUpperCase()}
+                      {dbUser || supabaseUser
+                        ? (customerName || dbUser?.fullName || dbUser?.email || 'G')
+                            .trim()
+                            .slice(0, 1)
+                            .toUpperCase()
+                        : 'G'}
                     </div>
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-slate-900">
-                          {customerName || dbUser?.fullName || 'Gayatri Stationers Member'}
+                          {dbUser || supabaseUser
+                            ? customerName || dbUser?.fullName || 'Gayatri Stationers Member'
+                            : 'Guest Visitor (Signed Out)'}
                         </h1>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const el = document.getElementById(
-                              'profile-full-name-input'
-                            ) as HTMLInputElement | null;
-                            if (el) {
-                              el.focus();
-                              el.select();
-                            }
-                          }}
-                          className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 cursor-pointer"
+                        {(dbUser || supabaseUser) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById(
+                                'profile-full-name-input'
+                              ) as HTMLInputElement | null;
+                              if (el) {
+                                el.focus();
+                                el.select();
+                              }
+                            }}
+                            className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 cursor-pointer"
+                          >
+                            ✎ Edit Full Name
+                          </button>
+                        )}
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold ${
+                            dbUser || supabaseUser
+                              ? 'bg-emerald-100 text-emerald-900'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
                         >
-                          ✎ Edit Full Name
-                        </button>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold bg-emerald-100 text-emerald-900">
-                          {dbUser?.role === 'owner' ? 'Store Owner / Admin' : 'Verified Customer'}
+                          {dbUser || supabaseUser
+                            ? dbUser?.role === 'owner'
+                              ? 'Store Owner / Admin'
+                              : 'Verified Customer'
+                            : 'Signed Out'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 font-mono-tabular">
-                        {customerEmail || dbUser?.email || supabaseUser?.email || 'Not signed in — enter your details below'}
-                        {customerPhone ? ` · +91 ${customerPhone}` : ''}
+                        {dbUser || supabaseUser
+                          ? `${customerEmail || dbUser?.email || supabaseUser?.email || ''}${
+                              customerPhone ? ` · +91 ${customerPhone}` : ''
+                            }`
+                          : 'You are signed out. Sign in with Google or email to view your saved profile & orders.'}
                       </p>
                     </div>
                   </div>
@@ -8409,28 +8604,34 @@ const DEFAULT_PRODUCTS = [
         onClearInitialQuestion={() => setRufusInitialQuestion(null)}
       />
 
-      {/* Flying-to-Cart Arc Animation Particles */}
+      {/* Flying-to-Cart Explicit Parabolic Arc Animation Particles */}
       <AnimatePresence>
         {flyingCartItems.map((fly) => (
           <motion.div
             key={fly.id}
             initial={{
-              x: fly.startX - 28,
-              y: fly.startY - 28,
-              scale: 1,
+              x: fly.startX,
+              y: fly.startY,
+              scale: 0.92,
+              rotate: 0,
               opacity: 1,
             }}
             animate={{
-              x: [fly.startX - 28, (fly.startX + fly.endX) / 2 - 20, fly.endX - 18],
-              y: [fly.startY - 28, Math.min(fly.startY, fly.endY) - 90, fly.endY - 18],
-              scale: [1, 1.12, 0.35],
-              opacity: [1, 1, 0.2],
+              x: fly.xKeyframes,
+              y: fly.yKeyframes,
+              scale: fly.scaleKeyframes,
+              rotate: fly.rotateKeyframes,
+              opacity: fly.opacityKeyframes,
             }}
             exit={{ opacity: 0, scale: 0.2 }}
-            transition={{ duration: 0.68, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed top-0 left-0 z-[90] pointer-events-none flex items-center gap-2 bg-stone-900 text-white px-3 py-1.5 rounded-full shadow-2xl border border-white/20"
+            transition={{
+              duration: 0.72,
+              times: fly.times,
+              ease: 'linear',
+            }}
+            className="fixed top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-[90] pointer-events-none flex items-center gap-2 bg-stone-900 text-white px-3 py-1.5 rounded-full shadow-2xl border border-amber-300/40 ring-2 ring-amber-400/20"
           >
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-white shrink-0">
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-white shrink-0 shadow-xs">
               <ProductIllustration
                 type={fly.illustrationType}
                 imageUrl={fly.imageUrl}
@@ -8438,8 +8639,12 @@ const DEFAULT_PRODUCTS = [
                 className="w-full h-full"
               />
             </div>
-            <span className="text-[11px] font-semibold max-w-[130px] truncate">{fly.name}</span>
-            <span className="text-[10px] font-mono text-amber-300 font-bold">{fly.priceFormatted}</span>
+            <span className="text-[11px] font-semibold max-w-[120px] sm:max-w-[150px] truncate">
+              {fly.name}
+            </span>
+            <span className="text-[10px] font-mono text-amber-300 font-bold">
+              {fly.priceFormatted}
+            </span>
           </motion.div>
         ))}
       </AnimatePresence>

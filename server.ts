@@ -1823,7 +1823,6 @@ async function startServer() {
       server: {
         middlewareMode: true,
         hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
-        watch: process.env.DISABLE_HMR === 'true' ? null : undefined,
       },
       appType: 'spa',
     });
