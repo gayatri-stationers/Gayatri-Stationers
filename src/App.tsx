@@ -1200,6 +1200,13 @@ const DEFAULT_PRODUCTS = [
   >('ALL_TIME');
   const [trackError, setTrackError] = useState<string | null>(null);
 
+  // Storefront Guest 'Order Search' Widget state (Order ID + Mobile Number, no sign-in required)
+  const [storefrontOrderIdInput, setStorefrontOrderIdInput] = useState('');
+  const [storefrontOrderPhoneInput, setStorefrontOrderPhoneInput] = useState('');
+  const [storefrontSearchedOrder, setStorefrontSearchedOrder] = useState<any>(null);
+  const [storefrontOrderSearchError, setStorefrontOrderSearchError] = useState<string | null>(null);
+  const [storefrontOrderSearching, setStorefrontOrderSearching] = useState(false);
+
   // Bulk Order Enquiry state
   const [bulkForm, setBulkForm] = useState({
     institutionName: '',
@@ -3012,16 +3019,88 @@ const DEFAULT_PRODUCTS = [
     }
   };
 
+  // Storefront Guest Order Search Widget Lookup (Order ID + Mobile Number, no sign-in required)
+  const handleStorefrontOrderSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStorefrontOrderSearchError(null);
+
+    const cleanId = storefrontOrderIdInput.trim().toUpperCase().replace(/^#/, '');
+    const cleanPhoneDigits = storefrontOrderPhoneInput.replace(/\D/g, '');
+    const normalizedPhone10 = cleanPhoneDigits.slice(-10);
+
+    if (!cleanId) {
+      setStorefrontOrderSearchError('Please enter your Order ID (e.g. GS-...).');
+      return;
+    }
+    if (normalizedPhone10.length !== 10) {
+      setStorefrontOrderSearchError(
+        'Please enter the valid 10-digit mobile number used when placing your order.'
+      );
+      return;
+    }
+
+    setStorefrontOrderSearching(true);
+    try {
+      const res = await fetch(
+        `/api/orders/lookup?orderId=${encodeURIComponent(cleanId)}&phone=${encodeURIComponent(normalizedPhone10)}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'No matching order found for this Order ID and mobile number.');
+      }
+      setStorefrontSearchedOrder(data);
+      setTrackedOrderResult(data);
+      setTrackOrderNumberInput(data?.order?.orderNumber || cleanId);
+      setTrackPhoneInput(normalizedPhone10);
+    } catch (err: any) {
+      // Fallback check in local orders cache if matching both Order ID and 10-digit mobile number
+      try {
+        const raw = localStorage.getItem('gs_my_orders_v1');
+        const list = raw ? JSON.parse(raw) : [];
+        const withGs = cleanId.startsWith('GS-') ? cleanId : `GS-${cleanId}`;
+        const found = Array.isArray(list)
+          ? list.find((o: any) => {
+              const ordNum = String(o?.order?.orderNumber || '').trim().toUpperCase();
+              const idMatch =
+                ordNum === cleanId ||
+                ordNum === withGs ||
+                (cleanId.length >= 4 && ordNum.endsWith(cleanId));
+              const ordPhone = String(o?.order?.customerPhone || '')
+                .replace(/\D/g, '')
+                .slice(-10);
+              return idMatch && ordPhone === normalizedPhone10;
+            })
+          : null;
+        if (found) {
+          setStorefrontSearchedOrder(found);
+          setTrackedOrderResult(found);
+          setStorefrontOrderSearching(false);
+          return;
+        }
+      } catch {
+        // Ignore storage error
+      }
+      setStorefrontSearchedOrder(null);
+      setStorefrontOrderSearchError(
+        err.message || 'Could not find an order matching that Order ID and mobile number.'
+      );
+    } finally {
+      setStorefrontOrderSearching(false);
+    }
+  };
+
   // Track Order Lookup
   const handleTrackOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setTrackError(null);
     if (!trackOrderNumberInput.trim()) return;
-    const cleanNum = trackOrderNumberInput.trim().toUpperCase();
+    const cleanNum = trackOrderNumberInput.trim().toUpperCase().replace(/^#/, '');
+    const cleanPhone = trackPhoneInput.replace(/\D/g, '').slice(-10);
     try {
       const headers: Record<string, string> = {};
       if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const res = await fetch(`/api/orders/track/${encodeURIComponent(cleanNum)}`, {
+      const query = cleanPhone.length === 10 ? `?phone=${encodeURIComponent(cleanPhone)}` : '';
+      const res = await fetch(`/api/orders/track/${encodeURIComponent(cleanNum)}${query}`, {
         headers,
       });
       const data = await res.json();
@@ -4041,6 +4120,19 @@ const DEFAULT_PRODUCTS = [
                             >
                               Bulk Orders →
                             </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                document
+                                  .getElementById('storefront-order-search')
+                                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }}
+                              className="px-4 py-2 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-300/90 text-stone-900 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                            >
+                              <Package className="w-3.5 h-3.5 text-[#B42318]" />
+                              <span>Order Search (No Sign-In)</span>
+                            </button>
                           </div>
 
                           {activeHeroBanners.length > 1 && (
@@ -4196,6 +4288,400 @@ const DEFAULT_PRODUCTS = [
                           </p>
                         </div>
                       </div>
+                    </div>
+
+                    {/* STOREFRONT GUEST ORDER SEARCH WIDGET (Order ID + Mobile Number — No Sign-In Required) */}
+                    <div
+                      id="storefront-order-search"
+                      className="bg-white border border-stone-200/90 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-5 relative overflow-hidden"
+                    >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-100 pb-4">
+                        <div className="space-y-1">
+                          <div className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
+                            <Package className="w-3.5 h-3.5 text-[#B42318]" />
+                            <span>INSTANT ORDER STATUS LOOKUP · NO SIGN-IN REQUIRED</span>
+                          </div>
+                          <h2 className="font-serif-display text-lg sm:text-xl font-bold text-stone-900">
+                            Order Search — Track Your Order Status Instantly
+                          </h2>
+                          <p className="text-xs text-stone-600 max-w-2xl">
+                            Enter your <strong>Order ID</strong> and the <strong>10-digit mobile number</strong> used at checkout to check live delivery progress, your Store Pickup Counter Code, and item details without signing in.
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start lg:self-center">
+                          <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-900 inline-flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                            <span>Guest Lookup Active</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <form
+                        onSubmit={handleStorefrontOrderSearch}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end"
+                      >
+                        <div className="md:col-span-5">
+                          <label
+                            htmlFor="storefront-order-id-input"
+                            className="block text-xs font-semibold text-stone-800 mb-1.5"
+                          >
+                            Order ID / Order Number *
+                          </label>
+                          <div className="relative">
+                            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <input
+                              id="storefront-order-id-input"
+                              type="text"
+                              required
+                              value={storefrontOrderIdInput}
+                              onChange={(e) => {
+                                setStorefrontOrderIdInput(e.target.value.toUpperCase());
+                                if (storefrontOrderSearchError) setStorefrontOrderSearchError(null);
+                              }}
+                              placeholder="e.g. GS-485779"
+                              className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-stone-300 focus:border-stone-900 rounded-full font-mono-tabular text-stone-900 outline-none transition-colors"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-4">
+                          <label
+                            htmlFor="storefront-order-phone-input"
+                            className="block text-xs font-semibold text-stone-800 mb-1.5"
+                          >
+                            10-Digit Mobile Number *
+                          </label>
+                          <div className="flex items-center bg-slate-50 focus-within:bg-white border border-stone-300 focus-within:border-stone-900 rounded-full overflow-hidden transition-colors">
+                            <span className="pl-3.5 pr-2 py-2.5 text-xs font-mono-tabular font-semibold text-stone-500 border-r border-stone-200 select-none">
+                              +91
+                            </span>
+                            <input
+                              id="storefront-order-phone-input"
+                              type="tel"
+                              inputMode="numeric"
+                              maxLength={10}
+                              required
+                              value={storefrontOrderPhoneInput}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                setStorefrontOrderPhoneInput(digits);
+                                if (storefrontOrderSearchError) setStorefrontOrderSearchError(null);
+                              }}
+                              placeholder="9876543210"
+                              className="w-full px-3 py-2.5 text-xs sm:text-sm bg-transparent font-mono-tabular text-stone-900 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="md:col-span-3 flex items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={storefrontOrderSearching}
+                            className="w-full py-2.5 px-5 bg-[#B42318] hover:bg-[#991B1B] disabled:opacity-60 text-white text-xs sm:text-sm font-semibold rounded-full shadow-xs cursor-pointer transition-colors inline-flex items-center justify-center gap-2"
+                          >
+                            <Search className="w-4 h-4 shrink-0" />
+                            <span>
+                              {storefrontOrderSearching ? 'Searching...' : 'Search Order'}
+                            </span>
+                          </button>
+                          {(storefrontSearchedOrder || storefrontOrderSearchError) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStorefrontSearchedOrder(null);
+                                setStorefrontOrderSearchError(null);
+                                setStorefrontOrderIdInput('');
+                                setStorefrontOrderPhoneInput('');
+                              }}
+                              className="px-3.5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-full cursor-pointer shrink-0 transition-colors"
+                              title="Clear search"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </form>
+
+                      {storefrontOrderSearchError && (
+                        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start justify-between gap-3 text-xs text-red-900">
+                          <div className="space-y-0.5">
+                            <p className="font-bold">Order Lookup Notice</p>
+                            <p>{storefrontOrderSearchError}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setStorefrontOrderSearchError(null)}
+                            className="text-red-700 hover:text-red-950 font-semibold underline shrink-0 cursor-pointer"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+
+                      {storefrontSearchedOrder?.order && (() => {
+                        const ord = storefrontSearchedOrder.order;
+                        const items = Array.isArray(storefrontSearchedOrder.items)
+                          ? storefrontSearchedOrder.items
+                          : [];
+                        const pickup = storefrontSearchedOrder.pickupDetails;
+                        const shipment = storefrontSearchedOrder.shipmentDetails;
+                        const isPickup = ord.fulfilmentMethod === 'STORE_PICKUP';
+                        const isCancelled = ord.orderStatus === 'CANCELLED';
+
+                        const steps = isPickup
+                          ? [
+                              { key: 'ORDER_PLACED', label: 'Order Reserved' },
+                              { key: 'READY_FOR_PICKUP', label: 'Ready at Store Counter' },
+                              { key: 'COLLECTED', label: 'Collected at Store' },
+                            ]
+                          : [
+                              { key: 'ORDER_PLACED', label: 'Order Placed' },
+                              { key: 'CONFIRMED', label: 'Confirmed & Packed' },
+                              { key: 'DISPATCHED', label: 'Dispatched' },
+                              { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
+                              { key: 'DELIVERED', label: 'Delivered' },
+                            ];
+
+                        const resolveStepIndex = () => {
+                          if (isPickup) {
+                            if (ord.orderStatus === 'COLLECTED') return 2;
+                            if (
+                              ['READY_FOR_PICKUP', 'PACKED', 'PREPARING', 'CONFIRMED'].includes(
+                                ord.orderStatus
+                              )
+                            ) {
+                              return 1;
+                            }
+                            return 0;
+                          }
+                          if (ord.orderStatus === 'DELIVERED') return 4;
+                          if (ord.orderStatus === 'OUT_FOR_DELIVERY') return 3;
+                          if (ord.orderStatus === 'DISPATCHED') return 2;
+                          if (['CONFIRMED', 'PREPARING', 'PACKED'].includes(ord.orderStatus)) {
+                            return 1;
+                          }
+                          return 0;
+                        };
+
+                        const currentStepIdx = resolveStepIndex();
+                        const placedDateStr = ord.createdAt
+                          ? new Date(ord.createdAt).toLocaleString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'Recently Placed';
+
+                        return (
+                          <div className="p-5 sm:p-6 bg-slate-50 border border-slate-200/90 rounded-[28px] space-y-5">
+                            {/* Top Summary Row */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono-tabular text-base sm:text-lg font-bold text-stone-900">
+                                    Order #{ord.orderNumber}
+                                  </span>
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
+                                      isCancelled
+                                        ? 'bg-red-100 text-red-900'
+                                        : ord.orderStatus === 'DELIVERED' ||
+                                            ord.orderStatus === 'COLLECTED'
+                                          ? 'bg-emerald-100 text-emerald-900'
+                                          : 'bg-amber-100 text-amber-950'
+                                    }`}
+                                  >
+                                    {ord.orderStatus.replace(/_/g, ' ')}
+                                  </span>
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                      ord.paymentStatus === 'PAID'
+                                        ? 'bg-emerald-700 text-white'
+                                        : 'bg-stone-200 text-stone-800'
+                                    }`}
+                                  >
+                                    Payment: {ord.paymentStatus}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-stone-600">
+                                  Placed on <strong>{placedDateStr}</strong> · Customer:{' '}
+                                  <strong>{ord.customerName}</strong> (+91 {ord.customerPhone})
+                                </p>
+                              </div>
+
+                              <div className="text-left sm:text-right font-mono-tabular">
+                                <div className="text-xs text-stone-500">Order Total</div>
+                                <div className="text-lg font-bold text-stone-900">
+                                  {formatPaiseToINR(ord.totalPaise)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Visual Progress Steps */}
+                            {!isCancelled && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-stone-600">
+                                  <span>
+                                    Fulfilment:{' '}
+                                    <strong className="text-stone-900">
+                                      {isPickup
+                                        ? 'Store Pickup at Kanpur Counter'
+                                        : 'Express Doorstep Home Delivery'}
+                                    </strong>
+                                  </span>
+                                  <span className="font-mono-tabular text-stone-700">
+                                    Step {currentStepIdx + 1} of {steps.length}
+                                  </span>
+                                </div>
+                                <div
+                                  className={`grid grid-cols-1 ${
+                                    isPickup ? 'sm:grid-cols-3' : 'sm:grid-cols-5'
+                                  } gap-2`}
+                                >
+                                  {steps.map((st, idx) => {
+                                    const isCompleted = idx <= currentStepIdx;
+                                    const isCurrent = idx === currentStepIdx;
+                                    return (
+                                      <div
+                                        key={st.key}
+                                        className={`p-3 rounded-2xl border flex items-center gap-2.5 text-xs ${
+                                          isCurrent
+                                            ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-2xs'
+                                            : isCompleted
+                                              ? 'bg-emerald-50 border-emerald-200 text-emerald-950 font-semibold'
+                                              : 'bg-white border-stone-200 text-stone-400'
+                                        }`}
+                                      >
+                                        <span
+                                          className={`w-5 h-5 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shrink-0 ${
+                                            isCurrent
+                                              ? 'bg-amber-400 text-stone-950'
+                                              : isCompleted
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-stone-100 text-stone-500'
+                                          }`}
+                                        >
+                                          {isCompleted && !isCurrent ? '✓' : idx + 1}
+                                        </span>
+                                        <span className="truncate">{st.label}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Store Pickup Code OR Delivery Address & AWB Details */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                              <div className="lg:col-span-6 p-4 bg-white border border-stone-200/90 rounded-2xl space-y-2 text-xs">
+                                {isPickup ? (
+                                  <>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
+                                        Store Counter Pickup Pass
+                                      </span>
+                                      {pickup?.pickupCode && (
+                                        <span className="px-3 py-1 rounded-full bg-amber-100 border border-amber-300 font-mono-tabular font-bold text-amber-950 text-xs">
+                                          Pickup Code: {pickup.pickupCode}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-stone-700 leading-relaxed">
+                                      Show Order <strong>#{ord.orderNumber}</strong>{' '}
+                                      {pickup?.pickupCode ? `(Code: ${pickup.pickupCode})` : ''} at{' '}
+                                      <strong>
+                                        Gayatri Stationers, Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
+                                      </strong>{' '}
+                                      to collect your items.
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
+                                        Delivery &amp; Shipment Details
+                                      </span>
+                                      {shipment?.trackingNumber && (
+                                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-mono-tabular font-bold text-[11px]">
+                                          AWB: {shipment.trackingNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {shipment ? (
+                                      <p className="text-stone-700 leading-relaxed">
+                                        Delivering to <strong>{shipment.recipientName}</strong>:{' '}
+                                        {shipment.addressLine1}
+                                        {shipment.landmark ? `, ${shipment.landmark}` : ''},{' '}
+                                        {shipment.city}, {shipment.state} –{' '}
+                                        <strong className="font-mono-tabular">
+                                          {shipment.pincode}
+                                        </strong>
+                                      </p>
+                                    ) : (
+                                      <p className="text-stone-600">
+                                        Express doorstep courier dispatch is being prepared for your address.
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Items Summary */}
+                              <div className="lg:col-span-6 p-4 bg-white border border-stone-200/90 rounded-2xl space-y-2 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
+                                    Items in Order ({items.length})
+                                  </span>
+                                  <span className="text-stone-500 font-mono-tabular">
+                                    {ord.paymentMethod.replace(/_/g, ' ')}
+                                  </span>
+                                </div>
+                                <div className="divide-y divide-stone-100 max-h-36 overflow-y-auto">
+                                  {items.map((it: any, i: number) => (
+                                    <div
+                                      key={it.id || i}
+                                      className="py-1.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2"
+                                    >
+                                      <span className="text-stone-800 truncate">
+                                        <strong>{it.quantity}×</strong> {it.productName}{' '}
+                                        <span className="text-stone-500">({it.variantName})</span>
+                                      </span>
+                                      <span className="font-mono-tabular font-semibold text-stone-900 shrink-0">
+                                        {formatPaiseToINR(
+                                          it.lineTotalPaise || it.unitPricePaise * it.quantity
+                                        )}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                              <p className="text-[11px] text-stone-500">
+                                Need full tax invoice or live courier timeline? Open the detailed view.
+                              </p>
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTrackedOrderResult(storefrontSearchedOrder);
+                                    setActiveView('track');
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                  }}
+                                  className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer transition-colors"
+                                >
+                                  Open Full Tracking &amp; Receipt →
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Dynamic Shop by Category Grid */}
@@ -6083,44 +6569,58 @@ const DEFAULT_PRODUCTS = [
                 </div>
 
                 <>
-                  {/* Search Lookup Bar (Order Number + Phone Number) */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                      <form
-                        onSubmit={handleTrackOrder}
-                        className="lg:col-span-7 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-4 flex flex-col sm:flex-row gap-2.5"
-                      >
-                        <input
-                          type="text"
-                          value={trackOrderNumberInput}
-                          onChange={(e) => setTrackOrderNumberInput(e.target.value.toUpperCase())}
-                          placeholder="Enter Order # for Delivery Tracking or Store Pass (e.g. GS-...)"
-                          className="flex-1 px-4 py-2 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
-                        />
+                  {/* Search Lookup Bar (Order ID + 10-Digit Mobile Number — No Sign-In Required) */}
+                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-5 space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                        <Search className="w-3.5 h-3.5 text-[#B42318]" />
+                        <span>Order Search by Order ID &amp; Mobile Number (No Sign-In Required)</span>
+                      </span>
+                      <span className="text-[11px] text-stone-500">
+                        Enter your Order ID and 10-digit mobile number to look up any order
+                      </span>
+                    </div>
+                    <form
+                      onSubmit={handleTrackOrder}
+                      className="grid grid-cols-1 sm:grid-cols-12 gap-3"
+                    >
+                      <input
+                        type="text"
+                        value={trackOrderNumberInput}
+                        onChange={(e) => setTrackOrderNumberInput(e.target.value.toUpperCase())}
+                        placeholder="Order ID (e.g. GS-485779)"
+                        className="sm:col-span-5 px-4 py-2.5 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
+                      />
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="10-Digit Mobile Number (e.g. 9876543210)"
+                        value={trackPhoneInput}
+                        onChange={(e) =>
+                          setTrackPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))
+                        }
+                        className="sm:col-span-4 px-4 py-2.5 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
+                      />
+                      <div className="sm:col-span-3 flex items-center gap-2">
                         <button
                           type="submit"
-                          className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] whitespace-nowrap cursor-pointer"
+                          className="flex-1 px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] whitespace-nowrap cursor-pointer"
                         >
-                          Look Up Order #
+                          Search Order
                         </button>
-                      </form>
-
-                      <div className="lg:col-span-5 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-4 flex flex-col sm:flex-row gap-2.5">
-                        <input
-                          type="tel"
-                          placeholder="Filter your orders by phone..."
-                          value={trackPhoneInput}
-                          onChange={(e) => setTrackPhoneInput(e.target.value)}
-                          className="flex-1 px-4 py-2 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleLoadMyOrders}
-                          className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-stone-800 whitespace-nowrap cursor-pointer"
-                        >
-                          Filter
-                        </button>
+                        {Boolean(dbUser || supabaseUser) && (
+                          <button
+                            type="button"
+                            onClick={handleLoadMyOrders}
+                            className="px-4 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-stone-800 whitespace-nowrap cursor-pointer"
+                          >
+                            Filter List
+                          </button>
+                        )}
                       </div>
-                    </div>
+                    </form>
+                  </div>
 
                     {trackError && (
                       <div className="p-4 bg-red-50 border border-red-200 rounded-3xl text-xs text-red-900">

@@ -22,6 +22,7 @@ import {
   toggleUserWishlistItem,
   placeOrderTransactionally,
   getOrderDetailsByNumberOrId,
+  lookupOrderByNumberAndPhone,
   listCustomerOrders,
   updateOrderWorkflowByAdmin,
   recordVerifiedOnlinePayment,
@@ -594,10 +595,33 @@ async function startServer() {
     }
   });
 
-  // 6. Order Tracking & Account-Specific Order History
+  // 6. Order Tracking, Public Guest Order Search & Account-Specific Order History
+  app.get('/api/orders/lookup', async (req, res) => {
+    try {
+      const orderId = String(req.query.orderId || req.query.orderNumber || '').trim();
+      const phone = String(req.query.phone || req.query.mobile || '').trim();
+      const result = await lookupOrderByNumberAndPhone(orderId, phone);
+      if (!result.ok) {
+        return res.status(result.status || 404).json({ error: result.error });
+      }
+      res.json(result.details);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to look up order status.' });
+    }
+  });
+
   app.get('/api/orders/track/:orderNumber', optionalAuth, async (req: AuthRequest, res) => {
     try {
       const orderNumber = req.params.orderNumber.trim().toUpperCase();
+      const phone = String(req.query.phone || '').trim();
+      if (phone) {
+        const verified = await lookupOrderByNumberAndPhone(orderNumber, phone);
+        if (!verified.ok) {
+          return res.status(verified.status || 404).json({ error: verified.error });
+        }
+        return res.json(verified.details);
+      }
+
       const details = await getOrderDetailsByNumberOrId(orderNumber);
       if (!details) {
         return res.status(404).json({ error: `Order ${orderNumber} not found.` });

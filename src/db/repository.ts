@@ -961,6 +961,92 @@ export async function getOrderDetailsByNumberOrId(identifier: string | number) {
   }
 }
 
+export async function lookupOrderByNumberAndPhone(orderIdInput: string, phoneInput: string) {
+  try {
+    const cleanOrderId = String(orderIdInput || '')
+      .trim()
+      .toUpperCase()
+      .replace(/^#/, '');
+    const cleanPhoneDigits = String(phoneInput || '').replace(/\D/g, '');
+    const normalizedPhone10 = cleanPhoneDigits.slice(-10);
+
+    if (!cleanOrderId) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: 'Please enter your Order ID (e.g. GS-...).',
+      };
+    }
+    if (normalizedPhone10.length < 10) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: 'Please enter the 10-digit mobile number used when placing the order.',
+      };
+    }
+
+    const allOrders = await db
+      .select()
+      .from(orders)
+      .orderBy(desc(orders.createdAt));
+
+    const withGsPrefix = cleanOrderId.startsWith('GS-') ? cleanOrderId : `GS-${cleanOrderId}`;
+    const numericId = /^\d+$/.test(cleanOrderId) ? Number(cleanOrderId) : null;
+
+    const candidates = allOrders.filter((o) => {
+      const ordNum = String(o.orderNumber || '').trim().toUpperCase();
+      if (ordNum === cleanOrderId || ordNum === withGsPrefix) return true;
+      if (numericId !== null && o.id === numericId) return true;
+      if (cleanOrderId.length >= 4 && ordNum.endsWith(cleanOrderId)) return true;
+      return false;
+    });
+
+    if (candidates.length === 0) {
+      return {
+        ok: false as const,
+        status: 404,
+        error: `No order found matching Order ID "${cleanOrderId}". Please verify your Order ID (e.g. GS-...) and try again.`,
+      };
+    }
+
+    for (const candidate of candidates) {
+      const details = await getOrderDetailsByNumberOrId(candidate.id);
+      if (!details) continue;
+
+      const orderPhone10 = String(details.order.customerPhone || '')
+        .replace(/\D/g, '')
+        .slice(-10);
+      const shipPhone10 = String(details.shipmentDetails?.phone || '')
+        .replace(/\D/g, '')
+        .slice(-10);
+
+      if (
+        (orderPhone10 && orderPhone10 === normalizedPhone10) ||
+        (shipPhone10 && shipPhone10 === normalizedPhone10)
+      ) {
+        return {
+          ok: true as const,
+          status: 200,
+          details,
+        };
+      }
+    }
+
+    return {
+      ok: false as const,
+      status: 403,
+      error: `The mobile number entered does not match Order ${candidates[0].orderNumber}. Please enter the 10-digit mobile number used when placing this order.`,
+    };
+  } catch (error: any) {
+    console.error('Order lookup by Order ID and phone failed:', error);
+    return {
+      ok: false as const,
+      status: 500,
+      error: 'Unable to look up order status right now. Please try again.',
+    };
+  }
+}
+
 export async function listCustomerOrders(params: {
   userId?: number;
   email?: string;
