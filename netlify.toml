@@ -10,6 +10,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/admin/cashfree/*"
+  to = "/.netlify/functions/cashfree"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

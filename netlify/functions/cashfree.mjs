@@ -40,7 +40,7 @@ export const handler = async (event) => {
   }
 
   try {
-    const path = event.path || '';
+    const path = (event.path || '').toLowerCase();
     let body = {};
     if (event.body && typeof event.body === 'string') {
       const trimmedBody = event.body.trim();
@@ -83,7 +83,7 @@ export const handler = async (event) => {
     const apiVersion = '2023-08-01';
 
     // 1. Test Connection
-    if (path.endsWith('/test')) {
+    if (path.endsWith('/test') || path.endsWith('/test-config')) {
       const testId = `test_ping_${Date.now()}`;
       const res = await fetch(`${baseUrl}/orders/${testId}`, {
         method: 'GET',
@@ -176,12 +176,13 @@ export const handler = async (event) => {
     }
 
     // 3. Create Cashfree Order Session (/create-session)
+    const rawOrderNum = String(body.orderNumber || `GS-${Date.now().toString().slice(-6)}`);
     const cleanOrderId = sanitizeId(
-      `${body.orderNumber || 'GS'}_${Date.now().toString().slice(-5)}`,
+      `${rawOrderNum}_${Date.now().toString().slice(-5)}`,
       `GS_${Date.now()}`
     );
     const amountRupees = Math.max(1, Number(body.amountRupees || 195));
-    const returnOrigin = (body.returnOrigin || 'https://gayatristationers.co.in').replace(/\/$/, '');
+    const returnOrigin = (body.returnOrigin || 'https://gayatristationers.netlify.app').replace(/\/$/, '');
 
     const payload = {
       order_id: cleanOrderId,
@@ -194,9 +195,9 @@ export const handler = async (event) => {
         customer_phone: sanitizePhone(body.customerPhone),
       },
       order_meta: {
-        return_url: `${returnOrigin}/?cf_order_id={order_id}`,
+        return_url: `${returnOrigin}/?cf_order_id={order_id}&order_num=${encodeURIComponent(rawOrderNum)}`,
       },
-      order_note: `Gayatri Stationers Order ${body.orderNumber || cleanOrderId}`.slice(0, 150),
+      order_note: `Gayatri Stationers Order ${rawOrderNum}`.slice(0, 150),
     };
 
     const cfRes = await fetch(`${baseUrl}/orders`, {
@@ -227,7 +228,7 @@ export const handler = async (event) => {
       body: JSON.stringify({
         paymentSessionId: cfData.payment_session_id,
         cfOrderId: cfData.order_id,
-        orderId: body.orderNumber || cfData.order_id,
+        orderId: rawOrderNum,
         environment,
       }),
     };

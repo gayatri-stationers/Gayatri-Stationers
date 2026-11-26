@@ -1,1523 +1,368 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { signInWithPopup } from 'firebase/auth';
-import { auth, googleAuthProvider } from './lib/firebase.ts';
-import { supabase } from './lib/supabase.ts';
 import {
-  formatPaiseToINR,
-  calculateOrderTotals,
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  FileSpreadsheet,
+  Heart,
+  Layers,
+  Mail,
+  MapPin,
+  Menu,
+  Minus,
+  Package,
+  Phone,
+  Plus,
+  Receipt,
+  Scale,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  SlidersHorizontal,
+  Sparkles,
+  Store,
+  Tag,
+  Trash2,
+  Truck,
+  User,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { auth, googleAuthProvider } from './lib/firebase.ts';
+import {
   FulfilmentMethod,
   PaymentMethod,
+  calculateOrderTotals,
+  formatPaiseToINR,
 } from './lib/domain-logic.ts';
+import {
+  DEFAULT_BRANDS,
+  DEFAULT_BUNDLES,
+  DEFAULT_CATEGORIES,
+  DEFAULT_CMS_PAGES,
+  DEFAULT_COUPONS,
+  DEFAULT_PINCODES,
+  DEFAULT_PRODUCTS,
+  OWNER_EMAIL,
+  POLICY_URL_SLUG_MAP,
+  STORE_ADDRESS,
+  STORE_EMAIL,
+  STORE_PHONE,
+  normalizeCatalogueProduct,
+} from './data/defaults.ts';
+import {
+  LocalCartItem,
+  getCartItemKey,
+  getProductColorOptions,
+  matchesPriceRangeFilter,
+  matchesRulingFilter,
+  matchesTipOrGradeFilter,
+} from './lib/catalog-helpers.ts';
 import { ProductIllustration } from './components/ProductIllustration.tsx';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
-import { OrderTrackingTimeline } from './components/OrderTrackingTimeline.tsx';
 import { RufusAssistant } from './components/RufusAssistant.tsx';
 import { ProductComparisonModal } from './components/ProductComparisonModal.tsx';
+import { CartDrawer } from './components/CartDrawer.tsx';
 import {
-  Search,
-  ShoppingBag,
-  Heart,
-  Store,
-  Truck,
-  Check,
-  ArrowLeft,
-  Plus,
-  Minus,
-  Trash2,
-  User,
-  LogOut,
-  FileSpreadsheet,
-  SlidersHorizontal,
-  Package,
-  X,
-  Menu,
-  ChevronRight,
-  Sparkles,
-  Tag,
-  ShieldCheck,
-  Calendar,
-  Scale,
-  Mic,
-} from 'lucide-react';
+  AdminLoginView,
+  BulkEnquiryView,
+  ProfileView,
+  SignInView,
+  TrackOrdersView,
+} from './components/AccountAndAuthViews.tsx';
+import {
+  CheckoutView,
+  ConfirmationView,
+} from './components/CheckoutAndConfirmation.tsx';
 
-interface LocalCartItem {
-  productId: number;
-  variantId: number;
-  quantity: number;
-  selectedColor?: string;
-}
+type ActiveView =
+  | 'storefront'
+  | 'pdp'
+  | 'combos'
+  | 'bulk'
+  | 'track'
+  | 'wishlist'
+  | 'checkout'
+  | 'confirmation'
+  | 'page'
+  | 'signin'
+  | 'profile'
+  | 'admin-login'
+  | 'admin';
 
-export interface ProductColorOption {
-  label: string;
-  shortLabel: string;
-  swatch: string;
-  border: string;
-  variantId?: number;
-}
-
-function isPenOrWritingProduct(product: any): boolean {
-  if (!product) return false;
-  const cat = `${product.categorySlug || ''} ${product.categoryName || ''}`.toLowerCase();
-  const text = `${product.name || ''} ${product.sku || ''} ${product.illustrationType || ''}`.toLowerCase();
-  if (cat.includes('pen') || cat.includes('writing') || cat.includes('marker') || cat.includes('highlighter')) {
-    // Exclude pure graphite pencil boxes unless they also mention pen/ink
-    if (text.includes('graphite pencil') && !text.includes('pen')) return false;
-    return true;
+function resolveRouteFromUrl(pathname: string): {
+  view: ActiveView;
+  productSlug?: string;
+  pageSlug?: string;
+} {
+  const clean = pathname.replace(/\/+$/, '').toLowerCase() || '/';
+  if (clean === '/' || clean === '/catalog' || clean === '/shop') {
+    return { view: 'storefront' };
   }
-  return (
-    /\b(pen|pens|roller|ballpoint|gel pen|fountain|marker|highlighter|fineliner|refill)\b/i.test(text) &&
-    !text.includes('pencil tin')
-  );
-}
-
-function getColorSwatchStyle(colorText: string): { swatch: string; border: string } {
-  const lower = (colorText || '').toLowerCase();
-  if (lower.includes('assorted') || lower.includes('multi') || lower.includes('shades') || (lower.includes('blue') && lower.includes('black'))) {
+  if (clean.startsWith('/product/')) {
     return {
-      swatch: 'conic-gradient(#1D4ED8 0deg 120deg, #18181B 120deg 240deg, #DC2626 240deg 360deg)',
-      border: '#94A3B8',
+      view: 'pdp',
+      productSlug: decodeURIComponent(pathname.slice('/product/'.length).split('?')[0]),
     };
   }
-  if (lower.includes('navy')) return { swatch: '#1E3A8A', border: '#1E3A8A' };
-  if (lower.includes('blue') || lower.includes('turquoise')) return { swatch: '#1D4ED8', border: '#1D4ED8' };
-  if (lower.includes('black') && lower.includes('gold')) {
-    return {
-      swatch: 'linear-gradient(135deg, #18181B 55%, #D97706 45%)',
-      border: '#B45309',
-    };
-  }
-  if (lower.includes('black')) return { swatch: '#18181B', border: '#18181B' };
-  if (lower.includes('red') || lower.includes('crimson') || lower.includes('burgundy')) {
-    return { swatch: '#DC2626', border: '#DC2626' };
-  }
-  if (lower.includes('green') || lower.includes('emerald')) return { swatch: '#15803D', border: '#15803D' };
-  if (lower.includes('grey') || lower.includes('gray') || lower.includes('slate')) {
-    return { swatch: '#64748B', border: '#64748B' };
-  }
-  if (lower.includes('violet') || lower.includes('purple')) return { swatch: '#7C3AED', border: '#7C3AED' };
-  if (lower.includes('pink') || lower.includes('magenta')) return { swatch: '#DB2777', border: '#DB2777' };
-  if (lower.includes('yellow') || lower.includes('neon') || lower.includes('gold')) {
-    return { swatch: '#EAB308', border: '#CA8A04' };
-  }
-  return { swatch: '#1D4ED8', border: '#1D4ED8' };
+  if (clean === '/combos' || clean === '/bundles') return { view: 'combos' };
+  if (clean === '/bulk' || clean === '/wholesale') return { view: 'bulk' };
+  if (clean === '/track' || clean === '/orders') return { view: 'track' };
+  if (clean === '/wishlist' || clean === '/saved') return { view: 'wishlist' };
+  if (clean === '/checkout' || clean === '/cart') return { view: 'checkout' };
+  if (clean === '/signin' || clean === '/login') return { view: 'signin' };
+  if (clean === '/profile' || clean === '/account') return { view: 'profile' };
+  if (clean === '/admin/login') return { view: 'admin-login' };
+  if (clean === '/admin') return { view: 'admin' };
+  const mappedPolicy = POLICY_URL_SLUG_MAP[clean];
+  if (mappedPolicy) return { view: 'page', pageSlug: mappedPolicy };
+  return { view: 'storefront' };
 }
 
-function getProductColorOptions(product: any): ProductColorOption[] {
-  if (!product) return [];
-  const variants: any[] = Array.isArray(product.variants) ? product.variants : [];
-
-  if (isPenOrWritingProduct(product)) {
-    const standardPenColors = [
-      { label: 'Blue Ink', shortLabel: 'Blue', keyword: 'blue' },
-      { label: 'Black Ink', shortLabel: 'Black', keyword: 'black' },
-      { label: 'Red Ink', shortLabel: 'Red', keyword: 'red' },
-      { label: 'Green Ink', shortLabel: 'Green', keyword: 'green' },
-      { label: 'Assorted (Multi-Colour)', shortLabel: 'Assorted', keyword: 'assorted' },
-    ];
-
-    return standardPenColors.map((sc) => {
-      const style = getColorSwatchStyle(sc.label);
-      const matchedVariant = variants.find((v) => {
-        const vText = `${v.variantName || ''} ${v.attributeValue || ''}`.toLowerCase();
-        if (sc.keyword === 'assorted') {
-          return vText.includes('assorted') || (vText.includes('blue') && vText.includes('black'));
-        }
-        return vText.includes(sc.keyword) && !vText.includes('assorted') && !(sc.keyword !== 'black' && vText.includes('+') && vText.includes('black'));
-      });
-      return {
-        label: sc.label,
-        shortLabel: sc.shortLabel,
-        swatch: style.swatch,
-        border: style.border,
-        variantId: matchedVariant?.id,
-      };
-    });
+function readStoredJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
   }
-
-  // Check if non-pen product has colour variants (e.g. Files & Folders, Watercolour Tins, etc.)
-  const colorVariants = variants.filter((v) => {
-    const attr = String(v.attributeType || '').toLowerCase();
-    const name = String(v.variantName || '').toLowerCase();
-    return (
-      attr.includes('colour') ||
-      attr.includes('color') ||
-      attr.includes('finish') ||
-      /\b(blue|black|red|green|navy|grey|slate|gold)\b/i.test(name)
-    );
-  });
-
-  if (colorVariants.length > 0) {
-    return colorVariants.map((v) => {
-      const cleanLabel = v.attributeValue || v.variantName;
-      const style = getColorSwatchStyle(cleanLabel);
-      return {
-        label: cleanLabel,
-        shortLabel: cleanLabel,
-        swatch: style.swatch,
-        border: style.border,
-        variantId: v.id,
-      };
-    });
-  }
-
-  return [];
 }
 
-interface FlyingCartItem {
-  id: string;
-  name: string;
-  priceFormatted: string;
-  illustrationType: string;
-  imageUrl?: string;
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-  xKeyframes: number[];
-  yKeyframes: number[];
-  scaleKeyframes: number[];
-  rotateKeyframes: number[];
-  opacityKeyframes: number[];
-  times: number[];
-}
-
-function normalizeCatalogueProduct(p: any): any {
-  const rawPrice = Number(
-    p?.sellingPricePaise ?? p?.basePricePaise ?? p?.pricePaise ?? p?.variants?.[0]?.sellingPricePaise ?? p?.variants?.[0]?.pricePaise ?? 0
+export function App() {
+  const initialRoute = useMemo(
+    () =>
+      resolveRouteFromUrl(
+        typeof window !== 'undefined' ? window.location.pathname : '/'
+      ),
+    []
   );
-  const sellingPricePaise = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 0;
-  const rawMrp = Number(
-    p?.mrpPaise ?? p?.baseMrpPaise ?? p?.variants?.[0]?.mrpPaise ?? sellingPricePaise
+
+  // Navigation & Route View
+  const [activeView, setActiveView] = useState<ActiveView>(initialRoute.view);
+  const [activeProductSlug, setActiveProductSlug] = useState<string>(
+    initialRoute.productSlug || ''
   );
-  const mrpPaise = Number.isFinite(rawMrp) && rawMrp >= sellingPricePaise ? rawMrp : sellingPricePaise;
-
-  const variants = Array.isArray(p?.variants)
-    ? p.variants.map((v: any) => {
-        const vRawPrice = Number(v?.sellingPricePaise ?? v?.pricePaise ?? sellingPricePaise);
-        const vSellingPrice = Number.isFinite(vRawPrice) && vRawPrice > 0 ? vRawPrice : sellingPricePaise;
-        const vRawMrp = Number(v?.mrpPaise ?? mrpPaise ?? vSellingPrice);
-        const vMrp = Number.isFinite(vRawMrp) && vRawMrp >= vSellingPrice ? vRawMrp : vSellingPrice;
-        return {
-          ...v,
-          sellingPricePaise: vSellingPrice,
-          pricePaise: vSellingPrice,
-          mrpPaise: vMrp,
-          stockQuantity: Number.isFinite(Number(v?.stockQuantity)) ? Number(v.stockQuantity) : 50,
-        };
-      })
-    : [];
-
-  const totalStock = Number.isFinite(Number(p?.totalStock))
-    ? Number(p.totalStock)
-    : variants.reduce((sum: number, v: any) => sum + Math.max(0, Number(v.stockQuantity || 0)), 0);
-
-  return {
-    ...p,
-    sellingPricePaise,
-    basePricePaise: sellingPricePaise,
-    mrpPaise,
-    baseMrpPaise: mrpPaise,
-    brandName: p?.brandName || 'Gayatri Essentials',
-    categoryName: p?.categoryName || 'Stationery',
-    shortDescription: p?.shortDescription || p?.description || '',
-    illustrationType: p?.illustrationType || 'spiral_notebook',
-    totalStock,
-    variants,
-  };
-}
-
-const POLICY_URL_SLUG_MAP: Record<string, string> = {
-  '/contact-us': 'contact-us',
-  '/contact': 'contact-us',
-  '/terms-and-conditions': 'terms-and-conditions',
-  '/terms': 'terms-and-conditions',
-  '/terms-of-service': 'terms-and-conditions',
-  '/refunds-and-cancellations': 'refunds-and-cancellations',
-  '/refund-policy': 'refunds-and-cancellations',
-  '/returns-and-refunds': 'refunds-and-cancellations',
-  '/shipping-and-pickup-policy': 'shipping-and-pickup-policy',
-  '/shipping-policy': 'shipping-and-pickup-policy',
-  '/privacy-policy': 'privacy-policy',
-  '/privacy': 'privacy-policy',
-};
-
-const DEFAULT_CMS_PAGES = [
-  {
-    id: 501,
-    title: 'Contact Us',
-    slug: 'contact-us',
-    pageType: 'POLICY',
-    summary:
-      'Official merchant contact details, registered retail store address, telephone, email, and customer grievance redressal officer for Gayatri Stationers.',
-    contentMarkdown: `Merchant & Legal Entity Name: Gayatri Stationers
-Trade / Brand Name: Gayatri Stationers (gayatristationers.co.in)
-
-Registered & Retail Store Address (Visit Us):
-Gayatri Stationers — Retail & Institutional Supply Counter
-Awas Vikas Market, Galla Mandi, Naubasta,
-Kanpur, Uttar Pradesh – 208021, India
-
-Customer Support & Order Helpline:
-• Telephone / Mobile / WhatsApp: +91 98765 43210
-• Customer Support Email: support@gayatristationers.co.in
-• Owner / Escalation Email: vainhavgupta20052014@gmail.com
-• Operating Hours: Monday to Saturday, 10:00 AM – 8:00 PM IST (Closed on Sundays & National Holidays)
-
-Grievance Redressal Officer:
-• Name: Vaibhav Gupta (Proprietor & Store Owner)
-• Designation: Grievance Officer — Gayatri Stationers
-• Address: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
-• Email: vainhavgupta20052014@gmail.com
-• Resolution Timeline: All payment, delivery, or product queries are acknowledged within 24 hours and resolved within 2–5 business days.`,
-    isActive: true,
-    showInFooter: true,
-    showInHeader: true,
-    status: 'PUBLISHED',
-  },
-  {
-    id: 502,
-    title: 'Terms & Conditions',
-    slug: 'terms-and-conditions',
-    pageType: 'POLICY',
-    summary:
-      'Terms of Service and Conditions of Sale governing online stationery purchases, INR pricing, GST invoicing, and order fulfilment at Gayatri Stationers.',
-    contentMarkdown: `1. Introduction & Acceptance of Terms
-Welcome to Gayatri Stationers ("we", "our", "us"). By accessing or placing an order on our website (https://gayatristationers.co.in), you agree to be bound by these Terms & Conditions, our Refunds & Cancellations Policy, and applicable laws of India.
-
-2. Products, Services & INR Pricing
-• Gayatri Stationers retails authentic school notebooks, registers, writing instruments (pens, pencils, markers), fine art & craft materials, geometry instruments, calculators, and office filing stationery, as well as institutional bulk supply services.
-• All product and service prices on this website are listed strictly in Indian Rupees (INR / ₹) and are inclusive of applicable Goods and Services Tax (GST) unless explicitly stated otherwise.
-• We reserve the right to update product pricing, stock availability, and promotional offers prior to order confirmation.
-
-3. Payments & Security
-• We accept online payments in Indian Rupees (INR) via Cashfree Payments (UPI, Google Pay, PhonePe, Paytm, Credit Cards, Debit Cards, and NetBanking), Cash on Delivery (COD) for eligible delivery orders, and Pay at Store Counter for Store Pickup orders.
-• All online payments are processed through PCI-DSS compliant payment gateways. Gayatri Stationers does not store your card numbers, CVV, or UPI PINs on its servers.
-
-4. Order Fulfilment, Store Pickup & Home Delivery
-• Store Pickup orders generate a 6-digit Pickup Code and can be collected from our Kanpur retail counter during business hours once marked Ready for Pickup.
-• Home Delivery orders are dispatched to the customer's shipping address and PIN code within 24–48 business hours.
-
-5. Limitation of Liability & Governing Law
-• Our maximum liability for any claim arising out of an order shall not exceed the total amount paid by the customer in INR for that specific order.
-• These Terms & Conditions are governed by the laws of India, and any disputes shall be subject to the exclusive jurisdiction of the courts in Kanpur, Uttar Pradesh.`,
-    isActive: true,
-    showInFooter: true,
-    showInHeader: true,
-    status: 'PUBLISHED',
-  },
-  {
-    id: 503,
-    title: 'Refunds & Cancellations',
-    slug: 'refunds-and-cancellations',
-    pageType: 'POLICY',
-    summary:
-      'Complete Order Cancellation, Return, Replacement, and Refund Policy with timelines for UPI, Card, NetBanking, and COD orders.',
-    contentMarkdown: `1. Order Cancellation Policy
-• Before Dispatch / Pickup: You may cancel your order at any time before it is marked "Shipped / Out for Delivery" or collected at the Store Pickup counter. A 100% full refund in INR (₹) will be initiated with zero cancellation charges.
-• How to Cancel: Contact our support desk at support@gayatristationers.co.in or +91 98765 43210 with your Order Number (e.g., GS-XXXXXX).
-
-2. Return & Replacement Eligibility (7-Day Window)
-• Customers can request a return, replacement, or refund within 7 calendar days of receiving the delivery or collecting the order if:
-  (a) The stationery item received is physically damaged, defective, or broken in transit;
-  (b) An incorrect product, variant, or quantity was delivered compared to the order invoice;
-  (c) The item is unused, in its original manufacturer packaging, with intact tags and seals.
-• Opened ink bottles, used pens/markers, or custom-printed institutional stationery are only eligible for return if delivered in a defective or damaged condition.
-
-3. Refund Processing & Timelines (in INR / ₹)
-• Online Prepaid Orders (UPI / Credit Card / Debit Card / NetBanking): Once your cancellation or return is approved, the refund is initiated within 24–48 business hours. The refunded amount in INR (₹) will be credited back to your original payment source within 5 to 7 business days, depending on your issuing bank or UPI provider.
-• Cash on Delivery (COD) & Pay at Store Orders: Refunds for returned COD or counter-paid orders are processed in INR (₹) via UPI transfer or NEFT/IMPS bank transfer to the customer's verified bank account within 3 to 5 business days.`,
-    isActive: true,
-    showInFooter: true,
-    showInHeader: true,
-    status: 'PUBLISHED',
-  },
-  {
-    id: 504,
-    title: 'Shipping & Delivery Policy',
-    slug: 'shipping-and-pickup-policy',
-    pageType: 'POLICY',
-    summary:
-      'Store Pickup counter slots, Home Delivery shipping charges in INR, and estimated dispatch timelines.',
-    contentMarkdown: `1. Store Pickup (FREE — ₹0 INR)
-• Select "Store Pickup" at checkout to reserve your stationery items immediately at Gayatri Stationers (Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021).
-• Present your 6-digit Pickup Code at our retail counter during business hours (Mon–Sat, 10:00 AM – 8:00 PM).
-
-2. Home Delivery & Courier Dispatch
-• Local Kanpur Delivery (PIN 208021, 208001, 208002, 208012): Same-Day or Next-Business-Day delivery (FREE ₹0 delivery surcharge).
-• Outstation & National Delivery: Dispatched within 24–48 hours via tracked surface/air courier with delivery in 2–5 business days.`,
-    isActive: true,
-    showInFooter: true,
-    showInHeader: false,
-    status: 'PUBLISHED',
-  },
-  {
-    id: 505,
-    title: 'Privacy Policy',
-    slug: 'privacy-policy',
-    pageType: 'POLICY',
-    summary:
-      'How Gayatri Stationers collects, uses, and protects your personal contact details and payment information.',
-    contentMarkdown: `1. Information We Collect
-We collect your name, mobile number, email address, and delivery address solely to process your stationery orders, send GST invoices, provide order tracking updates, and fulfill customer support requests.
-
-2. Payment Data Security
-All online payments (UPI, Credit/Debit Cards, NetBanking) are processed securely through our encrypted Online Payment Gateway using industry-standard PCI-DSS compliance. We never store your card numbers, CVV, or banking passwords.
-
-3. Data Sharing & Contact
-We never sell or rent customer personal data to third parties. Data is shared only with logistics partners and payment processors strictly to complete your transaction. For privacy inquiries, email support@gayatristationers.co.in.`,
-    isActive: true,
-    showInFooter: true,
-    showInHeader: false,
-    status: 'PUBLISHED',
-  },
-];
-
-export default function App() {
-  // Navigation view state (recognizes /admin, /signin, and policy URLs like /contact-us, /terms-and-conditions, /refunds-and-cancellations)
-  const [activeView, setActiveView] = useState<
-    | 'storefront'
-    | 'pdp'
-    | 'combos'
-    | 'bulk'
-    | 'track'
-    | 'checkout'
-    | 'confirmation'
-    | 'wishlist'
-    | 'page'
-    | 'signin'
-    | 'profile'
-    | 'admin-login'
-    | 'admin'
-  >(() => {
-    if (typeof window !== 'undefined') {
-      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
-      if (p === '/admin/login' || p === '/admin') return 'admin';
-      if (p === '/profile' || p === '/account') return 'profile';
-      if (p === '/wishlist') return 'wishlist';
-      if (p === '/signin' || p === '/login') return 'signin';
-      if (p === '/checkout' || p === '/cart') return 'checkout';
-      if (POLICY_URL_SLUG_MAP[p]) return 'page';
-    }
-    return 'storefront';
-  });
+  const [activePageSlug, setActivePageSlug] = useState<string>(
+    initialRoute.pageSlug || 'about-us'
+  );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activePageSlug, setActivePageSlug] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
-      if (POLICY_URL_SLUG_MAP[p]) return POLICY_URL_SLUG_MAP[p];
-    }
-    return 'contact-us';
-  });
-  const [activeHeroBannerIdx, setActiveHeroBannerIdx] = useState<number>(0);
+  const [megaMenuOpen, setMegaMenuOpen] = useState(false);
 
-  // Rufus AI Customer Shopping Assistant state
-  const [rufusOpen, setRufusOpen] = useState(false);
-  const [rufusInitialQuestion, setRufusInitialQuestion] = useState<string | null>(null);
-  const [pdpRufusQuestionInput, setPdpRufusQuestionInput] = useState('');
-
-  // Auth & Persistent Admin Session state
-  const [supabaseUser, setSupabaseUser] = useState<any>(null);
-  const [idToken, setIdToken] = useState<string | null>(() => {
-    try {
-      const raw = localStorage.getItem('gs_admin_session_v1');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed?.token && parsed?.expiresAt && Date.now() < Number(parsed.expiresAt)) {
-        return parsed.token;
-      }
-      localStorage.removeItem('gs_admin_session_v1');
-      return null;
-    } catch {
-      return null;
-    }
-  });
-  const [dbUser, setDbUser] = useState<{
-    id: number;
-    uid: string;
-    email: string;
-    fullName?: string | null;
-    phone?: string | null;
-    role: string;
-  } | null>(() => {
-    try {
-      const raw = localStorage.getItem('gs_admin_session_v1');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed?.user && parsed?.expiresAt && Date.now() < Number(parsed.expiresAt)) {
-        const u = parsed.user;
-        const isOwner =
-          String(u.email || '').trim().toLowerCase() === 'vainhavgupta20052014@gmail.com';
-        return {
-          ...u,
-          role: isOwner ? 'owner' : 'customer',
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  });
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [adminLoginEmail, setAdminLoginEmail] = useState('');
-  const [adminLoginName, setAdminLoginName] = useState('Gayatri Stationers Owner');
-  const [adminLoginAccessCode, setAdminLoginAccessCode] = useState('');
-  const [adminLoginSubmitting, setAdminLoginSubmitting] = useState(false);
-
-  // Customer Sign-In Modal state (Supabase Auth + PostgreSQL Profile)
-  const [customerAuthModalOpen, setCustomerAuthModalOpen] = useState(false);
-  const [customerAuthEmail, setCustomerAuthEmail] = useState('');
-  const [customerAuthPassword, setCustomerAuthPassword] = useState('');
-  const [customerAuthName, setCustomerAuthName] = useState('');
-  const [customerAuthSubmitting, setCustomerAuthSubmitting] = useState(false);
-  const [visibleProductCount, setVisibleProductCount] = useState<number>(12);
-
-const CATEGORY_ALIAS_GROUPS: string[][] = [
-  ['notebooks-and-registers', 'notebooks-and-diaries'],
-  ['pens-and-pencils', 'pens-and-writing-instruments', 'pens-and-writing'],
-  ['school-supplies', 'geometry-boxes-and-accessories', 'school-and-geometry-essentials'],
-  ['art-and-craft-supplies', 'drawing-and-painting', 'diy-and-crafts'],
-];
-
-const BRAND_ALIAS_GROUPS: string[][] = [
-  ['classmate', 'itc-classmate'],
-  ['camlin', 'camlin-kokuyo', 'kokuyo-camlin'],
-  ['schnieder-luxor', 'schneider-luxor', 'luxor', 'schneider'],
-  ['pentonic-linc', 'pentonic', 'linc'],
-  ['pidilite-fevicol', 'pidilite', 'fevicol'],
-  ['navneet-youva', 'navneet', 'youva'],
-];
-
-const getCanonicalCategoryKey = (slugOrName: string): string => {
-  const s = String(slugOrName || '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-  const group = CATEGORY_ALIAS_GROUPS.find((g) => g.includes(s));
-  return group ? group[0] : s;
-};
-
-const getCanonicalBrandKey = (slugOrName: string): string => {
-  const s = String(slugOrName || '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-  const group = BRAND_ALIAS_GROUPS.find((g) => g.includes(s));
-  return group ? group[0] : s;
-};
-
-const doesProductMatchCategory = (p: any, cat: any, childCatSlugs: string[] = []): boolean => {
-  if (!p || p.isActive === false || !cat) return false;
-  const catId = Number(cat.id);
-  const cSlug = String(cat.slug || '')
-    .toLowerCase()
-    .trim();
-  const cName = String(cat.name || '')
-    .toLowerCase()
-    .trim();
-  const cAliases = CATEGORY_ALIAS_GROUPS.find((g) => g.includes(cSlug)) || (cSlug ? [cSlug] : []);
-
-  const pCatSlug = String(p.categorySlug || '')
-    .toLowerCase()
-    .trim();
-  const pSubSlug = String(p.subcategorySlug || '')
-    .toLowerCase()
-    .trim();
-  const pCatName = String(p.categoryName || '')
-    .toLowerCase()
-    .trim();
-
-  if (Number.isFinite(catId) && catId > 0) {
-    if (Number(p.categoryId) === catId || Number(p.subcategoryId) === catId) {
-      if (!pCatSlug || cAliases.includes(pCatSlug) || pCatSlug === cSlug) {
-        return true;
-      }
-    }
-    if (Array.isArray(p.secondaryCategoryIds) && p.secondaryCategoryIds.map(Number).includes(catId)) {
-      return true;
-    }
-  }
-
-  if (cSlug && (pCatSlug === cSlug || pSubSlug === cSlug || cAliases.includes(pCatSlug) || cAliases.includes(pSubSlug))) {
-    return true;
-  }
-  if (childCatSlugs.length > 0 && (childCatSlugs.includes(pCatSlug) || childCatSlugs.includes(pSubSlug))) {
-    return true;
-  }
-  if (cName && pCatName === cName) {
-    return true;
-  }
-  return false;
-};
-
-const doesProductMatchBrand = (p: any, brand: any): boolean => {
-  if (!p || p.isActive === false || !brand) return false;
-  const brandId = Number(brand.id);
-  const bSlug = String(brand.slug || '')
-    .toLowerCase()
-    .trim();
-  const bName = String(brand.name || '')
-    .toLowerCase()
-    .trim();
-  const bAliases = BRAND_ALIAS_GROUPS.find((g) => g.includes(bSlug)) || (bSlug ? [bSlug] : []);
-  const bTokens = bName
-    .split(/[\s\-()]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 4 || ['doms', 'linc'].includes(t));
-
-  const pBrandSlug = String(p.brandSlug || '')
-    .toLowerCase()
-    .trim();
-  const pBrandName = String(p.brandName || '')
-    .toLowerCase()
-    .trim();
-  const pBrandDerivedSlug = pBrandName.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  const pTitle = String(p.name || '')
-    .toLowerCase()
-    .trim();
-
-  if (bSlug && (pBrandSlug === bSlug || pBrandDerivedSlug === bSlug || bAliases.includes(pBrandSlug) || bAliases.includes(pBrandDerivedSlug))) {
-    return true;
-  }
-  if (bName && pBrandName === bName) {
-    return true;
-  }
-  if (bTokens.length > 0 && bTokens.some((tok) => pBrandName.includes(tok) || pBrandSlug.includes(tok) || pTitle.includes(tok))) {
-    return true;
-  }
-  if (Number.isFinite(brandId) && brandId > 0 && Number(p.brandId) === brandId && (!pBrandSlug || pBrandSlug === bSlug || bAliases.includes(pBrandSlug))) {
-    return true;
-  }
-  return false;
-};
-
-const DEFAULT_CATEGORIES = [
-  { id: 1, name: 'Notebooks & Diaries', slug: 'notebooks-and-diaries', description: 'Ruled registers, spiral notebooks, and planners', isActive: true, showInNav: true, showOnHomepage: true, productCount: 3 },
-  { id: 2, name: 'Pens & Writing Instruments', slug: 'pens-and-writing-instruments', description: 'Gel pens, ball pens, fountain pens, and highlighters', isActive: true, showInNav: true, showOnHomepage: true, productCount: 4 },
-  { id: 3, name: 'Art & Craft Supplies', slug: 'art-and-craft-supplies', description: 'Acrylic paints, sketchbooks, and canvases', isActive: true, showInNav: true, showOnHomepage: true, productCount: 2 },
-  { id: 4, name: 'School & Geometry Essentials', slug: 'school-and-geometry-essentials', description: 'Geometry boxes, compasses, and rulers', isActive: true, showInNav: true, showOnHomepage: true, productCount: 2 },
-];
-
-const DEFAULT_BRANDS = [
-  { id: 1, name: 'ITC Classmate', slug: 'itc-classmate', description: 'Spiral notebooks, registers, and school stationery', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 1, productCount: 2 },
-  { id: 2, name: 'Unomax', slug: 'unomax', description: 'Precision liquid ball pens and gel pens', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 2, productCount: 1 },
-  { id: 3, name: 'Flair', slug: 'flair', description: 'Roller gel pens, fountain pens, and markers', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 3, productCount: 1 },
-  { id: 4, name: 'DOMS', slug: 'doms', description: 'Colour pencils, geometry boxes, and art kits', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 4, productCount: 2 },
-  { id: 5, name: 'Camlin Kokuyo', slug: 'camlin-kokuyo', description: 'Fine art paints, brushes, markers, and inks', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 5, productCount: 1 },
-  { id: 6, name: 'Faber-Castell', slug: 'faber-castell', description: 'Highlighters, drawing pencils, and connectors', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 6, productCount: 1 },
-  { id: 7, name: 'Schnieder Luxor', slug: 'schnieder-luxor', description: 'Precision German rollerball pens, fineliners, and highlighters', isFeatured: true, showInNav: true, isActive: true, status: 'PUBLISHED', sortOrder: 7, productCount: 1 },
-];
-
-const DEFAULT_PRODUCTS = [
-  {
-    id: 1,
-    name: 'Classmate Pulse 6-Subject Spiral Notebook (300 Pages, 70 GSM)',
-    slug: 'classmate-pulse-6-subject-spiral-300p',
-    sku: 'GS-NB-CM300',
-    categoryId: 1,
-    categoryName: 'Notebooks & Diaries',
-    categorySlug: 'notebooks-and-diaries',
-    brandId: 1,
-    brandName: 'ITC Classmate',
-    brandSlug: 'itc-classmate',
-    description: 'High quality 70 GSM elemental chlorine-free paper 6-subject spiral notebook with divider tabs.',
-    shortDescription: 'A4 6-subject spiral register with micro-perforated 70 GSM sheets.',
-    illustrationType: 'spiral_notebook',
-    mrpPaise: 22000,
-    sellingPricePaise: 19500,
-    baseMrpPaise: 22000,
-    basePricePaise: 19500,
-    totalStock: 48,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: true,
-    status: 'PUBLISHED',
-    badge: 'BESTSELLER',
-    variants: [
-      { id: 1, variantName: 'Single Ruled — 300 Pages (A4)', sku: 'GS-NB-CM300-SR', mrpPaise: 22000, sellingPricePaise: 19500, pricePaise: 19500, stockQuantity: 48, inStock: true },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Long Hardbound Account & Register Book (240 Pages, A4)',
-    slug: 'long-hardbound-register-240p',
-    sku: 'GS-NB-REG240',
-    categoryId: 1,
-    categoryName: 'Notebooks & Diaries',
-    categorySlug: 'notebooks-and-diaries',
-    brandId: 1,
-    brandName: 'ITC Classmate',
-    brandSlug: 'itc-classmate',
-    description: 'Durable section-sewn hardbound register ideal for school notes, coaching institutes, and office ledger records.',
-    shortDescription: 'Stiff laminated cover long register for daily academic and office work.',
-    illustrationType: 'hardbound_register',
-    mrpPaise: 14000,
-    sellingPricePaise: 12000,
-    baseMrpPaise: 14000,
-    basePricePaise: 12000,
-    totalStock: 65,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: false,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 4, variantName: 'Single Pack (240 Pages)', sku: 'GS-NB-REG240-1', mrpPaise: 14000, sellingPricePaise: 12000, pricePaise: 12000, stockQuantity: 65, inStock: true },
-    ],
-  },
-  {
-    id: 3,
-    name: 'Unomax Ultron 2X Matte Liquid Ball Pen Set (0.7mm Tip)',
-    slug: 'unomax-ultron-2x-ball-pen-set',
-    sku: 'GS-PN-UNO2X',
-    categoryId: 2,
-    categoryName: 'Pens & Writing Instruments',
-    categorySlug: 'pens-and-writing-instruments',
-    brandId: 2,
-    brandName: 'Unomax',
-    brandSlug: 'unomax',
-    description: 'Ultra-low viscosity ink ball pens offering 2X writing length and smudge-free exam performance.',
-    shortDescription: 'Smooth 0.7mm matte grip ball pens for fast exam writing.',
-    illustrationType: 'ball_pen_box',
-    mrpPaise: 10000,
-    sellingPricePaise: 9000,
-    baseMrpPaise: 10000,
-    basePricePaise: 9000,
-    totalStock: 80,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: true,
-    status: 'PUBLISHED',
-    badge: 'POPULAR',
-    variants: [
-      { id: 6, variantName: 'Box of 10 Pens — Blue Ink', attributeType: 'Ink Colour', attributeValue: 'Blue Ink', sku: 'GS-PN-UNO2X-BLU', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 80, inStock: true },
-      { id: 601, variantName: 'Box of 10 Pens — Black Ink', attributeType: 'Ink Colour', attributeValue: 'Black Ink', sku: 'GS-PN-UNO2X-BLK', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 55, inStock: true },
-      { id: 602, variantName: 'Box of 10 Pens — Red Ink', attributeType: 'Ink Colour', attributeValue: 'Red Ink', sku: 'GS-PN-UNO2X-RED', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 35, inStock: true },
-      { id: 603, variantName: 'Box of 10 Pens — Green Ink', attributeType: 'Ink Colour', attributeValue: 'Green Ink', sku: 'GS-PN-UNO2X-GRN', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 25, inStock: true },
-      { id: 604, variantName: 'Box of 10 Pens — Assorted (Blue, Black, Red)', attributeType: 'Ink Colour', attributeValue: 'Assorted (Multi-Colour)', sku: 'GS-PN-UNO2X-AST', mrpPaise: 10000, sellingPricePaise: 9000, pricePaise: 9000, stockQuantity: 45, inStock: true },
-    ],
-  },
-  {
-    id: 4,
-    name: 'Flair Zoox F7 Roller Gel Pen Pack (0.5mm Needle Tip)',
-    slug: 'flair-zoox-f7-roller-gel-pen',
-    sku: 'GS-PN-FLZ7',
-    categoryId: 2,
-    categoryName: 'Pens & Writing Instruments',
-    categorySlug: 'pens-and-writing-instruments',
-    brandId: 3,
-    brandName: 'Flair',
-    brandSlug: 'flair',
-    description: 'Waterproof pigment gel ink pens with ergonomic barrel and fine 0.5mm needle tip.',
-    shortDescription: 'Quick-dry waterproof gel ink pens for crisp handwriting.',
-    illustrationType: 'gel_pen_pack',
-    mrpPaise: 15000,
-    sellingPricePaise: 13500,
-    baseMrpPaise: 15000,
-    basePricePaise: 13500,
-    totalStock: 50,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: false,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 8, variantName: 'Pack of 5 Pens — Blue Ink', attributeType: 'Ink Colour', attributeValue: 'Blue Ink', sku: 'GS-PN-FLZ7-5B', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 50, inStock: true },
-      { id: 801, variantName: 'Pack of 5 Pens — Black Ink', attributeType: 'Ink Colour', attributeValue: 'Black Ink', sku: 'GS-PN-FLZ7-5K', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 40, inStock: true },
-      { id: 802, variantName: 'Pack of 5 Pens — Red Ink', attributeType: 'Ink Colour', attributeValue: 'Red Ink', sku: 'GS-PN-FLZ7-5R', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 30, inStock: true },
-      { id: 803, variantName: 'Pack of 5 Pens — Green Ink', attributeType: 'Ink Colour', attributeValue: 'Green Ink', sku: 'GS-PN-FLZ7-5G', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 25, inStock: true },
-      { id: 804, variantName: 'Pack of 5 Pens — Assorted (Blue, Black, Red)', attributeType: 'Ink Colour', attributeValue: 'Assorted (Multi-Colour)', sku: 'GS-PN-FLZ7-5A', mrpPaise: 15000, sellingPricePaise: 13500, pricePaise: 13500, stockQuantity: 35, inStock: true },
-    ],
-  },
-  {
-    id: 6,
-    name: 'DOMS Bi-Colour & Water Colour Pencils Studio Tin (24 Shades + Brush)',
-    slug: 'doms-water-colour-pencils-24-tin',
-    sku: 'GS-AR-DOM24',
-    categoryId: 3,
-    categoryName: 'Art & Craft Supplies',
-    categorySlug: 'art-and-craft-supplies',
-    brandId: 4,
-    brandName: 'DOMS',
-    brandSlug: 'doms',
-    description: 'Rich water-soluble colour pigments housed in a protective metal tin with detailing brush.',
-    shortDescription: '24 vibrant water-soluble colour pencils in a collectible tin.',
-    illustrationType: 'colour_pencil_tin',
-    mrpPaise: 32000,
-    sellingPricePaise: 28500,
-    baseMrpPaise: 32000,
-    basePricePaise: 28500,
-    totalStock: 35,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: true,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 11, variantName: '24 Shades Metal Tin + Free Brush', sku: 'GS-AR-DOM24-TIN', mrpPaise: 32000, sellingPricePaise: 28500, pricePaise: 28500, stockQuantity: 35, inStock: true },
-    ],
-  },
-  {
-    id: 8,
-    name: 'DOMS Geommy Mathematical Drawing Instrument Box (Die-Cast Compass Set)',
-    slug: 'doms-geommy-geometry-box',
-    sku: 'GS-GM-DOMG1',
-    categoryId: 4,
-    categoryName: 'School & Geometry Essentials',
-    categorySlug: 'school-and-geometry-essentials',
-    brandId: 4,
-    brandName: 'DOMS',
-    brandSlug: 'doms',
-    description: 'Complete school geometry kit with self-centering die-cast compass, divider, set squares, protractor, and 15cm scale.',
-    shortDescription: 'Precision die-cast metal compass & mathematical drawing instrument box.',
-    illustrationType: 'geometry_box',
-    mrpPaise: 16000,
-    sellingPricePaise: 14500,
-    baseMrpPaise: 16000,
-    basePricePaise: 14500,
-    totalStock: 60,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: true,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 15, variantName: 'Standard Metal Tin Box', sku: 'GS-GM-DOMG1-STD', mrpPaise: 16000, sellingPricePaise: 14500, pricePaise: 14500, stockQuantity: 60, inStock: true },
-    ],
-  },
-  {
-    id: 9,
-    name: 'Camlin Kokuyo Artist Water Colour Cakes Studio Palette (24 Shades + Brush)',
-    slug: 'camlin-kokuyo-artist-water-colour-cakes-24',
-    sku: 'GS-AR-CAM24',
-    categoryId: 3,
-    categoryName: 'Art & Craft Supplies',
-    categorySlug: 'art-and-craft-supplies',
-    brandId: 5,
-    brandName: 'Camlin Kokuyo',
-    brandSlug: 'camlin-kokuyo',
-    description: 'Vibrant transparent artist-grade watercolour cakes with mixing lid palette and synthetic round brush.',
-    shortDescription: '24 vibrant artist watercolour cakes with mixing palette & synthetic brush.',
-    illustrationType: 'paint_palette',
-    mrpPaise: 24000,
-    sellingPricePaise: 21500,
-    baseMrpPaise: 24000,
-    basePricePaise: 21500,
-    totalStock: 42,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: false,
-    isNewArrival: true,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 16, variantName: '24 Shades Studio Palette', sku: 'GS-AR-CAM24-STD', mrpPaise: 24000, sellingPricePaise: 21500, pricePaise: 21500, stockQuantity: 42, inStock: true },
-    ],
-  },
-  {
-    id: 10,
-    name: 'Faber-Castell Textliner 46 Superfluorescent Pastel Highlighter Set (Pack of 4)',
-    slug: 'faber-castell-textliner-pastel-highlighters-4',
-    sku: 'GS-PW-FAB04',
-    categoryId: 2,
-    categoryName: 'Pens & Writing Instruments',
-    categorySlug: 'pens-and-writing-instruments',
-    brandId: 6,
-    brandName: 'Faber-Castell',
-    brandSlug: 'faber-castell',
-    description: 'Smudge-proof water-based pastel highlighters with 3 line widths (1mm, 2mm, 5mm) for study notes and revision.',
-    shortDescription: 'Set of 4 smudge-proof chisel-tip pastel highlighters for revision notes.',
-    illustrationType: 'highlighter_set',
-    mrpPaise: 18000,
-    sellingPricePaise: 16000,
-    baseMrpPaise: 18000,
-    basePricePaise: 16000,
-    totalStock: 50,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: false,
-    isNewArrival: true,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 17, variantName: 'Pack of 4 Pastel Shades', sku: 'GS-PW-FAB04-SET', mrpPaise: 18000, sellingPricePaise: 16000, pricePaise: 16000, stockQuantity: 50, inStock: true },
-    ],
-  },
-  {
-    id: 11,
-    name: 'Schnieder Luxor One Business 0.6mm Liquid Rollerball & Fineliner Set (Pack of 5)',
-    slug: 'schnieder-luxor-one-business-rollerball-set-5',
-    sku: 'GS-PN-LUX-SCH05',
-    categoryId: 2,
-    categoryName: 'Pens & Writing Instruments',
-    categorySlug: 'pens-and-writing-instruments',
-    brandId: 7,
-    brandName: 'Schnieder Luxor',
-    brandSlug: 'schnieder-luxor',
-    description: 'Schnieder Luxor precision 0.6mm rollerball pens featuring regulator ink control, waterproof pigment ink, and ergonomic rubberised grip.',
-    shortDescription: 'German-engineered Super-Flow liquid ink rollerball pens for effortless executive writing.',
-    illustrationType: 'gel_pen_pack',
-    mrpPaise: 25000,
-    sellingPricePaise: 22000,
-    baseMrpPaise: 25000,
-    basePricePaise: 22000,
-    totalStock: 54,
-    isActive: true,
-    isFeatured: true,
-    isBestseller: true,
-    isNewArrival: true,
-    status: 'PUBLISHED',
-    variants: [
-      { id: 18, variantName: 'Assorted Pack of 5 Pens', sku: 'GS-PN-LUX-SCH05-STD', mrpPaise: 25000, sellingPricePaise: 22000, pricePaise: 22000, stockQuantity: 54, inStock: true },
-    ],
-  },
-].map(normalizeCatalogueProduct);
-
-  // Storefront data from PostgreSQL + LocalStorage persistence
-  const [loadingBootstrap, setLoadingBootstrap] = useState(true);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
-  const [categories, setCategories] = useState<any[]>(() => {
-    try {
-      const raw = localStorage.getItem('gs_fallback_categories_v1');
-      const stored = raw ? JSON.parse(raw) : [];
-      const merged = new Map<string, any>();
-      for (const c of [...(Array.isArray(stored) ? stored : []), ...DEFAULT_CATEGORIES]) {
-        if (!c || !c.name) continue;
-        const key = getCanonicalCategoryKey(c.slug || c.name);
-        const existing = merged.get(key);
-        merged.set(key, existing ? { ...c, ...existing, productCount: Math.max(Number(existing.productCount || 0), Number(c.productCount || 0)) } : c);
-      }
-      return Array.from(merged.values());
-    } catch {
-      return DEFAULT_CATEGORIES;
-    }
-  });
-  const [brands, setBrands] = useState<any[]>(() => {
-    try {
-      const raw = localStorage.getItem('gs_fallback_brands_v1');
-      const stored = raw ? JSON.parse(raw) : [];
-      const merged = new Map<string, any>();
-      for (const b of [...(Array.isArray(stored) ? stored : []), ...DEFAULT_BRANDS]) {
-        if (!b || !b.name) continue;
-        const key = getCanonicalBrandKey(b.slug || b.name);
-        const existing = merged.get(key);
-        merged.set(key, existing ? { ...b, ...existing, productCount: Math.max(Number(existing.productCount || 0), Number(b.productCount || 0)) } : b);
-      }
-      return Array.from(merged.values());
-    } catch {
-      return DEFAULT_BRANDS;
-    }
-  });
-  const [products, setProducts] = useState<any[]>(() => {
-    try {
-      const raw = localStorage.getItem('gs_fallback_catalogue_v1');
-      const stored = raw ? JSON.parse(raw) : [];
-      const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
-      const deletedIds = new Set<string>(
-        Array.isArray(deletedRaw ? JSON.parse(deletedRaw) : [])
-          ? JSON.parse(deletedRaw || '[]').map((x: any) => String(x).toLowerCase())
-          : []
-      );
-      const merged = new Map<string, any>();
-      for (const p of [...DEFAULT_PRODUCTS, ...(Array.isArray(stored) ? stored : [])]) {
-        if (!p || !p.name) continue;
-        if (
-          deletedIds.has(String(p.id).toLowerCase()) ||
-          deletedIds.has(String(p.sku || '').toLowerCase()) ||
-          deletedIds.has(String(p.name || '').toLowerCase())
-        ) {
-          continue;
-        }
-        merged.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
-      }
-      const list = Array.from(merged.values());
-      return list.length > 0 ? list : DEFAULT_PRODUCTS;
-    } catch {
-      return DEFAULT_PRODUCTS;
-    }
-  });
-  const [bundles, setBundles] = useState<any[]>([]);
-  const [coupons, setCoupons] = useState<any[]>([]);
-  const [serviceablePincodes, setServiceablePincodes] = useState<any[]>([
-    {
-      id: 1,
-      pincode: '208021',
-      city: 'Kanpur (Naubasta / Awas Vikas / Galla Mandi)',
-      state: 'Uttar Pradesh',
-      deliveryFeePaise: 0,
-      freeDeliveryThresholdPaise: 0,
-      codAvailable: true,
-      estimatedDays: 'Same Day / Next Day Delivery',
-      isActive: true,
-    },
-    {
-      id: 2,
-      pincode: '208001',
-      city: 'Kanpur (Civil Lines / Mall Road)',
-      state: 'Uttar Pradesh',
-      deliveryFeePaise: 0,
-      freeDeliveryThresholdPaise: 0,
-      codAvailable: true,
-      estimatedDays: 'Same Day / Next Day Delivery',
-      isActive: true,
-    },
-    {
-      id: 3,
-      pincode: '208002',
-      city: 'Kanpur (Swaroop Nagar / Arya Nagar)',
-      state: 'Uttar Pradesh',
-      deliveryFeePaise: 0,
-      freeDeliveryThresholdPaise: 0,
-      codAvailable: true,
-      estimatedDays: 'Same Day / Next Day Delivery',
-      isActive: true,
-    },
-    {
-      id: 4,
-      pincode: '208012',
-      city: 'Kanpur (Gumti No. 5 / Kidwai Nagar)',
-      state: 'Uttar Pradesh',
-      deliveryFeePaise: 0,
-      freeDeliveryThresholdPaise: 0,
-      codAvailable: true,
-      estimatedDays: '1–2 Business Days',
-      isActive: true,
-    },
-  ]);
-  const [storeSettings, setStoreSettings] = useState<Record<string, any>>({});
-  const [navigationItems, setNavigationItems] = useState<any[]>([]);
-  const [homepageSections, setHomepageSections] = useState<any[]>([]);
-  const [banners, setBanners] = useState<any[]>([]);
+  // Storefront Data
+  const [categories, setCategories] = useState<any[]>(() =>
+    readStoredJson('gs_fallback_categories_v1', DEFAULT_CATEGORIES)
+  );
+  const [brands, setBrands] = useState<any[]>(() =>
+    readStoredJson('gs_fallback_brands_v1', DEFAULT_BRANDS)
+  );
+  const [products, setProducts] = useState<any[]>(() =>
+    readStoredJson('gs_fallback_catalogue_v1', DEFAULT_PRODUCTS).map(normalizeCatalogueProduct)
+  );
+  const [bundles, setBundles] = useState<any[]>(DEFAULT_BUNDLES);
+  const [coupons, setCoupons] = useState<any[]>(() =>
+    readStoredJson('gs_coupons_v1', DEFAULT_COUPONS)
+  );
+  const [serviceablePincodes, setServiceablePincodes] = useState<any[]>(DEFAULT_PINCODES);
+  const [storeSettings, setStoreSettings] = useState<Record<string, any>>(() =>
+    readStoredJson('gs_store_settings_v1', {})
+  );
   const [cmsPages, setCmsPages] = useState<any[]>(DEFAULT_CMS_PAGES);
-  const [cmsRevisions, setCmsRevisions] = useState<any[]>([]);
-  const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<{
-    cashfreeConfigured: boolean;
-    cashfreeEnvironment?: 'SANDBOX' | 'PRODUCTION';
-    cashfreeAppId?: string | null;
-    razorpayConfigured: boolean;
-    razorpayKeyId: string | null;
-  }>({ cashfreeConfigured: true, cashfreeEnvironment: 'SANDBOX', razorpayConfigured: false, razorpayKeyId: null });
+  const [bootstrapData, setBootstrapData] = useState<any>(null);
 
-  // Catalogue search, filters, sorting, and budget filters
+  // Smart Filters (Category, Brand, Ruling, Tip/Spec, Price Range, Sort)
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchSuggestionsOpen, setSearchSuggestionsOpen] = useState(false);
-  const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('ALL');
-  const [selectedBrandSlug, setSelectedBrandSlug] = useState<string>('ALL');
-  const [maxPriceFilterPaise, setMaxPriceFilterPaise] = useState<number>(0); // 0 = no limit
-  const [inStockOnly, setInStockOnly] = useState<boolean>(false);
-  const [sortBy, setSortBy] = useState<'featured' | 'bestseller' | 'newest' | 'price_asc' | 'price_desc'>('featured');
-  const [selectedVariantByProduct, setSelectedVariantByProduct] = useState<Record<number, number>>({});
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('');
+  const [selectedBrandSlug, setSelectedBrandSlug] = useState<string>('');
+  const [rulingFilter, setRulingFilter] = useState<string>('ALL');
+  const [tipFilter, setTipFilter] = useState<string>('ALL');
+  const [priceRangeFilter, setPriceRangeFilter] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc'>('featured');
+  const [bulkPreFillNote, setBulkPreFillNote] = useState<string>('');
+
+  // Variant & Ink Colour selections per product ID
+  const [selectedVariantByProduct, setSelectedVariantByProduct] = useState<Record<number, number>>(
+    {}
+  );
   const [selectedColorByProduct, setSelectedColorByProduct] = useState<Record<number, string>>({});
+  const [pdpQuantity, setPdpQuantity] = useState(1);
 
-  // Product Detail Page (PDP) state
-  const [activeProductSlug, setActiveProductSlug] = useState<string | null>(null);
-  const [pdpVariantId, setPdpVariantId] = useState<number | null>(null);
-  const [pdpSelectedColor, setPdpSelectedColor] = useState<string>('');
-  const [pdpQuantity, setPdpQuantity] = useState<number>(1);
-  const [pdpSelectedImageUrl, setPdpSelectedImageUrl] = useState<string | null>(null);
-
-  // Cart & Server Calculation state
-  const [guestSessionId] = useState<string>(() => {
-    try {
-      const existing = localStorage.getItem('gs_guest_session_v1');
-      if (existing) return existing;
-      const created = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      localStorage.setItem('gs_guest_session_v1', created);
-      return created;
-    } catch {
-      return `guest_${Date.now()}`;
-    }
-  });
-
-  const [cartItems, setCartItems] = useState<LocalCartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('gs_cart_items_v1');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Cart & Fulfilment State
+  const [cartItems, setCartItems] = useState<LocalCartItem[]>(() =>
+    readStoredJson('gs_cart_items_v1', [])
+  );
+  const [wishlistProductIds, setWishlistProductIds] = useState<number[]>(() =>
+    readStoredJson('gs_wishlist_v1', [])
+  );
+  const [compareProductIds, setCompareProductIds] = useState<number[]>(() =>
+    readStoredJson('gs_compare_ids_v1', [])
+  );
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [compareToast, setCompareToast] = useState<string | null>(null);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
-  const [couponInput, setCouponInput] = useState('');
-  const [appliedCouponCode, setAppliedCouponCode] = useState('');
-  const [serverCartResult, setServerCartResult] = useState<any>(null);
-  const [cartLoading, setCartLoading] = useState(false);
-  const [cartFeedbackToast, setCartFeedbackToast] = useState<string | null>(null);
-  const [flyingCartItems, setFlyingCartItems] = useState<FlyingCartItem[]>([]);
-  const [cartButtonBouncing, setCartButtonBouncing] = useState(false);
-  const cartButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Wishlist state (persisted to localStorage + synced with account when signed in)
-  const [wishlistProductIds, setWishlistProductIds] = useState<number[]>(() => {
-    try {
-      const saved = localStorage.getItem('gs_wishlist_v1');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed.map((id) => Number(id)).filter(Boolean) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Side-by-Side Product Comparison state (up to 3 items, persisted to localStorage)
-  const [compareProductIds, setCompareProductIds] = useState<number[]>(() => {
-    try {
-      const saved = localStorage.getItem('gs_compare_ids_v1');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed)
-        ? parsed.map((id) => Number(id)).filter(Boolean).slice(0, 3)
-        : [];
-    } catch {
-      return [];
-    }
-  });
-  const [compareModalOpen, setCompareModalOpen] = useState<boolean>(false);
-  const [compareToastMessage, setCompareToastMessage] = useState<string | null>(null);
-
-  // Helper: only restore saved profile fields if an active, non-expired login session exists
-  const getValidActiveSession = () => {
-    try {
-      const rawSess = localStorage.getItem('gs_admin_session_v1');
-      if (!rawSess) return null;
-      const parsedSess = JSON.parse(rawSess);
-      if (parsedSess?.token && parsedSess?.expiresAt && Date.now() < Number(parsedSess.expiresAt)) {
-        return parsedSess;
-      }
-      localStorage.removeItem('gs_admin_session_v1');
-      localStorage.removeItem('gs_user_profile_v1');
-    } catch {
-      // ignore
-    }
-    return null;
-  };
-
-  // Checkout & Customer Profile state (only pre-populated when actively signed in)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentMethod>('STORE_PICKUP');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASHFREE_ONLINE');
-  const [customerName, setCustomerName] = useState<string>(() => {
-    try {
-      const activeSess = getValidActiveSession();
-      if (!activeSess) return '';
-      const savedProf = localStorage.getItem('gs_user_profile_v1');
-      if (savedProf) {
-        const parsed = JSON.parse(savedProf);
-        if (parsed?.fullName) return String(parsed.fullName);
-      }
-      if (activeSess?.user?.fullName) return String(activeSess.user.fullName);
-    } catch {
-      // ignore
-    }
-    return '';
-  });
-  const [customerPhone, setCustomerPhone] = useState<string>(() => {
-    try {
-      const activeSess = getValidActiveSession();
-      if (!activeSess) return '';
-      const savedProf = localStorage.getItem('gs_user_profile_v1');
-      if (savedProf) {
-        const parsed = JSON.parse(savedProf);
-        if (parsed?.phone) return String(parsed.phone);
-      }
-      if (activeSess?.user?.phone) return String(activeSess.user.phone);
-    } catch {
-      // ignore
-    }
-    return '';
-  });
-  const [customerEmail, setCustomerEmail] = useState<string>(() => {
-    try {
-      const activeSess = getValidActiveSession();
-      if (!activeSess) return '';
-      const savedProf = localStorage.getItem('gs_user_profile_v1');
-      if (savedProf) {
-        const parsed = JSON.parse(savedProf);
-        if (parsed?.email) return String(parsed.email);
-      }
-      if (activeSess?.user?.email) return String(activeSess.user.email);
-    } catch {
-      // ignore
-    }
-    return '';
-  });
-  const [pickupWindow, setPickupWindow] = useState('Direct Counter Collection (Mon–Sat: 10:00 AM – 8:00 PM)');
-  const [shippingAddress, setShippingAddress] = useState(() => {
-    try {
-      const activeSess = getValidActiveSession();
-      if (activeSess) {
-        const savedProf = localStorage.getItem('gs_user_profile_v1');
-        if (savedProf) {
-          const parsed = JSON.parse(savedProf);
-          if (parsed?.shippingAddress) {
-            return {
-              addressLine1: parsed.shippingAddress.addressLine1 || '',
-              addressLine2: parsed.shippingAddress.addressLine2 || '',
-              landmark: parsed.shippingAddress.landmark || '',
-              city: parsed.shippingAddress.city || 'Kanpur',
-              state: parsed.shippingAddress.state || 'Uttar Pradesh',
-              pincode: parsed.shippingAddress.pincode || '208021',
-            };
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return {
-      addressLine1: '',
-      addressLine2: '',
-      landmark: '',
-      city: 'Kanpur',
-      state: 'Uttar Pradesh',
-      pincode: '208021',
-    };
-  });
-  const [orderNotes, setOrderNotes] = useState('');
+  const [appliedCouponCode, setAppliedCouponCode] = useState('');
+  const [couponMessage, setCouponMessage] = useState<string | undefined>(undefined);
+  const [orderNote, setOrderNote] = useState('');
+  const [pickupWindow, setPickupWindow] = useState('Today · Within 2 Hours (10 AM – 9 PM)');
+  const [gstin, setGstin] = useState('');
+
+  // Customer & Auth State
+  const storedSession = useMemo(() => readStoredJson<any>('gs_admin_session_v1', null), []);
+  const storedProfile = useMemo(() => readStoredJson<any>('gs_user_profile_v1', {}), []);
+
+  const [idToken, setIdToken] = useState<string | null>(storedSession?.token || null);
+  const [dbUser, setDbUser] = useState<any>(storedSession?.user || null);
+
+  const [customerName, setCustomerName] = useState<string>(
+    storedProfile?.fullName || storedSession?.user?.fullName || ''
+  );
+  const [customerPhone, setCustomerPhone] = useState<string>(
+    storedProfile?.phone || storedSession?.user?.phone || ''
+  );
+  const [customerEmail, setCustomerEmail] = useState<string>(
+    storedProfile?.email || storedSession?.user?.email || ''
+  );
+  const [shippingAddress, setShippingAddress] = useState<string>(
+    storedProfile?.shippingAddress || ''
+  );
+  const [shippingCity, setShippingCity] = useState<string>(
+    storedProfile?.shippingCity || 'Kanpur'
+  );
+  const [shippingPincode, setShippingPincode] = useState<string>(
+    storedProfile?.shippingPincode || '208021'
+  );
+
+  // Auth form fields
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authEmailInput, setAuthEmailInput] = useState('');
+  const [authNameInput, setAuthNameInput] = useState('');
+  const [authPhoneInput, setAuthPhoneInput] = useState('');
+  const [authPasswordInput, setAuthPasswordInput] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Admin Login fields
+  const [adminEmailInput, setAdminEmailInput] = useState(OWNER_EMAIL);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
+  const [adminAuthSubmitting, setAdminAuthSubmitting] = useState(false);
+
+  // Profile saving & Order state
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [myOrders, setMyOrders] = useState<any[]>(() =>
+    readStoredJson('gs_my_orders_v1', [])
+  );
+
+  // Order Tracking
+  const [trackQuery, setTrackQuery] = useState('');
+  const [trackSearching, setTrackSearching] = useState(false);
+  const [trackResults, setTrackResults] = useState<any[]>(() =>
+    readStoredJson('gs_my_orders_v1', []).slice(0, 2)
+  );
+
+  // Checkout & Cashfree recovery state
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [confirmedOrderData, setConfirmedOrderData] = useState<any>(null);
-  const hasInitializedProfileFieldsRef = useRef<boolean>(false);
+  const [pendingOnlineOrder, setPendingOnlineOrder] = useState<any | null>(null);
+  const [confirmedOrderData, setConfirmedOrderData] = useState<any | null>(null);
+
+  // Vidya AI Assistant
+  const [isRufusOpen, setIsRufusOpen] = useState(false);
+  const [rufusInitialQuestion, setRufusInitialQuestion] = useState<string | null>(null);
+
+  // Toast
+  const [toastText, setToastText] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => {
+    setToastText(msg);
+    window.setTimeout(() => {
+      setToastText((prev) => (prev === msg ? null : prev));
+    }, 3200);
+  }, []);
 
   useEffect(() => {
-    if (dbUser || supabaseUser) {
-      if (!hasInitializedProfileFieldsRef.current) {
-        hasInitializedProfileFieldsRef.current = true;
-        setCustomerName((prev) => prev || dbUser?.fullName || '');
-        setCustomerEmail((prev) => prev || dbUser?.email || supabaseUser?.email || '');
-        if (dbUser?.phone) {
-          setCustomerPhone((prev) => prev || dbUser.phone || '');
-        }
-      }
-    } else {
-      hasInitializedProfileFieldsRef.current = false;
-    }
-  }, [dbUser, supabaseUser]);
-
-  // Order Tracking & History state
-  const [trackOrderNumberInput, setTrackOrderNumberInput] = useState('');
-  const [trackPhoneInput, setTrackPhoneInput] = useState('');
-  const [trackedOrderResult, setTrackedOrderResult] = useState<any>(null);
-  const [myOrdersList, setMyOrdersList] = useState<any[]>([]);
-  const [trackBoardFilter, setTrackBoardFilter] = useState<
-    'ALL' | 'ACTION_NEEDED' | 'READY_PICKUP' | 'IN_TRANSIT' | 'COMPLETED'
-  >('ALL');
-  const [orderDateRangeFilter, setOrderDateRangeFilter] = useState<
-    'ALL_TIME' | '30_DAYS' | '3_MONTHS' | '6_MONTHS'
-  >('ALL_TIME');
-  const [trackError, setTrackError] = useState<string | null>(null);
-
-  // Storefront Guest 'Order Search' Widget state (Order ID + Mobile Number, no sign-in required)
-  const [storefrontOrderIdInput, setStorefrontOrderIdInput] = useState('');
-  const [storefrontOrderPhoneInput, setStorefrontOrderPhoneInput] = useState('');
-  const [storefrontSearchedOrder, setStorefrontSearchedOrder] = useState<any>(null);
-  const [storefrontOrderSearchError, setStorefrontOrderSearchError] = useState<string | null>(null);
-  const [storefrontOrderSearching, setStorefrontOrderSearching] = useState(false);
-
-  // Bulk Order Enquiry state
-  const [bulkForm, setBulkForm] = useState({
-    institutionName: '',
-    contactPerson: '',
-    email: '',
-    phone: '',
-    gstin: '',
-    deliveryPincode: '',
-    requiredByDate: '',
-    notes: '',
-  });
-  const [bulkItems, setBulkItems] = useState<
-    Array<{ itemName: string; skuOrCategory: string; quantity: number }>
-  >([
-    { itemName: 'Long Hardbound Registers (240 Pages)', skuOrCategory: 'Notebooks & Diaries', quantity: 100 },
-    { itemName: 'Unomax Ultron 2X Ball Pens (Blue)', skuOrCategory: 'Pens & Pencils', quantity: 200 },
-  ]);
-  const [bulkSubmittedEnquiry, setBulkSubmittedEnquiry] = useState<any>(null);
-  const [bulkError, setBulkError] = useState<string | null>(null);
-
-  // Save cart items to localStorage so refresh preserves active cart
-  useEffect(() => {
-    try {
-      localStorage.setItem('gs_cart_items_v1', JSON.stringify(cartItems));
-    } catch {
-      // ignore storage quota errors
-    }
+    localStorage.setItem('gs_cart_items_v1', JSON.stringify(cartItems));
   }, [cartItems]);
 
-  // Save wishlist product IDs to localStorage so refresh preserves saved wishlist
   useEffect(() => {
-    try {
-      localStorage.setItem('gs_wishlist_v1', JSON.stringify(wishlistProductIds));
-    } catch {
-      // ignore storage quota errors
-    }
+    localStorage.setItem('gs_wishlist_v1', JSON.stringify(wishlistProductIds));
   }, [wishlistProductIds]);
 
-  // Customer Profile Page state
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileSuccessMsg, setProfileSuccessMsg] = useState<string | null>(null);
-
-  // Sync browser URL popstate for /admin, /profile, /wishlist, /signin, /checkout, and policy pages
   useEffect(() => {
-    const handlePopState = () => {
-      const p = (window.location.pathname.replace(/\/+$/, '') || '/').toLowerCase();
-      if (p === '/admin/login' || p === '/admin') {
-        setActiveView('admin');
-      } else if (p === '/profile' || p === '/account') {
-        setActiveView('profile');
-      } else if (p === '/wishlist') {
-        setActiveView('wishlist');
-      } else if (p === '/signin' || p === '/login') {
-        setActiveView('signin');
-      } else if (p === '/checkout' || p === '/cart') {
-        setActiveView('checkout');
-      } else if (POLICY_URL_SLUG_MAP[p]) {
-        setActivePageSlug(POLICY_URL_SLUG_MAP[p]);
-        setActiveView('page');
-      } else {
-        setActiveView('storefront');
+    localStorage.setItem('gs_compare_ids_v1', JSON.stringify(compareProductIds));
+  }, [compareProductIds]);
+
+  // Unified Route Navigation + Popstate
+  const navigateTo = useCallback(
+    (
+      view: ActiveView,
+      path: string,
+      opts?: { productSlug?: string; pageSlug?: string; bulkNote?: string }
+    ) => {
+      if (opts?.productSlug !== undefined) setActiveProductSlug(opts.productSlug);
+      if (opts?.pageSlug !== undefined) setActivePageSlug(opts.pageSlug);
+      if (opts?.bulkNote !== undefined) setBulkPreFillNote(opts.bulkNote);
+      setActiveView(view);
+      setMobileMenuOpen(false);
+      setMegaMenuOpen(false);
+      if (typeof window !== 'undefined' && window.location.pathname !== path) {
+        window.history.pushState({}, '', path);
       }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    []
+  );
+
+  useEffect(() => {
+    const onPopState = () => {
+      const resolved = resolveRouteFromUrl(window.location.pathname);
+      setActiveView(resolved.view);
+      if (resolved.productSlug) setActiveProductSlug(resolved.productSlug);
+      if (resolved.pageSlug) setActivePageSlug(resolved.pageSlug);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Listen to Supabase Auth state while preserving valid persistent session tokens
-  useEffect(() => {
-    const getStoredAdminSession = () => {
-      try {
-        const raw = localStorage.getItem('gs_admin_session_v1');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.token && parsed?.expiresAt && Date.now() < Number(parsed.expiresAt)) {
-            return parsed;
-          }
-          localStorage.removeItem('gs_admin_session_v1');
-        }
-      } catch {
-        // ignore
-      }
-      return null;
-    };
-
-    const restoreLocalSession = () => {
-      const stored = getStoredAdminSession();
-      if (stored) {
-        setIdToken(stored.token);
-        if (stored.user) setDbUser(stored.user);
-        return true;
-      }
-      return false;
-    };
-
-    if (!supabase) {
-      restoreLocalSession();
-      return;
-    }
-
-    supabase.auth.getSession().then(({ data }) => {
-      const stored = getStoredAdminSession();
-      if (stored && (stored.user?.role === 'owner' || stored.user?.role === 'staff')) {
-        setIdToken(stored.token);
-        setDbUser(stored.user);
-        return;
-      }
-      if (data?.session?.user) {
-        setSupabaseUser(data.session.user);
-        setIdToken(data.session.access_token);
-      } else {
-        restoreLocalSession();
-      }
-    });
-
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const stored = getStoredAdminSession();
-      if (stored && (stored.user?.role === 'owner' || stored.user?.role === 'staff')) {
-        setIdToken(stored.token);
-        setDbUser(stored.user);
-        return;
-      }
-      if (session?.user) {
-        setSupabaseUser(session.user);
-        setIdToken(session.access_token);
-        if (!customerEmail && session.user.email) setCustomerEmail(session.user.email);
-      } else {
-        setSupabaseUser(null);
-        if (!restoreLocalSession()) {
-          setIdToken(null);
-          setDbUser(null);
-        }
-      }
-    });
-
-    return () => {
-      authSub?.subscription?.unsubscribe();
-    };
-  }, []);
-
-  // Load Storefront Bootstrap Data
+  // Load Storefront Bootstrap
   const loadStoreBootstrap = useCallback(async (tokenOverride?: string | null) => {
-    setLoadingBootstrap(true);
-    setBootstrapError(null);
     try {
-      const headers: Record<string, string> = {};
-      const activeToken = tokenOverride !== undefined ? tokenOverride : idToken;
-      if (activeToken) {
-        headers.Authorization = `Bearer ${activeToken}`;
-      }
-      const apiBase = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
-      const bootstrapUrl = apiBase ? `${apiBase}/api/storefront/bootstrap` : '/api/storefront/bootstrap';
-      const res = await fetch(bootstrapUrl, { headers });
-      const contentType = res.headers.get('content-type') || '';
-
-      if (!contentType.includes('application/json')) {
-        console.warn('Backend returned non-JSON response (likely static Netlify host without API proxy)');
-        return;
-      }
-
+      const tokenToUse = tokenOverride ?? idToken;
+      const res = await fetch('/api/storefront/bootstrap', {
+        headers: tokenToUse ? { Authorization: `Bearer ${tokenToUse}` } : undefined,
+      });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to load store catalogue');
-      }
-      // Merge Categories with localStorage fallback (Server categories take priority)
+      if (!data || data.error) return;
+      setBootstrapData(data);
       if (Array.isArray(data.categories) && data.categories.length > 0) {
-        try {
-          const localCatsRaw = localStorage.getItem('gs_fallback_categories_v1');
-          const localCats = localCatsRaw ? JSON.parse(localCatsRaw) : [];
-          const catMap = new Map<string, any>();
-          for (const c of [...(Array.isArray(localCats) ? localCats : []), ...data.categories]) {
-            if (!c || !c.name) continue;
-            const key = getCanonicalCategoryKey(c.slug || c.name);
-            const prev = catMap.get(key);
-            catMap.set(key, {
-              ...(prev || {}),
-              ...c,
-              productCount: Math.max(Number(prev?.productCount || 0), Number(c.productCount || 0)),
-            });
-          }
-          const finalCats = Array.from(catMap.values());
-          setCategories(finalCats);
-          localStorage.setItem('gs_fallback_categories_v1', JSON.stringify(finalCats));
-        } catch {
-          setCategories(data.categories);
-        }
+        setCategories(data.categories);
       }
-
-      // Merge Companies / Brands with localStorage fallback (Server brands take priority)
-      if (Array.isArray(data.brands)) {
-        try {
-          const localBrandsRaw = localStorage.getItem('gs_fallback_brands_v1');
-          const localBrands = localBrandsRaw ? JSON.parse(localBrandsRaw) : [];
-          const brandMap = new Map<string, any>();
-          const sourceBrands = data.brands.length > 0 ? data.brands : DEFAULT_BRANDS;
-          for (const b of [...(Array.isArray(localBrands) ? localBrands : []), ...sourceBrands]) {
-            if (!b || !b.name) continue;
-            const key = getCanonicalBrandKey(b.slug || b.name);
-            const prev = brandMap.get(key);
-            brandMap.set(key, {
-              ...(prev || {}),
-              ...b,
-              productCount: Math.max(Number(prev?.productCount || 0), Number(b.productCount || 0)),
-            });
-          }
-          const finalBrands = Array.from(brandMap.values());
-          setBrands(finalBrands);
-          localStorage.setItem('gs_fallback_brands_v1', JSON.stringify(finalBrands));
-        } catch {
-          setBrands(data.brands.length > 0 ? data.brands : DEFAULT_BRANDS);
-        }
+      if (Array.isArray(data.brands) && data.brands.length > 0) {
+        setBrands(data.brands);
       }
-
-      const serverProds =
-        Array.isArray(data.products) && data.products.length > 0
-          ? data.products.map(normalizeCatalogueProduct)
-          : [];
-      try {
-        const localProdsRaw = localStorage.getItem('gs_fallback_catalogue_v1');
-        const localProds = localProdsRaw ? JSON.parse(localProdsRaw) : [];
-        const deletedRaw = localStorage.getItem('gs_deleted_products_v1');
-        const deletedIds = new Set<string>(
-          Array.isArray(deletedRaw ? JSON.parse(deletedRaw) : [])
-            ? JSON.parse(deletedRaw || '[]').map((x: any) => String(x).toLowerCase())
-            : []
-        );
-        const prodMap = new Map<string, any>();
-        const baseProds = serverProds.length > 0 ? serverProds : DEFAULT_PRODUCTS;
-        // Put localProds first, then baseProds (serverProds) so authoritative server brand/category IDs win, while preserving custom local-only products
-        for (const p of [...(Array.isArray(localProds) ? localProds : []), ...baseProds]) {
-          if (!p || !p.name) continue;
-          if (
-            deletedIds.has(String(p.id).toLowerCase()) ||
-            deletedIds.has(String(p.sku || '').toLowerCase()) ||
-            deletedIds.has(String(p.name || '').toLowerCase())
-          ) {
-            continue;
-          }
-          prodMap.set(String(p.sku || p.id), normalizeCatalogueProduct(p));
-        }
-        const finalProducts = Array.from(prodMap.values());
-        const resolvedProducts = finalProducts.length > 0 ? finalProducts : baseProds;
-        setProducts(resolvedProducts);
-        localStorage.setItem('gs_fallback_catalogue_v1', JSON.stringify(resolvedProducts));
-      } catch {
-        if (serverProds.length > 0) setProducts(serverProds);
+      if (Array.isArray(data.products) && data.products.length > 0) {
+        setProducts(data.products.map(normalizeCatalogueProduct));
       }
-      if (Array.isArray(data.bundles)) setBundles(data.bundles);
-      if (Array.isArray(data.coupons)) setCoupons(data.coupons);
-      if (Array.isArray(data.serviceablePincodes)) {
-        setServiceablePincodes(
-          data.serviceablePincodes.map((sp: any) => ({
-            ...sp,
-            deliveryFeePaise: 0,
-            freeDeliveryThresholdPaise: 0,
-          }))
-        );
+      if (Array.isArray(data.bundles) && data.bundles.length > 0) {
+        setBundles(data.bundles);
+      }
+      if (Array.isArray(data.coupons) && data.coupons.length > 0) {
+        setCoupons(data.coupons);
+      }
+      if (Array.isArray(data.serviceablePincodes) && data.serviceablePincodes.length > 0) {
+        setServiceablePincodes(data.serviceablePincodes);
       }
       if (data.settings) setStoreSettings(data.settings);
-      if (Array.isArray(data.navigationItems)) setNavigationItems(data.navigationItems);
-      if (Array.isArray(data.homepageSections)) setHomepageSections(data.homepageSections);
-      if (Array.isArray(data.banners)) setBanners(data.banners);
       if (Array.isArray(data.pages) && data.pages.length > 0) {
-        const mergedPages = [...DEFAULT_CMS_PAGES];
-        for (const dbPage of data.pages) {
-          const existingIdx = mergedPages.findIndex((dp) => dp.slug === dbPage.slug);
-          if (existingIdx >= 0) {
-            mergedPages[existingIdx] = { ...mergedPages[existingIdx], ...dbPage, showInFooter: true };
-          } else {
-            mergedPages.push(dbPage);
-          }
-        }
-        setCmsPages(mergedPages);
+        setCmsPages(data.pages);
       }
-      if (Array.isArray(data.revisions)) setCmsRevisions(data.revisions);
-      if (Array.isArray(data.wishlistProductIds) && data.wishlistProductIds.length > 0) {
-        setWishlistProductIds((prev) =>
-          Array.from(new Set([...prev, ...data.wishlistProductIds.map((id: any) => Number(id))]))
-        );
-      }
-      if (data.currentUser) {
-        setDbUser(data.currentUser);
-      } else {
-        try {
-          const raw = localStorage.getItem('gs_admin_session_v1');
-          const parsed = raw ? JSON.parse(raw) : null;
-          if (parsed?.user && parsed?.expiresAt && Date.now() < Number(parsed.expiresAt)) {
-            setDbUser(parsed.user);
-          } else {
-            setDbUser(null);
-          }
-        } catch {
-          setDbUser(null);
-        }
-      }
-      if (data.paymentGatewayStatus) {
-        setPaymentGatewayStatus(data.paymentGatewayStatus);
-      }
-
-      // Initialize default selected variant for each product (DB variant IDs take precedence)
-      const initialVarMap: Record<number, number> = {};
-      for (const p of serverProds) {
-        if (p.variants && p.variants.length > 0) {
-          initialVarMap[p.id] = p.variants[0].id;
-        }
-      }
-      setSelectedVariantByProduct((prev) => ({ ...prev, ...initialVarMap }));
-    } catch (err: any) {
-      console.warn('Storefront bootstrap load error:', err.message);
-    } finally {
-      setLoadingBootstrap(false);
+    } catch {
+      // Keep cached/default data
     }
   }, [idToken]);
 
@@ -1525,1694 +370,90 @@ const DEFAULT_PRODUCTS = [
     loadStoreBootstrap();
   }, [loadStoreBootstrap]);
 
-  // Persist cartItems to localStorage whenever cartItems change
-  useEffect(() => {
+  // Refresh customer orders
+  const loadMyOrders = useCallback(async () => {
     try {
-      localStorage.setItem('gs_cart_items_v1', JSON.stringify(cartItems));
-    } catch {
-      // Ignore storage quota errors
-    }
-  }, [cartItems]);
-
-  // Recalculate cart totals on the server whenever cart items, coupon, fulfilment, or pincode change
-  const syncAndCalculateCart = useCallback(async () => {
-    setCartLoading(true);
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const res = await fetch('/api/cart/calculate', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          guestSessionId,
-          items: cartItems,
-          couponCode: appliedCouponCode,
-          fulfilmentMethod,
-          pincode: fulfilmentMethod === 'HOME_DELIVERY' ? shippingAddress.pincode : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data) {
-        setServerCartResult(data);
-      }
-    } catch (err) {
-      console.error('Failed to calculate cart:', err);
-    } finally {
-      setCartLoading(false);
-    }
-  }, [cartItems, appliedCouponCode, fulfilmentMethod, shippingAddress.pincode, idToken, guestSessionId]);
-
-  useEffect(() => {
-    syncAndCalculateCart();
-  }, [syncAndCalculateCart]);
-
-  // Keep fulfilment method aligned when user selects COD or Pay at Store
-  useEffect(() => {
-    if (paymentMethod === 'COD' && fulfilmentMethod !== 'HOME_DELIVERY') {
-      setFulfilmentMethod('HOME_DELIVERY');
-    } else if (paymentMethod === 'PAY_AT_STORE' && fulfilmentMethod !== 'STORE_PICKUP') {
-      setFulfilmentMethod('STORE_PICKUP');
-    }
-  }, [paymentMethod, fulfilmentMethod]);
-
-  const navigateToCheckout = useCallback(() => {
-    if (typeof window !== 'undefined' && window.location.pathname !== '/checkout') {
-      window.history.pushState({}, '', '/checkout');
-    }
-    setCartDrawerOpen(false);
-    setCartFeedbackToast(null);
-    setFlyingCartItems([]);
-    setMobileMenuOpen(false);
-    setActiveView('checkout');
-    if (typeof window !== 'undefined') {
-      window.scrollTo(0, 0);
-    }
-  }, []);
-
-  const showToast = useCallback((msg: string) => {
-    setCartFeedbackToast(msg);
-    setTimeout(() => {
-      setCartFeedbackToast((curr) => (curr === msg ? null : curr));
-    }, 4000);
-  }, []);
-
-  // Cart manipulation handlers with Flying-to-Cart animation, Cart Badge Bounce, and Toast / Drawer
-  const handleAddToCart = (
-    product: any,
-    variantId?: number,
-    qtyToAdd = 1,
-    sourceEventOrEl?: React.MouseEvent<HTMLElement> | HTMLElement | null,
-    skipRedirect = false,
-    explicitColor?: string
-  ) => {
-    if (!product) return;
-    const targetVarId =
-      variantId || selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
-    const variant =
-      product.variants?.find((v: any) => Number(v.id) === Number(targetVarId)) ||
-      product.variants?.[0] || {
-        id: targetVarId || Number(product.id) || 1,
-        productId: product.id,
-        sku: product.sku || `GS-${product.id}`,
-        variantName: 'Standard Pack',
-        mrpPaise: product.mrpPaise || 10000,
-        sellingPricePaise: product.sellingPricePaise || 9000,
-        stockQuantity: product.totalStock ?? 25,
-      };
-
-    const maxStock = Math.max(1, Number(variant.stockQuantity ?? product.totalStock ?? 25));
-
-    const colorOptions = getProductColorOptions(product);
-    const resolvedColor =
-      explicitColor ??
-      (activeView === 'pdp' && activePdpProduct?.id === product.id ? pdpSelectedColor : undefined) ??
-      selectedColorByProduct[product.id] ??
-      colorOptions[0]?.label ??
-      undefined;
-
-    setCartItems((prev) => {
-      const existingIdx = prev.findIndex(
-        (i) => Number(i.productId) === Number(product.id) && Number(i.variantId) === Number(variant.id)
-      );
-      if (existingIdx > -1) {
-        const currentQty = prev[existingIdx].quantity;
-        const nextQty = Math.min(maxStock, currentQty + qtyToAdd);
-        const copy = [...prev];
-        copy[existingIdx] = {
-          ...copy[existingIdx],
-          quantity: nextQty,
-          selectedColor: resolvedColor || copy[existingIdx].selectedColor,
-        };
-        return copy;
-      } else {
-        const clampedQty = Math.min(maxStock, Math.max(1, qtyToAdd));
-        return [
-          ...prev,
-          {
-            productId: Number(product.id),
-            variantId: Number(variant.id),
-            quantity: clampedQty,
-            selectedColor: resolvedColor,
-          },
-        ];
-      }
-    });
-
-    // Spawn smooth Parabolic Flying-to-Cart animation from source product element to header Cart button
-    if (typeof window !== 'undefined') {
-      const vw = Math.max(320, window.innerWidth || 1024);
-      const vh = Math.max(480, window.innerHeight || 768);
-      const isMobileViewport = vw < 768;
-
-      let startX = vw / 2;
-      let startY = vh * 0.55;
-
-      // 1. Resolve accurate source coordinates from product card thumbnail or trigger button
-      if (sourceEventOrEl) {
-        let domEl: HTMLElement | null = null;
-        if ('currentTarget' in sourceEventOrEl && sourceEventOrEl.currentTarget instanceof HTMLElement) {
-          domEl = sourceEventOrEl.currentTarget;
-        } else if (sourceEventOrEl instanceof HTMLElement) {
-          domEl = sourceEventOrEl;
-        }
-
-        if (domEl) {
-          const btnRect = domEl.getBoundingClientRect();
-          // Check if inside a product card with an illustration container visible in viewport
-          const parentCard = domEl.closest('article, [data-product-card]');
-          const thumbContainer = parentCard?.querySelector('[data-product-thumb], .aspect-square') as HTMLElement | null;
-          const thumbRect = thumbContainer?.getBoundingClientRect();
-
-          if (
-            thumbRect &&
-            thumbRect.width > 0 &&
-            thumbRect.height > 0 &&
-            thumbRect.bottom > 0 &&
-            thumbRect.top < vh
-          ) {
-            // Launch from the lower-middle of the product thumbnail toward the button
-            startX = thumbRect.left + thumbRect.width * 0.5;
-            startY = thumbRect.top + thumbRect.height * 0.65;
-          } else if (btnRect.width > 0 && btnRect.height > 0) {
-            startX = btnRect.left + btnRect.width / 2;
-            startY = btnRect.top + btnRect.height / 2;
-          }
-        } else if ('clientX' in sourceEventOrEl && typeof sourceEventOrEl.clientX === 'number') {
-          startX = sourceEventOrEl.clientX;
-          startY = sourceEventOrEl.clientY;
-        }
-      }
-
-      startX = Math.max(24, Math.min(vw - 24, startX));
-      startY = Math.max(24, Math.min(vh - 24, startY));
-
-      // 2. Resolve accurate destination coordinates from the header Cart button (mobile & desktop)
-      const fallbackCartBtn = document.querySelector(
-        '[aria-label="Open Shopping Bag Drawer"]'
-      ) as HTMLElement | null;
-      const cartRect = (cartButtonRef.current || fallbackCartBtn)?.getBoundingClientRect();
-      const rawEndX =
-        cartRect && cartRect.width > 0
-          ? cartRect.left + cartRect.width / 2
-          : vw - (isMobileViewport ? 48 : 88);
-      const rawEndY =
-        cartRect && cartRect.height > 0
-          ? cartRect.top + cartRect.height / 2
-          : isMobileViewport
-            ? 34
-            : 28;
-
-      const endX = Math.max(20, Math.min(vw - 20, rawEndX));
-      const endY = Math.max(16, Math.min(vh - 20, rawEndY));
-
-      // 3. Precompute explicit 11-step Quadratic Bézier / Parabolic trajectory P(t)
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const distance = Math.hypot(dx, dy);
-      const arcLift = isMobileViewport
-        ? Math.max(65, Math.min(140, distance * 0.34))
-        : Math.max(110, Math.min(220, distance * 0.38));
-
-      // Control point (apex guide) for smooth upward parabolic launch and descent into cart
-      const controlX = startX + dx * 0.46;
-      const controlY = Math.max(16, Math.min(startY, endY) - arcLift);
-      const flightDir = dx >= 0 ? 1 : -1;
-
-      const steps = 10;
-      const xKeyframes: number[] = [];
-      const yKeyframes: number[] = [];
-      const scaleKeyframes: number[] = [];
-      const rotateKeyframes: number[] = [];
-      const opacityKeyframes: number[] = [];
-      const times: number[] = [];
-
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const oneMinusT = 1 - t;
-        // Parabolic / Quadratic Bézier coordinates
-        const px =
-          oneMinusT * oneMinusT * startX +
-          2 * oneMinusT * t * controlX +
-          t * t * endX;
-        const py =
-          oneMinusT * oneMinusT * startY +
-          2 * oneMinusT * t * controlY +
-          t * t * endY;
-
-        xKeyframes.push(Math.round(px * 10) / 10);
-        yKeyframes.push(Math.round(py * 10) / 10);
-        times.push(Number(t.toFixed(2)));
-
-        // Smooth scale curve: pop up to 1.12 near launch apex, then taper to 0.28 entering cart
-        const scaleVal =
-          t < 0.25
-            ? 1 + (t / 0.25) * 0.12
-            : 1.12 - ((t - 0.25) / 0.75) * 0.84;
-        scaleKeyframes.push(Number(scaleVal.toFixed(3)));
-
-        // Subtle banking rotation along the parabolic arc
-        const rotVal = Math.sin(t * Math.PI) * 8 * flightDir;
-        rotateKeyframes.push(Number(rotVal.toFixed(2)));
-
-        // Keep full opacity for 80% of flight, then fade into the cart badge
-        const opacityVal = t < 0.8 ? 1 : Math.max(0.15, 1 - ((t - 0.8) / 0.2) * 0.85);
-        opacityKeyframes.push(Number(opacityVal.toFixed(2)));
-      }
-
-      const flyId = `fly_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const unitPrice = Number(variant.sellingPricePaise ?? product.sellingPricePaise ?? 0);
-      const newFlyingItem: FlyingCartItem = {
-        id: flyId,
-        name: product.name,
-        priceFormatted: formatPaiseToINR(unitPrice),
-        illustrationType: product.illustrationType || 'spiral_notebook',
-        imageUrl: product.imageUrl,
-        startX,
-        startY,
-        endX,
-        endY,
-        xKeyframes,
-        yKeyframes,
-        scaleKeyframes,
-        rotateKeyframes,
-        opacityKeyframes,
-        times,
-      };
-
-      setFlyingCartItems((prev) => [...prev.slice(-4), newFlyingItem]);
-
-      setTimeout(() => {
-        setCartButtonBouncing(true);
-        setTimeout(() => setCartButtonBouncing(false), 620);
-      }, 520);
-
-      setTimeout(() => {
-        setFlyingCartItems((prev) => prev.filter((f) => f.id !== flyId));
-      }, 820);
-    }
-
-    const colorNote = resolvedColor ? ` (${resolvedColor})` : '';
-    showToast(`Added "${product.name}"${colorNote} to bag`);
-  };
-
-  const handleAddBundleToCart = (
-    bundle: any,
-    sourceEvent?: React.MouseEvent<HTMLElement>
-  ) => {
-    const bundleItems = bundle.itemsJson || [];
-    for (const bi of bundleItems) {
-      const prod = products.find((p) => Number(p.id) === Number(bi.productId));
-      if (prod) {
-        handleAddToCart(prod, bi.variantId, bi.quantity, sourceEvent, true);
-      }
-    }
-    showToast(`Added "${bundle.name || 'School Combo Kit'}" items to bag`);
-  };
-
-  const handleUpdateCartQuantity = (productId: number, variantId: number, nextQty: number) => {
-    if (nextQty <= 0) {
-      setCartItems((prev) =>
-        prev.filter(
-          (i) => !(Number(i.productId) === Number(productId) && Number(i.variantId) === Number(variantId))
-        )
-      );
-      return;
-    }
-    const prod = products.find((p) => Number(p.id) === Number(productId));
-    const variant = prod?.variants?.find((v: any) => Number(v.id) === Number(variantId));
-    const maxStock = variant ? Math.max(1, Number(variant.stockQuantity || 50)) : 99;
-    const clamped = Math.min(maxStock, nextQty);
-
-    setCartItems((prev) =>
-      prev.map((i) =>
-        Number(i.productId) === Number(productId) && Number(i.variantId) === Number(variantId)
-          ? { ...i, quantity: clamped }
-          : i
-      )
-    );
-  };
-
-  // Wishlist handler (instant local update + server sync when signed in)
-  const handleToggleWishlist = async (productId: number) => {
-    const numericId = Number(productId);
-    setWishlistProductIds((prev) =>
-      prev.includes(numericId) ? prev.filter((id) => id !== numericId) : [...prev, numericId]
-    );
-    if (!idToken) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/wishlist/toggle', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ productId: numericId }),
-      });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.productIds)) {
-        setWishlistProductIds(data.productIds.map((id: any) => Number(id)));
-      }
-    } catch (err) {
-      console.error('Wishlist error:', err);
-    }
-  };
-
-  // Persist compareProductIds to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('gs_compare_ids_v1', JSON.stringify(compareProductIds));
-    } catch {
-      // ignore
-    }
-  }, [compareProductIds]);
-
-  const handleToggleCompare = useCallback((productId: number) => {
-    const numericId = Number(productId);
-    if (!numericId) return;
-    setCompareProductIds((prev) => {
-      if (prev.includes(numericId)) {
-        setCompareToastMessage(null);
-        return prev.filter((id) => id !== numericId);
-      }
-      if (prev.length >= 3) {
-        setCompareToastMessage(
-          'You can compare up to 3 stationery items at a time. Remove an item first to select another.'
-        );
-        setTimeout(() => {
-          setCompareToastMessage((curr) =>
-            curr?.includes('up to 3') ? null : curr
-          );
-        }, 4000);
-        return prev;
-      }
-      setCompareToastMessage(null);
-      return [...prev, numericId];
-    });
-  }, []);
-
-  const handleClearCompare = useCallback(() => {
-    setCompareProductIds([]);
-    setCompareToastMessage(null);
-  }, []);
-
-  // Automatically ensure dbUser & idToken are populated whenever supabaseUser exists
-  useEffect(() => {
-    if (supabaseUser?.email && !dbUser) {
-      const cleanEmail = String(supabaseUser.email).trim().toLowerCase();
-      const isOwner = cleanEmail === 'vainhavgupta20052014@gmail.com';
-      const fallbackUser = {
-        id: isOwner ? 1 : 2,
-        uid: supabaseUser.id || `cust-${cleanEmail}`,
-        email: cleanEmail,
-        fullName:
-          supabaseUser.user_metadata?.full_name ||
-          supabaseUser.user_metadata?.name ||
-          cleanEmail.split('@')[0],
-        role: isOwner ? 'owner' : 'customer',
-      };
-      const fallbackToken = isOwner
-        ? `gs_admin_direct_owner:${cleanEmail}`
-        : `gs_customer_direct:${cleanEmail}`;
-      setDbUser(fallbackUser);
-      if (!idToken) setIdToken(fallbackToken);
-      try {
-        localStorage.setItem(
-          'gs_admin_session_v1',
-          JSON.stringify({
-            token: idToken || fallbackToken,
-            expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-            user: fallbackUser,
-          })
-        );
-      } catch {
-        // Ignore
-      }
-    }
-  }, [supabaseUser, dbUser, idToken]);
-
-  // Navigate to dedicated Sign-In Page (no modal popup)
-  const handleGoogleSignIn = async () => {
-    setAuthError(null);
-    setCustomerAuthModalOpen(false);
-    setActiveView('signin');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Customer Google Sign-In handler (works on the dedicated Sign-In page for all customers — never overwrites or logs in as store owner unless verified)
-  const handleCustomerGoogleSignIn = async () => {
-    setAuthError(null);
-    setCustomerAuthSubmitting(true);
-    try {
-      let resolvedEmail = customerAuthEmail.trim().toLowerCase();
-      let resolvedName = customerAuthName.trim();
-
-      try {
-        const popupRes = await signInWithPopup(auth, googleAuthProvider);
-        if (popupRes?.user?.email) {
-          resolvedEmail = popupRes.user.email.trim().toLowerCase();
-          resolvedName = popupRes.user.displayName || resolvedName;
-        }
-      } catch {
-        // If popup is blocked or closed in the preview iframe, require the customer's own email input (NEVER fall back to owner email)
-        if (!resolvedEmail && supabaseUser?.email) {
-          resolvedEmail = supabaseUser.email.trim().toLowerCase();
-        }
-      }
-
-      if (!resolvedEmail || !resolvedEmail.includes('@')) {
-        throw new Error(
-          'Google popup was blocked by your browser. Please enter your email address in the box below to sign in.'
-        );
-      }
-
-      if (!resolvedName) {
-        resolvedName = resolvedEmail.split('@')[0] || 'Valued Customer';
-      }
-
-      const res = await fetch('/api/auth/customer-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: resolvedEmail,
-          fullName: resolvedName,
-        }),
-      });
-      const data = await res.json();
-      const isOwner = resolvedEmail === 'vainhavgupta20052014@gmail.com';
-      const finalUser = data?.user
-        ? { ...data.user, role: isOwner ? 'owner' : 'customer' }
-        : {
-            id: isOwner ? 1 : 2,
-            uid: `cust-${resolvedEmail}`,
-            email: resolvedEmail,
-            fullName: resolvedName,
-            role: isOwner ? 'owner' : 'customer',
-          };
-      const finalToken =
-        data?.token ||
-        (isOwner
-          ? `gs_admin_direct_owner:${resolvedEmail}`
-          : `gs_customer_direct:${resolvedEmail}`);
-
-      localStorage.setItem(
-        'gs_admin_session_v1',
-        JSON.stringify({
-          token: finalToken,
-          expiresAt: data?.expiresAt || Date.now() + 7 * 24 * 60 * 60 * 1000,
-          user: finalUser,
-        })
-      );
-      localStorage.setItem(
-        'gs_user_profile_v1',
-        JSON.stringify({
-          ...finalUser,
-          fullName: finalUser.fullName || resolvedName,
-          email: finalUser.email,
-          shippingAddress,
-        })
-      );
-      setIdToken(finalToken);
-      setDbUser(finalUser);
-      setCustomerEmail(finalUser.email);
-      if (finalUser.fullName) setCustomerName(finalUser.fullName);
-      setCustomerAuthModalOpen(false);
-      await loadStoreBootstrap(finalToken);
-      window.history.pushState({}, '', '/');
-      setActiveView('storefront');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast(`Signed in as ${finalUser.fullName || finalUser.email}`);
-    } catch (err: any) {
-      setAuthError(err.message || 'Google sign-in failed.');
-    } finally {
-      setCustomerAuthSubmitting(false);
-    }
-  };
-
-  const performAdminLoginRequest = async (emailInput: string, nameInput?: string) => {
-    const cleanEmail = (emailInput || '').trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Please enter the Store Owner email address.');
-    }
-    if (cleanEmail !== 'vainhavgupta20052014@gmail.com') {
-      throw new Error(
-        'Access Restricted: Only the authorized Store Owner (vainhavgupta20052014@gmail.com) can access the Admin Console.'
-      );
-    }
-
-    const cleanName = (nameInput || 'Gayatri Stationers Owner').trim();
-    let sessionPayload: { token: string; expiresAt: number; user: any } | null = null;
-
-    try {
-      const res = await fetch('/api/admin/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: cleanEmail,
-          fullName: cleanName,
-          accessCode: adminLoginAccessCode.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error || 'Unauthorized Admin login attempt.');
-      }
-      if (data?.token && data?.user) {
-        sessionPayload = {
-          token: data.token,
-          expiresAt: data.expiresAt || Date.now() + 7 * 24 * 60 * 60 * 1000,
-          user: { ...data.user, role: 'owner' },
-        };
-      }
-    } catch (err: any) {
-      if (err?.message?.includes('Access Restricted')) {
-        throw err;
-      }
-      console.warn('Admin login API fallback:', err?.message);
-    }
-
-    if (!sessionPayload) {
-      sessionPayload = {
-        token: `gs_admin_direct_owner:${cleanEmail}`,
-        expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        user: {
-          id: 1,
-          uid: `admin-owner-${cleanEmail}`,
-          email: cleanEmail,
-          fullName: cleanName,
-          role: 'owner',
-        },
-      };
-    }
-
-    localStorage.setItem('gs_admin_session_v1', JSON.stringify(sessionPayload));
-    setIdToken(sessionPayload.token);
-    setDbUser(sessionPayload.user);
-    setAdminLoginAccessCode('');
-    await loadStoreBootstrap(sessionPayload.token);
-    window.history.pushState({}, '', '/admin');
-    setActiveView('admin');
-    showToast(`Welcome back, Store Owner (${sessionPayload.user.email})!`);
-  };
-
-  // Store Owner Google Sign-In handler for Admin Console
-  const handleGoogleAdminSignUp = async () => {
-    setAuthError(null);
-    setAdminLoginSubmitting(true);
-    try {
-      let targetEmail = adminLoginEmail.trim().toLowerCase();
-      let targetName = adminLoginName.trim() || 'Gayatri Stationers Owner';
-
-      try {
-        const popupRes = await signInWithPopup(auth, googleAuthProvider);
-        if (popupRes?.user?.email) {
-          targetEmail = popupRes.user.email.trim().toLowerCase();
-          targetName = popupRes.user.displayName || targetName;
-        }
-      } catch {
-        // If popup is blocked in preview, use the email typed in the Owner Login input
-      }
-
-      if (!targetEmail) {
-        throw new Error(
-          'Please enter the Store Owner email address (vainhavgupta20052014@gmail.com) below to verify ownership.'
-        );
-      }
-      await performAdminLoginRequest(targetEmail, targetName);
-    } catch (err: any) {
-      setAuthError(
-        err.message ||
-          'Only the verified Store Owner (vainhavgupta20052014@gmail.com) can access the Admin Console.'
-      );
-    } finally {
-      setAdminLoginSubmitting(false);
-    }
-  };
-
-  const handleCustomerAccountSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setCustomerAuthSubmitting(true);
-    try {
-      const cleanEmail = customerAuthEmail.trim().toLowerCase();
-      if (!cleanEmail || !cleanEmail.includes('@')) {
-        throw new Error('Please enter a valid email address.');
-      }
-      const cleanName = customerAuthName.trim() || cleanEmail.split('@')[0] || 'Valued Customer';
-
-      // 1. Optional Supabase password sign-in/sign-up
-      if (supabase && customerAuthPassword.trim().length >= 6) {
-        try {
-          const { error: signInErr } = await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password: customerAuthPassword.trim(),
-          });
-          if (
-            signInErr &&
-            (signInErr.message.toLowerCase().includes('invalid login credentials') ||
-              signInErr.message.toLowerCase().includes('user not found'))
-          ) {
-            await supabase.auth.signUp({
-              email: cleanEmail,
-              password: customerAuthPassword.trim(),
-              options: {
-                data: { full_name: cleanName },
-              },
-            });
-          }
-        } catch {
-          // Continue to sync customer session
-        }
-      }
-
-      // 2. Sync customer account with backend & local session
-      let sessionUser: any = null;
-      let sessionToken = '';
-      let sessionExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
-
-      try {
-        const res = await fetch('/api/auth/customer-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: cleanEmail,
-            fullName: cleanName,
-          }),
-        });
-        const data = await res.json();
-        if (res.ok && data?.user && data?.token) {
-          sessionUser = data.user;
-          sessionToken = data.token;
-          sessionExpiresAt = data.expiresAt || sessionExpiresAt;
-        }
-      } catch {
-        // Fallback below
-      }
-
-      const isOwner = cleanEmail === 'vainhavgupta20052014@gmail.com';
-      if (!sessionUser) {
-        sessionUser = {
-          id: isOwner ? 1 : 2,
-          uid: `cust-${cleanEmail}`,
-          email: cleanEmail,
-          fullName: cleanName,
-          role: isOwner ? 'owner' : 'customer',
-        };
-      } else {
-        sessionUser.role = isOwner ? 'owner' : 'customer';
-      }
-      if (!sessionToken) {
-        sessionToken = isOwner
-          ? `gs_admin_direct_owner:${cleanEmail}`
-          : `gs_customer_direct:${cleanEmail}`;
-      }
-
-      localStorage.setItem(
-        'gs_admin_session_v1',
-        JSON.stringify({
-          token: sessionToken,
-          expiresAt: sessionExpiresAt,
-          user: sessionUser,
-        })
-      );
-      localStorage.setItem(
-        'gs_user_profile_v1',
-        JSON.stringify({
-          ...sessionUser,
-          fullName: sessionUser.fullName || cleanName,
-          email: sessionUser.email,
-          shippingAddress,
-        })
-      );
-      setIdToken(sessionToken);
-      setDbUser(sessionUser);
-      setCustomerEmail(sessionUser.email);
-      if (sessionUser.fullName) setCustomerName(sessionUser.fullName);
-      setCustomerAuthModalOpen(false);
-      await loadStoreBootstrap(sessionToken);
-      window.history.pushState({}, '', '/');
-      setActiveView('storefront');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast(`Signed in as ${sessionUser.fullName || sessionUser.email}`);
-    } catch (err: any) {
-      setAuthError(err.message || 'Sign-in failed.');
-    } finally {
-      setCustomerAuthSubmitting(false);
-    }
-  };
-
-  // Store Owner Admin Credentials Login handler (/admin/login & /admin)
-  const handleAdminCredentialsLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setAdminLoginSubmitting(true);
-    try {
-      const cleanEmail = adminLoginEmail.trim().toLowerCase();
-      if (!cleanEmail || !cleanEmail.includes('@')) {
-        throw new Error('Please enter the Store Owner email address.');
-      }
-      await performAdminLoginRequest(
-        cleanEmail,
-        adminLoginName.trim() || 'Gayatri Stationers Owner'
-      );
-    } catch (err: any) {
-      setAuthError(err.message || 'Unauthorized: Only the Store Owner can access Admin Console.');
-    } finally {
-      setAdminLoginSubmitting(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    try {
-      if (supabase) {
-        await supabase.auth.signOut();
-      }
-    } catch {
-      // ignore
-    }
-    try {
-      if (auth) {
-        await auth.signOut();
-      }
-    } catch {
-      // ignore
-    }
-    try {
-      localStorage.removeItem('gs_admin_session_v1');
-      localStorage.removeItem('gs_user_profile_v1');
-      localStorage.removeItem('gs_my_orders_v1');
-    } catch {
-      // ignore
-    }
-    hasInitializedProfileFieldsRef.current = false;
-    setSupabaseUser(null);
-    setIdToken(null);
-    setDbUser(null);
-    setCustomerName('');
-    setCustomerEmail('');
-    setCustomerPhone('');
-    setCustomerAuthEmail('');
-    setCustomerAuthName('');
-    setCustomerAuthPassword('');
-    setAdminLoginEmail('');
-    setShippingAddress({
-      addressLine1: '',
-      addressLine2: '',
-      landmark: '',
-      city: 'Kanpur',
-      state: 'Uttar Pradesh',
-      pincode: '208021',
-    });
-    setMyOrdersList([]);
-    setTrackedOrderResult(null);
-    setConfirmedOrderData(null);
-    setTrackError(null);
-    setProfileSuccessMsg(null);
-    if (activeView === 'admin' || activeView === 'admin-login') {
-      window.history.pushState({}, '', '/');
-      setActiveView('storefront');
-    }
-    showToast('Signed out successfully.');
-  };
-
-  // Seamless 1-Click Role Switcher (preserves exact same current interface without redirecting)
-  const handleSwitchRole = async (nextRole: 'customer' | 'staff' | 'owner') => {
-    setAuthError(null);
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const res = await fetch('/api/auth/role-switch', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ role: nextRole }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to switch role');
-      }
-      if (data.token && data.user) {
-        localStorage.setItem(
-          'gs_admin_session_v1',
-          JSON.stringify({
-            token: data.token,
-            expiresAt: data.expiresAt,
-            user: data.user,
-          })
-        );
-        setIdToken(data.token);
-        setDbUser(data.user);
-      } else if (data.user) {
-        setDbUser(data.user);
-      }
-      showToast(
-        `Switched active role to ${nextRole.toUpperCase()} — keeping the exact same interface open.`
-      );
-    } catch (err: any) {
-      setAuthError(err.message || 'Could not switch role.');
-    }
-  };
-
-  // Open Product Detail Page
-  const openProductDetail = (product: any) => {
-    setActiveProductSlug(product.slug);
-    setPdpSelectedImageUrl(null);
-    const defaultVar =
-      selectedVariantByProduct[product.id] || product.variants?.[0]?.id || null;
-    setPdpVariantId(defaultVar);
-    const colorOpts = getProductColorOptions(product);
-    const savedCol = selectedColorByProduct[product.id];
-    const matchedVarColor = colorOpts.find((c) => c.variantId && c.variantId === defaultVar)?.label;
-    setPdpSelectedColor(savedCol || matchedVarColor || colorOpts[0]?.label || '');
-    setPdpQuantity(1);
-    setActiveView('pdp');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Navigate via Dynamic CMS Navigation Item or Banner Link
-  const handleNavigateCmsDestination = (linkType: string, targetValue: string) => {
-    const cleanTarget = (targetValue || '').trim();
-    if (linkType === 'CATEGORY') {
-      setSelectedCategorySlug(cleanTarget || 'ALL');
-      setSelectedBrandSlug('ALL');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    if (linkType === 'BRAND') {
-      setSelectedBrandSlug(cleanTarget || 'ALL');
-      setSelectedCategorySlug('ALL');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    if (linkType === 'COLLECTION') {
-      setSelectedCategorySlug('ALL');
-      setSelectedBrandSlug('ALL');
-      if (cleanTarget === 'BESTSELLERS') setSortBy('bestseller');
-      else if (cleanTarget === 'NEW_ARRIVALS') setSortBy('newest');
-      else if (cleanTarget === 'UNDER_99') setMaxPriceFilterPaise(10000);
-      else setSortBy('featured');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    if (linkType === 'BUNDLES' || cleanTarget === 'bundles' || cleanTarget === 'combos') {
-      setActiveView('combos');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (linkType === 'BULK_ORDER' || cleanTarget === 'bulk') {
-      setActiveView('bulk');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (linkType === 'PAGE') {
-      setActivePageSlug(cleanTarget);
-      setActiveView('page');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (cleanTarget.startsWith('category:')) {
-      setSelectedCategorySlug(cleanTarget.replace('category:', ''));
-      setActiveView('storefront');
-      return;
-    }
-    if (cleanTarget === 'track') {
-      setActiveView('track');
-      return;
-    }
-    setSelectedCategorySlug('ALL');
-    setActiveView('storefront');
-  };
-
-  // Navigate directly to all products of a specific stationery brand
-  const handleViewBrandProducts = (brandSlugOrName?: string, brandDisplayName?: string) => {
-    const raw = String(brandSlugOrName || brandDisplayName || '').trim();
-    if (!raw) return;
-    const lower = raw.toLowerCase();
-    const matchedBrand = brands.find(
-      (b) =>
-        String(b.slug || '').toLowerCase() === lower ||
-        String(b.name || '').toLowerCase() === lower
-    );
-    const resolvedSlug =
-      matchedBrand?.slug ||
-      lower.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    setSelectedBrandSlug(resolvedSlug);
-    setSelectedCategorySlug('ALL');
-    setSearchQuery('');
-    setMaxPriceFilterPaise(0);
-    setInStockOnly(false);
-    setActiveView('storefront');
-    setTimeout(() => {
-      document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-    }, 80);
-  };
-
-  // Filtered and Sorted Products
-  const filteredProducts = useMemo(() => {
-    const selectedCatObj = categories.find((c) => c.slug === selectedCategorySlug);
-    const childCatSlugs = selectedCatObj
-      ? categories.filter((c) => c.parentId === selectedCatObj.id).map((c) => c.slug)
-      : [];
-    const selectedBrandObj =
-      selectedBrandSlug !== 'ALL'
-        ? brands.find(
-            (b) =>
-              String(b.slug || '').toLowerCase() === selectedBrandSlug.toLowerCase() ||
-              String(b.name || '').toLowerCase() === selectedBrandSlug.toLowerCase()
-          )
-        : null;
-
-    return products
-      .filter((p) => {
-        if (!p.isActive) return false;
-        if (selectedCategorySlug !== 'ALL') {
-          const catTarget = selectedCatObj || { slug: selectedCategorySlug, name: selectedCategorySlug };
-          if (!doesProductMatchCategory(p, catTarget, childCatSlugs)) {
-            return false;
-          }
-        }
-        if (selectedBrandSlug !== 'ALL') {
-          const brandTarget = selectedBrandObj || { slug: selectedBrandSlug, name: selectedBrandSlug };
-          if (!doesProductMatchBrand(p, brandTarget)) {
-            return false;
-          }
-        }
-        if (inStockOnly && p.totalStock <= 0) {
-          return false;
-        }
-        if (maxPriceFilterPaise > 0 && p.sellingPricePaise > maxPriceFilterPaise) {
-          return false;
-        }
-        if (searchQuery.trim()) {
-          const q = searchQuery.trim().toLowerCase();
-          const matchName = p.name.toLowerCase().includes(q);
-          const matchSku = p.sku.toLowerCase().includes(q);
-          const matchCat = p.categoryName.toLowerCase().includes(q);
-          const matchBrand = p.brandName.toLowerCase().includes(q);
-          const matchDesc = p.shortDescription.toLowerCase().includes(q);
-          return matchName || matchSku || matchCat || matchBrand || matchDesc;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortBy === 'price_asc') return a.sellingPricePaise - b.sellingPricePaise;
-        if (sortBy === 'price_desc') return b.sellingPricePaise - a.sellingPricePaise;
-        if (sortBy === 'bestseller') return Number(b.isBestseller) - Number(a.isBestseller);
-        if (sortBy === 'newest') return Number(b.isNewArrival) - Number(a.isNewArrival);
-        return Number(b.isFeatured) - Number(a.isFeatured);
-      });
-  }, [
-    products,
-    selectedCategorySlug,
-    selectedBrandSlug,
-    inStockOnly,
-    maxPriceFilterPaise,
-    searchQuery,
-    sortBy,
-  ]);
-
-  const searchSuggestions = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.trim().toLowerCase();
-    return products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.brandName.toLowerCase().includes(q) ||
-          p.categoryName.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q)
-      )
-      .slice(0, 5);
-  }, [products, searchQuery]);
-
-  const activePdpProduct = useMemo(
-    () => products.find((p) => p.slug === activeProductSlug) || null,
-    [products, activeProductSlug]
-  );
-
-  const activePdpVariant = useMemo(() => {
-    if (!activePdpProduct) return null;
-    return (
-      activePdpProduct.variants?.find((v: any) => v.id === pdpVariantId) ||
-      activePdpProduct.variants?.[0] ||
-      null
-    );
-  }, [activePdpProduct, pdpVariantId]);
-
-  const matchedPincodeRule = useMemo(() => {
-    const pin = shippingAddress.pincode.trim();
-    return serviceablePincodes.find((p) => p.pincode === pin && p.isActive) || null;
-  }, [serviceablePincodes, shippingAddress.pincode]);
-
-  const totalCartItemsCount = useMemo(
-    () => cartItems.reduce((sum, i) => sum + i.quantity, 0),
-    [cartItems]
-  );
-
-  // Place Order Submission & Cashfree Drop-in Modal
-  const loadCashfreeSdkScript = async (): Promise<any> => {
-    if (typeof window !== 'undefined' && typeof (window as any).Cashfree === 'function') {
-      return (window as any).Cashfree;
-    }
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (fn: () => void) => {
-        if (!settled) {
-          settled = true;
-          fn();
-        }
-      };
-
-      const checkInterval = setInterval(() => {
-        if (typeof (window as any).Cashfree === 'function') {
-          clearInterval(checkInterval);
-          finish(() => resolve((window as any).Cashfree));
-        }
-      }, 100);
-
-      const script = document.createElement('script');
-      script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
-      script.async = true;
-      script.onload = () => {
-        clearInterval(checkInterval);
-        finish(() => resolve((window as any).Cashfree));
-      };
-      script.onerror = () => {
-        clearInterval(checkInterval);
-        finish(() =>
-          reject(
-            new Error(
-              'Cashfree Payment SDK script failed to load. Please check your internet connection or disable any ad-blocker.'
-            )
-          )
-        );
-      };
-      document.head.appendChild(script);
-
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        if (typeof (window as any).Cashfree === 'function') {
-          finish(() => resolve((window as any).Cashfree));
-        } else {
-          finish(() => reject(new Error('Timed out loading Cashfree Payment SDK.')));
-        }
-      }, 8000);
-    });
-  };
-
-  const triggerCashfreePaymentModal = async (
-    orderNumber: string,
-    existingSession?: {
-      paymentSessionId: string;
-      cfOrderId?: string;
-      environment?: 'SANDBOX' | 'PRODUCTION' | string;
-    },
-    pendingOrderResponse?: any
-  ): Promise<boolean> => {
-    try {
-      setCheckoutSubmitting(true);
-      setCheckoutError(null);
-
-      const CashfreeFactory = await loadCashfreeSdkScript();
-      if (!CashfreeFactory) {
-        throw new Error('Cashfree Payment Gateway SDK is not available in this browser.');
-      }
-
-      let paymentSessionId = existingSession?.paymentSessionId || '';
-      let cfOrderId = existingSession?.cfOrderId || orderNumber;
-      let environment = existingSession?.environment || 'SANDBOX';
-
-      if (!paymentSessionId) {
-        const exactGatewayPaise =
-          Number(calculation.totalPaise) > 0
-            ? Number(calculation.totalPaise)
-            : Number(
-                pendingOrderResponse?.order?.totalPaise ||
-                  confirmedOrderData?.order?.totalPaise ||
-                  0
-              );
-        const res = await fetch('/api/payments/cashfree/create-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderNumber,
-            amountRupees: Number((exactGatewayPaise / 100).toFixed(2)),
-            customerName:
-              pendingOrderResponse?.order?.customerName ||
-              confirmedOrderData?.order?.customerName ||
-              customerName ||
-              'Valued Customer',
-            customerPhone:
-              pendingOrderResponse?.order?.customerPhone ||
-              confirmedOrderData?.order?.customerPhone ||
-              customerPhone ||
-              '9876543210',
-            customerEmail:
-              pendingOrderResponse?.order?.customerEmail ||
-              confirmedOrderData?.order?.customerEmail ||
-              customerEmail ||
-              'support@gayatristationers.co.in',
-            returnOrigin:
-              typeof window !== 'undefined'
-                ? window.location.origin
-                : 'https://gayatristationers.co.in',
-          }),
-        });
-        const data = await res.json();
-        if (data?.fallback && !data?.paymentSessionId) {
-          // Static fallback host without live Cashfree function: confirm order cleanly
-          const fallbackConfirmed = pendingOrderResponse || confirmedOrderData;
-          if (fallbackConfirmed) {
-            setConfirmedOrderData(fallbackConfirmed);
-            setCartItems([]);
-            setAppliedCouponCode('');
-            setCouponInput('');
-            await loadStoreBootstrap();
-            setActiveView('confirmation');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            return true;
-          }
-        }
-        if (!res.ok || !data.paymentSessionId) {
-          throw new Error(data.error || 'Failed to initialize Cashfree payment session.');
-        }
-        paymentSessionId = data.paymentSessionId;
-        cfOrderId = data.cfOrderId || orderNumber;
-        environment = data.environment || 'SANDBOX';
-      }
-
-      const cashfree = CashfreeFactory({
-        mode: environment === 'PRODUCTION' ? 'production' : 'sandbox',
-      });
-
-      const checkoutResult = await cashfree.checkout({
-        paymentSessionId,
-        redirectTarget: '_modal',
-      });
-
-      // Do NOT verify payment if the gateway popup returned an error or was closed/cancelled by the user
-      if (checkoutResult?.error) {
-        throw new Error(
-          checkoutResult.error.message ||
-            'Payment was not completed in the Cashfree popup. Please complete UPI / Card payment or select Cash on Delivery.'
-        );
-      }
-
-      // Only verify payment after the Cashfree modal completes without error
-      const vRes = await fetch('/api/payments/cashfree/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderNumber,
-          cfOrderId,
-        }),
-      });
-      const vData = await vRes.json();
-      if (!vRes.ok || !vData.success || vData.order?.paymentStatus !== 'PAID') {
-        throw new Error(
-          vData.error ||
-            'Payment was not completed on Cashfree Gateway. Please complete your UPI / Card payment in the popup or choose Cash on Delivery.'
-        );
-      }
-
-      const finalOrderData = pendingOrderResponse
-        ? { ...pendingOrderResponse, order: { ...pendingOrderResponse.order, ...vData.order } }
-        : { order: vData.order, items: confirmedOrderData?.items || [] };
-
-      setConfirmedOrderData(finalOrderData);
-      setCartItems([]);
-      setAppliedCouponCode('');
-      setCouponInput('');
-      await loadStoreBootstrap();
-      setActiveView('confirmation');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return true;
-    } catch (err: any) {
-      console.error('Cashfree payment modal error:', err.message || err);
-      const rawMsg = String(err?.message || '');
-      const cleanMsg =
-        rawMsg.includes('Unexpected token') || rawMsg.includes('<!DOCTYPE')
-          ? 'Online gateway session could not reach server. Please select Cash on Delivery (COD) or Pay at Store Counter.'
-          : rawMsg ||
-            'Cashfree Payment Gateway could not complete payment. Please try again or choose Cash on Delivery (COD).';
-      setCheckoutError(cleanMsg);
-      return false;
-    } finally {
-      setCheckoutSubmitting(false);
-    }
-  };
-
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCheckoutError(null);
-    setCheckoutSubmitting(true);
-
-    try {
-      let activeToken = idToken;
-      let activeUser = dbUser;
-
-      // If customer is not signed in yet, seamlessly create/sync a customer session so checkout never blocks
-      if (!activeUser || !activeToken) {
-        const fallbackEmail = (
-          customerEmail ||
-          supabaseUser?.email ||
-          'customer@gayatristationers.com'
-        )
-          .trim()
-          .toLowerCase();
-        const fallbackName = (
-          customerName ||
-          fallbackEmail.split('@')[0] ||
-          'Valued Customer'
-        ).trim();
-        try {
-          const loginRes = await fetch('/api/auth/customer-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: fallbackEmail,
-              fullName: fallbackName,
-            }),
-          });
-          const loginData = await loginRes.json();
-          if (loginRes.ok && loginData?.token && loginData?.user) {
-            activeToken = loginData.token;
-            activeUser = loginData.user;
-          }
-        } catch {
-          // Use local fallback token
-        }
-
-        if (!activeUser || !activeToken) {
-          const isOwner = fallbackEmail === 'vainhavgupta20052014@gmail.com';
-          activeToken = isOwner
-            ? `gs_admin_direct_owner:${fallbackEmail}`
-            : `gs_customer_direct:${fallbackEmail}`;
-          activeUser = {
-            id: isOwner ? 1 : 2,
-            uid: `cust-${fallbackEmail}`,
-            email: fallbackEmail,
-            fullName: fallbackName,
-            role: isOwner ? 'owner' : 'customer',
-          };
-        }
-
-        localStorage.setItem(
-          'gs_admin_session_v1',
-          JSON.stringify({
-            token: activeToken,
-            expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-            user: activeUser,
-          })
-        );
-        setIdToken(activeToken);
-        setDbUser(activeUser);
-      }
-
-      if (!customerName.trim() || !customerPhone.trim()) {
-        throw new Error(
-          'Please enter your Full Name and 10-Digit Mobile Number to place your order.'
-        );
-      }
-      if (
-        fulfilmentMethod === 'HOME_DELIVERY' &&
-        (!shippingAddress.addressLine1.trim() || !shippingAddress.pincode.trim())
-      ) {
-        throw new Error(
-          'Please enter your complete Delivery Street Address and 6-Digit PIN Code for Home Delivery.'
-        );
-      }
-
-      const resolvedName =
-        customerName.trim() ||
-        activeUser?.fullName ||
-        activeUser?.email?.split('@')[0] ||
-        'Gayatri Customer';
-      const resolvedPhone = customerPhone.trim() || '9876543210';
-      const resolvedEmail =
-        customerEmail.trim() || activeUser?.email || 'customer@gayatristationers.com';
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${activeToken}`,
-        'x-customer-email': resolvedEmail,
-      };
-
-      // Build exact priced items from the storefront catalogue so neither server nor fallback ever inflates prices
-      const exactPricedItems = cartItems.map((ci) => {
-        const prod = products.find((p) => Number(p.id) === Number(ci.productId));
-        const variant =
-          prod?.variants?.find((v: any) => Number(v.id) === Number(ci.variantId)) ||
-          prod?.variants?.[0];
-        const unitPricePaise = Number(
-          variant?.sellingPricePaise ??
-            variant?.pricePaise ??
-            prod?.sellingPricePaise ??
-            prod?.basePricePaise ??
-            0
-        );
-        const unitMrpPaise = Number(
-          variant?.mrpPaise ?? prod?.mrpPaise ?? prod?.baseMrpPaise ?? unitPricePaise
-        );
-        const baseVarName = variant?.variantName || 'Standard Pack';
-        const finalVarName =
-          ci.selectedColor && !baseVarName.toLowerCase().includes(ci.selectedColor.split(' ')[0].toLowerCase())
-            ? `${baseVarName} · Colour: ${ci.selectedColor}`
-            : baseVarName;
-        return {
-          productId: ci.productId,
-          variantId: variant?.id || ci.variantId,
-          quantity: ci.quantity,
-          productName: prod?.name || 'Stationery Item',
-          variantName: finalVarName,
-          sku: variant?.sku || prod?.sku || `GS-${ci.productId}`,
-          unitPricePaise,
-          unitMrpPaise,
-          taxRatePercent: Number(prod?.taxRatePercent ?? prod?.gstRatePercent ?? 12),
-        };
-      });
-
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          guestSessionId,
-          customerName: resolvedName,
-          customerPhone: resolvedPhone,
-          customerEmail: resolvedEmail,
-          fulfilmentMethod,
-          paymentMethod,
-          couponCode: appliedCouponCode,
-          notes: orderNotes,
-          items: exactPricedItems,
-          subtotalPaise: localFallbackCalculation.subtotalPaise,
-          discountPaise: localFallbackCalculation.couponDiscountPaise,
-          shippingPaise: 0,
-          totalPaise: localFallbackCalculation.totalPaise,
-          returnOrigin:
-            typeof window !== 'undefined'
-              ? window.location.origin
-              : 'https://gayatristationers.co.in',
-          pickupWindow: fulfilmentMethod === 'STORE_PICKUP' ? pickupWindow : undefined,
-          shippingAddress:
-            fulfilmentMethod === 'HOME_DELIVERY'
-              ? {
-                  recipientName: resolvedName,
-                  phone: resolvedPhone,
-                  addressLine1:
-                    shippingAddress.addressLine1.trim() ||
-                    'Awas Vikas Market, Galla Mandi, Naubasta',
-                  addressLine2: shippingAddress.addressLine2,
-                  landmark: shippingAddress.landmark,
-                  city: shippingAddress.city.trim() || 'Kanpur',
-                  state: shippingAddress.state.trim() || 'Uttar Pradesh',
-                  pincode: shippingAddress.pincode.trim() || '208021',
-                }
-              : undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to place order.');
-      }
-
-      // Persist order to local storage history so My Orders always displays it immediately + trigger Admin Notification
-      if (data?.order) {
-        try {
-          const existingRaw = localStorage.getItem('gs_my_orders_v1');
-          const existing = existingRaw ? JSON.parse(existingRaw) : [];
-          const list = Array.isArray(existing) ? existing : [];
-          const filtered = list.filter(
-            (o: any) => o?.order?.orderNumber !== data.order.orderNumber
-          );
-          localStorage.setItem('gs_my_orders_v1', JSON.stringify([data, ...filtered].slice(0, 100)));
-
-          const adminNotifsRaw = localStorage.getItem('gs_admin_order_alerts_v1');
-          const adminNotifs = adminNotifsRaw ? JSON.parse(adminNotifsRaw) : [];
-          const newAlert = {
-            id: Date.now(),
-            orderId: data.order.id,
-            orderNumber: data.order.orderNumber,
-            customerName: data.order.customerName,
-            customerPhone: data.order.customerPhone,
-            totalPaise: data.order.totalPaise,
-            fulfilmentMethod: data.order.fulfilmentMethod,
-            paymentMethod: data.order.paymentMethod,
-            subject: `New Order ${data.order.orderNumber} (${data.order.fulfilmentMethod === 'STORE_PICKUP' ? 'Get at Store' : 'Home Delivery'})`,
-            message: `${data.order.customerName} (${data.order.customerPhone}) placed Order ${data.order.orderNumber} for ${formatPaiseToINR(data.order.totalPaise)}.`,
-            isRead: false,
-            status: 'UNREAD',
-            createdAt: new Date().toISOString(),
-          };
-          localStorage.setItem(
-            'gs_admin_order_alerts_v1',
-            JSON.stringify([newAlert, ...(Array.isArray(adminNotifs) ? adminNotifs : [])].slice(0, 50))
-          );
-        } catch {
-          // Ignore storage error
-        }
-      }
-
-      // If Online Payment is selected and a live paymentSessionId was created, open the payment modal;
-      // otherwise (or in fallback mode), confirm the order directly so the customer is never blocked
-      if (paymentMethod === 'CASHFREE_ONLINE' && data.cashfree?.paymentSessionId && !data.cashfree?.fallback) {
-        await triggerCashfreePaymentModal(
-          data.order.orderNumber,
-          {
-            paymentSessionId: data.cashfree.paymentSessionId,
-            cfOrderId: data.cashfree.cfOrderId || data.order.orderNumber,
-            environment: data.cashfree.environment,
-          },
-          data
-        );
-        return;
-      }
-
-      // Confirm order and navigate to Confirmation Receipt view
-      setConfirmedOrderData(data);
-      setCartItems([]);
-      setAppliedCouponCode('');
-      setCouponInput('');
-      showToast(`Order #${data.order?.orderNumber || ''} confirmed!`);
-      await loadStoreBootstrap();
-      setActiveView('confirmation');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err: any) {
-      const rawMsg = String(err?.message || '');
-      const cleanMsg =
-        rawMsg.includes('Unexpected token') || rawMsg.includes('<!DOCTYPE')
-          ? 'Could not reach server endpoint. Please try again or choose Cash on Delivery.'
-          : rawMsg || 'Could not complete order.';
-      setCheckoutError(cleanMsg);
-    } finally {
-      setCheckoutSubmitting(false);
-    }
-  };
-
-  // Storefront Guest Order Search Widget Lookup (Order ID + Mobile Number, no sign-in required)
-  const handleStorefrontOrderSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setStorefrontOrderSearchError(null);
-
-    const cleanId = storefrontOrderIdInput.trim().toUpperCase().replace(/^#/, '');
-    const cleanPhoneDigits = storefrontOrderPhoneInput.replace(/\D/g, '');
-    const normalizedPhone10 = cleanPhoneDigits.slice(-10);
-
-    if (!cleanId) {
-      setStorefrontOrderSearchError('Please enter your Order ID (e.g. GS-...).');
-      return;
-    }
-    if (normalizedPhone10.length !== 10) {
-      setStorefrontOrderSearchError(
-        'Please enter the valid 10-digit mobile number used when placing your order.'
-      );
-      return;
-    }
-
-    setStorefrontOrderSearching(true);
-    try {
-      const res = await fetch(
-        `/api/orders/lookup?orderId=${encodeURIComponent(cleanId)}&phone=${encodeURIComponent(normalizedPhone10)}`
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'No matching order found for this Order ID and mobile number.');
-      }
-      setStorefrontSearchedOrder(data);
-      setTrackedOrderResult(data);
-      setTrackOrderNumberInput(data?.order?.orderNumber || cleanId);
-      setTrackPhoneInput(normalizedPhone10);
-    } catch (err: any) {
-      // Fallback check in local orders cache if matching both Order ID and 10-digit mobile number
-      try {
-        const raw = localStorage.getItem('gs_my_orders_v1');
-        const list = raw ? JSON.parse(raw) : [];
-        const withGs = cleanId.startsWith('GS-') ? cleanId : `GS-${cleanId}`;
-        const found = Array.isArray(list)
-          ? list.find((o: any) => {
-              const ordNum = String(o?.order?.orderNumber || '').trim().toUpperCase();
-              const idMatch =
-                ordNum === cleanId ||
-                ordNum === withGs ||
-                (cleanId.length >= 4 && ordNum.endsWith(cleanId));
-              const ordPhone = String(o?.order?.customerPhone || '')
-                .replace(/\D/g, '')
-                .slice(-10);
-              return idMatch && ordPhone === normalizedPhone10;
-            })
-          : null;
-        if (found) {
-          setStorefrontSearchedOrder(found);
-          setTrackedOrderResult(found);
-          setStorefrontOrderSearching(false);
-          return;
-        }
-      } catch {
-        // Ignore storage error
-      }
-      setStorefrontSearchedOrder(null);
-      setStorefrontOrderSearchError(
-        err.message || 'Could not find an order matching that Order ID and mobile number.'
-      );
-    } finally {
-      setStorefrontOrderSearching(false);
-    }
-  };
-
-  // Track Order Lookup
-  const handleTrackOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTrackError(null);
-    if (!trackOrderNumberInput.trim()) return;
-    const cleanNum = trackOrderNumberInput.trim().toUpperCase().replace(/^#/, '');
-    const cleanPhone = trackPhoneInput.replace(/\D/g, '').slice(-10);
-    try {
-      const headers: Record<string, string> = {};
-      if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const query = cleanPhone.length === 10 ? `?phone=${encodeURIComponent(cleanPhone)}` : '';
-      const res = await fetch(`/api/orders/track/${encodeURIComponent(cleanNum)}${query}`, {
-        headers,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Order not found.');
-      setTrackedOrderResult(data);
-    } catch (err: any) {
-      // Check local orders cache fallback
-      try {
-        const raw = localStorage.getItem('gs_my_orders_v1');
-        const list = raw ? JSON.parse(raw) : [];
-        const found = Array.isArray(list)
-          ? list.find((o: any) => o?.order?.orderNumber?.toUpperCase() === cleanNum)
-          : null;
-        if (found) {
-          setTrackedOrderResult(found);
-          return;
-        }
-      } catch {
-        // Ignore
-      }
-      setTrackedOrderResult(null);
-      setTrackError(err.message);
-    }
-  };
-
-  const handleLoadMyOrders = useCallback(async () => {
-    const isCurrentlySignedIn = Boolean(dbUser || supabaseUser || idToken);
-    if (!isCurrentlySignedIn && !trackPhoneInput.trim()) {
-      setMyOrdersList([]);
-      return;
-    }
-
-    let localOrders: any[] = [];
-    if (isCurrentlySignedIn) {
-      try {
-        const raw = localStorage.getItem('gs_my_orders_v1');
-        const parsed = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(parsed)) localOrders = parsed;
-      } catch {
-        localOrders = [];
-      }
-    }
-
-    try {
-      const headers: Record<string, string> = {};
-      if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      const activeEmail = dbUser?.email || supabaseUser?.email || '';
-      if (activeEmail) headers['x-customer-email'] = activeEmail;
-
       const params = new URLSearchParams();
-      if (trackPhoneInput.trim()) params.set('phone', trackPhoneInput.trim());
-      if (activeEmail) params.set('email', activeEmail);
-      const query = params.toString() ? `?${params.toString()}` : '';
-
-      const res = await fetch(`/api/orders/my-orders${query}`, { headers });
-      const data = await res.json();
-      const serverOrders = res.ok && Array.isArray(data?.orders) ? data.orders : [];
-
-      // Merge serverOrders and localOrders by orderNumber
-      const mergedMap = new Map<string, any>();
-      for (const o of [...serverOrders, ...localOrders]) {
-        const num = o?.order?.orderNumber;
-        if (num && !mergedMap.has(num)) {
-          mergedMap.set(num, o);
-        }
-      }
-      const list = Array.from(mergedMap.values());
-      setMyOrdersList(list);
-      setTrackedOrderResult((prev: any) => {
-        if (prev?.order?.orderNumber) {
-          const refreshed = list.find(
-            (o: any) => o?.order?.orderNumber === prev.order.orderNumber
-          );
-          return refreshed || (list.length > 0 ? list[0] : prev);
-        }
-        return list.length > 0 ? list[0] : null;
+      if (customerPhone) params.set('phone', customerPhone);
+      if (customerEmail) params.set('email', customerEmail);
+      const res = await fetch(`/api/orders/my-orders?${params.toString()}`, {
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
       });
-    } catch (err) {
-      console.error('Failed to load orders:', err);
-      setMyOrdersList(localOrders);
-      setTrackedOrderResult((prev: any) => prev || (localOrders.length > 0 ? localOrders[0] : null));
+      const data = await res.json();
+      if (Array.isArray(data.orders)) {
+        setMyOrders(data.orders);
+      }
+    } catch {
+      setMyOrders(readStoredJson('gs_my_orders_v1', []));
     }
-  }, [idToken, dbUser, supabaseUser, trackPhoneInput]);
+  }, [customerEmail, customerPhone, idToken]);
 
   useEffect(() => {
-    if (activeView === 'track' || activeView === 'profile') {
-      handleLoadMyOrders();
-    }
-  }, [activeView, dbUser, supabaseUser, idToken, handleLoadMyOrders]);
+    loadMyOrders();
+  }, [loadMyOrders]);
 
-  // Submit Institutional Bulk Order Enquiry
-  const handleSubmitBulkEnquiry = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBulkError(null);
-    try {
-      const res = await fetch('/api/bulk-enquiries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...bulkForm,
-          itemsRequested: bulkItems.filter((i) => i.itemName.trim() && i.quantity > 0),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to submit bulk enquiry.');
-      setBulkSubmittedEnquiry(data.enquiry);
-    } catch (err: any) {
-      setBulkError(err.message);
-    }
-  };
+  // Handle Cashfree Gateway Return URL (?cf_order_id=...&order_num=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const cfOrderId = params.get('cf_order_id');
+    const orderNum = params.get('order_num');
+    if (!cfOrderId && !orderNum) return;
 
-  const localFallbackCalculation = useMemo(() => {
+    const verifyReturnedPayment = async () => {
+      try {
+        const res = await fetch('/api/payments/cashfree/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cfOrderId: cfOrderId || orderNum,
+            orderNumber: orderNum || cfOrderId,
+          }),
+        });
+        const vData = await res.json();
+        const existingOrders = readStoredJson<any[]>('gs_my_orders_v1', []);
+        const matchedIdx = existingOrders.findIndex(
+          (o) =>
+            o?.order?.orderNumber === orderNum ||
+            o?.order?.orderNumber === cfOrderId
+        );
+
+        if (vData?.success || vData?.order?.paymentStatus === 'PAID') {
+          let finalizedEntry = matchedIdx >= 0 ? existingOrders[matchedIdx] : null;
+          if (finalizedEntry) {
+            finalizedEntry = {
+              ...finalizedEntry,
+              order: {
+                ...finalizedEntry.order,
+                ...vData.order,
+                paymentStatus: 'PAID',
+                orderStatus: 'CONFIRMED',
+              },
+            };
+            existingOrders[matchedIdx] = finalizedEntry;
+            localStorage.setItem('gs_my_orders_v1', JSON.stringify(existingOrders));
+            setMyOrders(existingOrders);
+          } else {
+            finalizedEntry = { order: vData.order, items: [] };
+          }
+          setConfirmedOrderData(finalizedEntry);
+          setCartItems([]);
+          setAppliedCouponCode('');
+          setActiveView('confirmation');
+          showToast('Payment verified cleanly!');
+        }
+      } catch {
+        // Ignore transient verification failure
+      } finally {
+        window.history.replaceState({}, '', '/');
+      }
+    };
+
+    verifyReturnedPayment();
+  }, [showToast]);
+
+  // Live Cart Calculation
+  const cartCalculation = useMemo(() => {
     const pricedItems = cartItems
       .map((ci) => {
         const prod = products.find((p) => Number(p.id) === Number(ci.productId));
@@ -3223,6166 +464,2769 @@ const DEFAULT_PRODUCTS = [
             id: ci.variantId || prod.id,
             variantName: 'Standard Pack',
             sku: prod.sku || `GS-${prod.id}`,
-            sellingPricePaise: prod.sellingPricePaise || prod.basePricePaise || 9000,
-            mrpPaise: prod.mrpPaise || prod.baseMrpPaise || 10000,
+            sellingPricePaise: prod.sellingPricePaise || 0,
+            mrpPaise: prod.mrpPaise || prod.sellingPricePaise || 0,
             stockQuantity: prod.totalStock ?? 50,
           };
         const unitPricePaise = Number(
           variant.sellingPricePaise ?? variant.pricePaise ?? prod.sellingPricePaise ?? 0
         );
-        const unitMrpPaise = Number(
-          variant.mrpPaise ?? prod.mrpPaise ?? unitPricePaise
-        );
-        const baseVariantName = variant.variantName || 'Standard';
-        const displayVariantName =
-          ci.selectedColor && !baseVariantName.toLowerCase().includes(ci.selectedColor.split(' ')[0].toLowerCase())
-            ? `${baseVariantName} (${ci.selectedColor})`
-            : baseVariantName;
+        const unitMrpPaise = Number(variant.mrpPaise ?? prod.mrpPaise ?? unitPricePaise);
+        const baseName = variant.variantName || 'Standard Pack';
+        const displayVar =
+          ci.selectedColor &&
+          !baseName.toLowerCase().includes(String(ci.selectedColor).split(' ')[0].toLowerCase())
+            ? `${baseName} (${ci.selectedColor})`
+            : baseName;
         return {
           productId: Number(prod.id),
           variantId: Number(variant.id),
           productName: prod.name,
-          variantName: displayVariantName,
+          variantName: displayVar,
           selectedColor: ci.selectedColor,
           sku: variant.sku || prod.sku || `GS-${prod.id}`,
-          quantity: ci.quantity,
-          unitMrpPaise: Number.isFinite(unitMrpPaise) ? unitMrpPaise : 0,
-          unitPricePaise: Number.isFinite(unitPricePaise) ? unitPricePaise : 0,
-          taxRatePercent: Number(prod.taxRatePercent ?? prod.gstRatePercent ?? 12),
-          availableStock: Number(variant.stockQuantity ?? 50),
-          pickupEligible: true,
-          deliveryEligible: true,
+          quantity: Math.max(1, Number(ci.quantity) || 1),
+          unitMrpPaise,
+          unitPricePaise,
+          taxRatePercent: Number(prod.taxRatePercent ?? 12),
+          availableStock: Number(variant.stockQuantity ?? prod.totalStock ?? 50),
+          pickupEligible: prod.pickupEligible !== false,
+          deliveryEligible: prod.deliveryEligible !== false,
         };
       })
       .filter(Boolean) as any[];
 
-    const matchedCoupon = appliedCouponCode
-      ? coupons.find((c) => c.code?.toUpperCase() === appliedCouponCode.toUpperCase())
+    const cleanCoupon = appliedCouponCode.trim().toUpperCase();
+    const matchedCoupon = cleanCoupon
+      ? coupons.find((c) => String(c.code || '').toUpperCase() === cleanCoupon) || null
+      : null;
+
+    const cleanPin = shippingPincode.trim();
+    const matchedPin = cleanPin
+      ? serviceablePincodes.find((p) => p.pincode === cleanPin && p.isActive !== false) || null
       : null;
 
     return calculateOrderTotals({
       items: pricedItems,
       fulfilmentMethod,
-      coupon: matchedCoupon || null,
-      pincodeRule: matchedPincodeRule || null,
+      coupon: matchedCoupon,
+      pincodeRule: matchedPin,
     });
-  }, [cartItems, products, appliedCouponCode, coupons, fulfilmentMethod, matchedPincodeRule]);
+  }, [
+    cartItems,
+    products,
+    appliedCouponCode,
+    coupons,
+    shippingPincode,
+    serviceablePincodes,
+    fulfilmentMethod,
+  ]);
 
-  const calculation =
-    serverCartResult?.calculation &&
-    Array.isArray(serverCartResult.calculation.items) &&
-    serverCartResult.calculation.items.length === cartItems.length
-      ? serverCartResult.calculation
-      : localFallbackCalculation;
+  useEffect(() => {
+    if (appliedCouponCode && cartCalculation.couponMessage) {
+      setCouponMessage(cartCalculation.couponMessage);
+    } else if (appliedCouponCode && cartCalculation.couponDiscountPaise > 0) {
+      setCouponMessage(
+        `${appliedCouponCode} applied — saved ${formatPaiseToINR(
+          cartCalculation.couponDiscountPaise,
+          false
+        )}!`
+      );
+    } else {
+      setCouponMessage(undefined);
+    }
+  }, [appliedCouponCode, cartCalculation]);
 
-  const themeConfig = storeSettings?.theme_config || {};
-  const footerConfig = storeSettings?.footer_config || {};
-  const activeHeroBanners = useMemo(
-    () =>
-      banners.filter(
-        (b) =>
-          b.isActive !== false &&
-          b.status !== 'HIDDEN' &&
-          (b.placement === 'HERO_MAIN' || b.placement === 'HERO' || !b.placement)
-      ),
-    [banners]
+  const totalCartItemsCount = useMemo(
+    () => cartItems.reduce((sum, ci) => sum + Number(ci.quantity || 1), 0),
+    [cartItems]
   );
-  const currentHeroBanner =
-    activeHeroBanners[activeHeroBannerIdx % Math.max(1, activeHeroBanners.length)] || null;
-  const activeMidPageBanners = useMemo(
-    () =>
-      banners.filter(
-        (b) =>
-          b.isActive !== false &&
-          b.status !== 'HIDDEN' &&
-          b.placement === 'MID_PAGE_STRIP'
-      ),
-    [banners]
+
+  // Add item using composite (productId, variantId, selectedColor) key
+  const addItemToCart = useCallback(
+    (
+      productId: number,
+      explicitVariantId?: number,
+      qty = 1,
+      explicitColor?: string,
+      openDrawer = true
+    ) => {
+      const prod = products.find((p) => Number(p.id) === Number(productId));
+      if (!prod) return;
+      const colorOpts = getProductColorOptions(prod);
+      const chosenColor =
+        explicitColor ||
+        selectedColorByProduct[productId] ||
+        (colorOpts.length > 0 ? colorOpts[0].label : undefined);
+      const matchedColorOpt = colorOpts.find((c) => c.label === chosenColor);
+      const chosenVariantId =
+        explicitVariantId ||
+        selectedVariantByProduct[productId] ||
+        matchedColorOpt?.variantId ||
+        prod.variants?.[0]?.id ||
+        productId;
+
+      const targetKey = getCartItemKey({
+        productId,
+        variantId: chosenVariantId,
+        selectedColor: chosenColor,
+      });
+
+      setCartItems((prev) => {
+        const idx = prev.findIndex((item) => getCartItemKey(item) === targetKey);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], quantity: next[idx].quantity + qty };
+          return next;
+        }
+        return [
+          ...prev,
+          {
+            productId,
+            variantId: chosenVariantId,
+            quantity: qty,
+            selectedColor: chosenColor,
+          },
+        ];
+      });
+
+      showToast(`Added ${prod.name} to bag`);
+      if (openDrawer) setCartDrawerOpen(true);
+    },
+    [products, selectedColorByProduct, selectedVariantByProduct, showToast]
   );
-  const activeCatalogueBanners = useMemo(
-    () =>
-      banners.filter(
-        (b) =>
-          b.isActive !== false &&
-          b.status !== 'HIDDEN' &&
-          b.placement === 'CATALOGUE_SPOTLIGHT'
-      ),
-    [banners]
-  );
-  const handleBannerCtaNavigate = (rawLink?: string) => {
-    const link = (rawLink || '').trim();
-    if (!link || link === 'catalogue') {
-      setSelectedCategorySlug('ALL');
-      setSelectedBrandSlug('ALL');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    if (link === 'combos' || link === 'bundles') {
-      setActiveView('combos');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (link === 'bulk') {
-      setActiveView('bulk');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (link === 'track') {
-      setActiveView('track');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (link.startsWith('brand:')) {
-      handleViewBrandProducts(link.replace('brand:', ''));
-      return;
-    }
-    if (link.startsWith('category:')) {
-      setSelectedCategorySlug(link.replace('category:', ''));
-      setSelectedBrandSlug('ALL');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    if (categories.some((c) => c.slug === link)) {
-      setSelectedCategorySlug(link);
-      setSelectedBrandSlug('ALL');
-      setActiveView('storefront');
-      setTimeout(() => {
-        document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-      return;
-    }
-    document.getElementById('catalogue-section')?.scrollIntoView({ behavior: 'smooth' });
+
+  const handleUpdateCartQuantity = (
+    productId: number,
+    variantId: number,
+    selectedColor: string | undefined,
+    delta: number
+  ) => {
+    const key = getCartItemKey({ productId, variantId, selectedColor });
+    setCartItems((prev) =>
+      prev
+        .map((item) =>
+          getCartItemKey(item) === key
+            ? { ...item, quantity: item.quantity + delta }
+            : item
+        )
+        .filter((item) => item.quantity > 0)
+    );
   };
-  const activeNavCategories = useMemo(
-    () => categories.filter((c) => c.isActive !== false && c.showInNav !== false),
-    [categories]
+
+  const handleRemoveCartItem = (
+    productId: number,
+    variantId: number,
+    selectedColor: string | undefined
+  ) => {
+    const key = getCartItemKey({ productId, variantId, selectedColor });
+    setCartItems((prev) => prev.filter((item) => getCartItemKey(item) !== key));
+  };
+
+  const handleSaveCartItemToWishlist = (
+    prod: any,
+    variantId: number,
+    selectedColor?: string
+  ) => {
+    setWishlistProductIds((prev) =>
+      prev.includes(Number(prod.id)) ? prev : [...prev, Number(prod.id)]
+    );
+    handleRemoveCartItem(prod.id, variantId, selectedColor);
+    showToast(`Saved ${prod.name} to wishlist`);
+  };
+
+  const toggleWishlist = (productId: number) => {
+    setWishlistProductIds((prev) => {
+      const exists = prev.includes(productId);
+      showToast(exists ? 'Removed from wishlist' : 'Saved to wishlist');
+      return exists ? prev.filter((id) => id !== productId) : [...prev, productId];
+    });
+  };
+
+  const toggleCompareProduct = (productId: number) => {
+    setCompareProductIds((prev) => {
+      if (prev.includes(productId)) {
+        return prev.filter((id) => id !== productId);
+      }
+      if (prev.length >= 4) {
+        setCompareToast('Compare up to 4 stationery items side-by-side.');
+        return prev;
+      }
+      setCompareToast('Added to side-by-side compare tray.');
+      return [...prev, productId];
+    });
+  };
+
+  const handleSelectFulfilment = (nextMethod: FulfilmentMethod) => {
+    setFulfilmentMethod(nextMethod);
+    if (nextMethod === 'STORE_PICKUP' && paymentMethod === 'COD') {
+      setPaymentMethod('PAY_AT_STORE');
+    } else if (nextMethod === 'HOME_DELIVERY' && paymentMethod === 'PAY_AT_STORE') {
+      setPaymentMethod('COD');
+    }
+  };
+
+  // Smart Indian Stationery Multi-Attribute Filter
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+      selectedCategorySlug ||
+      selectedBrandSlug ||
+      rulingFilter !== 'ALL' ||
+      tipFilter !== 'ALL' ||
+      priceRangeFilter !== 'ALL'
   );
-  const activeHomepageCategories = useMemo(
-    () => categories.filter((c) => c.isActive !== false && c.showOnHomepage !== false),
-    [categories]
+
+  const resetAllFilters = () => {
+    setSearchQuery('');
+    setSelectedCategorySlug('');
+    setSelectedBrandSlug('');
+    setRulingFilter('ALL');
+    setTipFilter('ALL');
+    setPriceRangeFilter('ALL');
+    setSortBy('featured');
+  };
+
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const list = products.filter((p) => {
+      if (p.isActive === false) return false;
+      if (selectedCategorySlug && p.categorySlug !== selectedCategorySlug) return false;
+      if (selectedBrandSlug && p.brandSlug !== selectedBrandSlug) return false;
+      if (!matchesRulingFilter(p, rulingFilter)) return false;
+      if (!matchesTipOrGradeFilter(p, tipFilter)) return false;
+      if (!matchesPriceRangeFilter(p, priceRangeFilter)) return false;
+      if (!q) return true;
+      const blob = [p.name, p.brandName, p.categoryName, p.shortDescription, p.description, p.sku]
+        .join(' ')
+        .toLowerCase();
+      return blob.includes(q);
+    });
+
+    if (sortBy === 'price-asc') {
+      return [...list].sort(
+        (a, b) => Number(a.sellingPricePaise || 0) - Number(b.sellingPricePaise || 0)
+      );
+    }
+    if (sortBy === 'price-desc') {
+      return [...list].sort(
+        (a, b) => Number(b.sellingPricePaise || 0) - Number(a.sellingPricePaise || 0)
+      );
+    }
+    return list;
+  }, [
+    products,
+    searchQuery,
+    selectedCategorySlug,
+    selectedBrandSlug,
+    rulingFilter,
+    tipFilter,
+    priceRangeFilter,
+    sortBy,
+  ]);
+
+  const activePdpProduct = useMemo(
+    () => products.find((p) => p.slug === activeProductSlug) || null,
+    [products, activeProductSlug]
   );
-  const activeBrands = useMemo(
-    () => brands.filter((b) => b.isActive !== false),
-    [brands]
+
+  const wishlistProducts = useMemo(
+    () => products.filter((p) => wishlistProductIds.includes(Number(p.id))),
+    [products, wishlistProductIds]
   );
-  const activeCmsPage = useMemo(
-    () => cmsPages.find((p) => p.slug === activePageSlug) || cmsPages[0] || null,
+
+  const activePolicyPage = useMemo(
+    () =>
+      cmsPages.find((p) => p.slug === activePageSlug) ||
+      DEFAULT_CMS_PAGES.find((p) => p.slug === activePageSlug) ||
+      DEFAULT_CMS_PAGES[0],
     [cmsPages, activePageSlug]
   );
 
-  // STANDALONE LIQUID ADMIN CONSOLE: Require verified Store Owner session before rendering AdminDashboard
-  if (activeView === 'admin' || activeView === 'admin-login') {
-    const isVerifiedOwner = Boolean(
-      dbUser &&
-        dbUser.email?.trim().toLowerCase() === 'vainhavgupta20052014@gmail.com' &&
-        (dbUser.role === 'owner' || dbUser.role === 'staff')
+  // Auth Handlers
+  const completeCustomerSignIn = async (
+    resolvedEmail: string,
+    resolvedName: string,
+    phoneVal = ''
+  ) => {
+    const cleanEmail = resolvedEmail.trim().toLowerCase();
+    const cleanName = resolvedName.trim() || cleanEmail.split('@')[0] || 'Student Member';
+    const res = await fetch('/api/auth/customer-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        fullName: cleanName,
+        phone: phoneVal || customerPhone,
+      }),
+    });
+    const data = await res.json();
+    const isOwner = cleanEmail === OWNER_EMAIL;
+    const finalUser = data?.user
+      ? { ...data.user, role: isOwner ? 'owner' : 'customer' }
+      : {
+          id: isOwner ? 1 : 2,
+          uid: `cust-${cleanEmail}`,
+          email: cleanEmail,
+          fullName: cleanName,
+          phone: phoneVal || customerPhone,
+          role: isOwner ? 'owner' : 'customer',
+        };
+    const finalToken =
+      data?.token ||
+      (isOwner ? `gs_admin_direct_owner:${cleanEmail}` : `gs_customer_direct:${cleanEmail}`);
+
+    localStorage.setItem(
+      'gs_admin_session_v1',
+      JSON.stringify({
+        token: finalToken,
+        expiresAt: data?.expiresAt || Date.now() + 7 * 24 * 60 * 60 * 1000,
+        user: finalUser,
+      })
     );
+    localStorage.setItem(
+      'gs_user_profile_v1',
+      JSON.stringify({
+        ...finalUser,
+        shippingAddress,
+        shippingCity,
+        shippingPincode,
+      })
+    );
+    setIdToken(finalToken);
+    setDbUser(finalUser);
+    setCustomerEmail(finalUser.email);
+    if (finalUser.fullName) setCustomerName(finalUser.fullName);
+    if (finalUser.phone) setCustomerPhone(finalUser.phone);
+    await loadStoreBootstrap(finalToken);
+    navigateTo('storefront', '/');
+    showToast(`Welcome, ${finalUser.fullName || finalUser.email}!`);
+  };
 
-    if (!isVerifiedOwner) {
-      return (
-        <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-center items-center px-4 py-12">
-          <div className="w-full max-w-md bg-white text-slate-900 rounded-[32px] p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setActiveView('storefront');
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-xs font-semibold text-slate-800 cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Storefront</span>
-              </button>
-              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-[10px] font-mono font-bold uppercase tracking-wider">
-                Owner Protected
-              </span>
-            </div>
+  const handleCustomerGoogleSignIn = async () => {
+    setAuthError(null);
+    setAuthSubmitting(true);
+    try {
+      let emailVal = authEmailInput.trim().toLowerCase();
+      let nameVal = authNameInput.trim();
+      try {
+        const res = await signInWithPopup(auth, googleAuthProvider);
+        if (res?.user?.email) {
+          emailVal = res.user.email.trim().toLowerCase();
+          nameVal = res.user.displayName || nameVal;
+        }
+      } catch {
+        // Fallback when embedded popup is blocked
+      }
+      if (!emailVal || !emailVal.includes('@')) {
+        throw new Error(
+          'Google popup was blocked by your browser. Enter your email below and click Sign In.'
+        );
+      }
+      await completeCustomerSignIn(emailVal, nameVal, authPhoneInput);
+    } catch (err: any) {
+      setAuthError(err.message || 'Sign-in could not complete.');
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
 
-            <div className="space-y-1.5">
-              <div className="w-11 h-11 rounded-2xl bg-[#B42318] text-white flex items-center justify-center shadow-sm mb-2">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h1 className="font-serif-display text-2xl font-bold text-slate-900">
-                Store Owner Admin Login
-              </h1>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                This console is restricted exclusively to the verified Gayatri Stationers Store Owner. Regular customer accounts cannot access admin settings.
-              </p>
-            </div>
-
-            {dbUser && dbUser.email?.toLowerCase() !== 'vainhavgupta20052014@gmail.com' && (
-              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-950 space-y-1">
-                <p className="font-bold">Signed in as Customer ({dbUser.email})</p>
-                <p>
-                  Your customer account does not have administrator privileges. Sign in with the authorized Store Owner email below.
-                </p>
-              </div>
-            )}
-
-            {authError && (
-              <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-900 font-medium">
-                {authError}
-              </div>
-            )}
-
-            <button
-              type="button"
-              disabled={adminLoginSubmitting}
-              onClick={handleGoogleAdminSignUp}
-              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold rounded-full flex items-center justify-center gap-2.5 cursor-pointer shadow-xs transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4 text-amber-300" />
-              <span>
-                {adminLoginSubmitting
-                  ? 'Verifying Store Owner...'
-                  : 'Verify with Owner Google Account'}
-              </span>
-            </button>
-
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-slate-200" />
-              <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase font-mono">
-                OR VERIFY OWNER EMAIL
-              </span>
-              <div className="flex-grow border-t border-slate-200" />
-            </div>
-
-            <form onSubmit={handleAdminCredentialsLogin} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Authorized Store Owner Email *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={adminLoginEmail}
-                  onChange={(e) => setAdminLoginEmail(e.target.value)}
-                  placeholder="Enter verified owner email..."
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-full text-sm focus:border-slate-900 focus:outline-none"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={adminLoginSubmitting}
-                className="w-full py-3 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs sm:text-sm font-bold rounded-full shadow-xs cursor-pointer transition-colors"
-              >
-                {adminLoginSubmitting ? 'Signing In...' : 'Unlock Admin Console →'}
-              </button>
-            </form>
-          </div>
-        </div>
+  const handleEmailAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (!authEmailInput.trim().includes('@')) {
+      setAuthError('Please enter a valid email address.');
+      return;
+    }
+    setAuthSubmitting(true);
+    try {
+      await completeCustomerSignIn(
+        authEmailInput,
+        authNameInput || authEmailInput.split('@')[0],
+        authPhoneInput
       );
+    } catch (err: any) {
+      setAuthError(err.message || 'Could not sign in.');
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleAdminPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminAuthError(null);
+    setAdminAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: adminEmailInput.trim(),
+          password: adminPasswordInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Invalid shop owner credentials.');
+      }
+      const userObj = data.user || {
+        id: 1,
+        uid: 'admin-owner',
+        email: adminEmailInput.trim(),
+        fullName: 'Gayatri Stationers Owner',
+        role: 'owner',
+      };
+      const tok = data.token || `gs_admin_direct_owner:${userObj.email}`;
+      localStorage.setItem(
+        'gs_admin_session_v1',
+        JSON.stringify({
+          token: tok,
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+          user: userObj,
+        })
+      );
+      setIdToken(tok);
+      setDbUser(userObj);
+      await loadStoreBootstrap(tok);
+      navigateTo('admin', '/admin');
+      showToast('Welcome back to Shop Manager.');
+    } catch (err: any) {
+      setAdminAuthError(err.message || 'Admin login failed.');
+    } finally {
+      setAdminAuthSubmitting(false);
+    }
+  };
+
+  const handleAdminGoogleSignIn = async () => {
+    setAdminAuthError(null);
+    setAdminAuthSubmitting(true);
+    try {
+      let emailVal = adminEmailInput.trim() || OWNER_EMAIL;
+      let firebaseIdToken = '';
+      try {
+        const res = await signInWithPopup(auth, googleAuthProvider);
+        if (res?.user?.email) {
+          emailVal = res.user.email.trim().toLowerCase();
+          firebaseIdToken = await res.user.getIdToken();
+        }
+      } catch {
+        // Popup fallback
+      }
+      const apiRes = await fetch('/api/admin/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: firebaseIdToken, email: emailVal }),
+      });
+      const data = await apiRes.json();
+      if (!apiRes.ok || data.error) throw new Error(data.error || 'Owner Google login failed.');
+      const userObj = data.user || {
+        id: 1,
+        uid: 'admin-owner',
+        email: emailVal,
+        fullName: 'Gayatri Stationers Owner',
+        role: 'owner',
+      };
+      const tok = data.token || `gs_admin_direct_owner:${emailVal}`;
+      localStorage.setItem(
+        'gs_admin_session_v1',
+        JSON.stringify({
+          token: tok,
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+          user: userObj,
+        })
+      );
+      setIdToken(tok);
+      setDbUser(userObj);
+      navigateTo('admin', '/admin');
+    } catch (err: any) {
+      setAdminAuthError(err.message || 'Owner login failed.');
+    } finally {
+      setAdminAuthSubmitting(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    try {
+      const updatedProfile = {
+        ...(dbUser || {}),
+        fullName: customerName.trim(),
+        phone: customerPhone.replace(/\D/g, '').slice(-10),
+        email: customerEmail.trim(),
+        shippingAddress: shippingAddress.trim(),
+        shippingCity: shippingCity.trim(),
+        shippingPincode: shippingPincode.trim(),
+      };
+      localStorage.setItem('gs_user_profile_v1', JSON.stringify(updatedProfile));
+      if (dbUser) {
+        const nextUser = {
+          ...dbUser,
+          fullName: updatedProfile.fullName,
+          phone: updatedProfile.phone,
+        };
+        setDbUser(nextUser);
+        const sess = readStoredJson<any>('gs_admin_session_v1', null);
+        if (sess) {
+          localStorage.setItem('gs_admin_session_v1', JSON.stringify({ ...sess, user: nextUser }));
+        }
+      }
+      await fetch('/api/auth/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify(updatedProfile),
+      });
+      showToast('Profile & Kanpur address saved!');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('gs_admin_session_v1');
+    setIdToken(null);
+    setDbUser(null);
+    showToast('Signed out safely. Your order receipts remain saved on this device.');
+    navigateTo('storefront', '/');
+  };
+
+  // Track Order Lookup
+  const performTrackSearch = async (qStr: string) => {
+    const clean = qStr.trim();
+    if (!clean) return;
+    setTrackSearching(true);
+    try {
+      const res = await fetch(`/api/orders/lookup?q=${encodeURIComponent(clean)}`);
+      const data = await res.json();
+      setTrackResults(Array.isArray(data.orders) ? data.orders : []);
+      if (!data.orders || data.orders.length === 0) {
+        showToast('No matching order found for that number or mobile.');
+      }
+    } finally {
+      setTrackSearching(false);
+    }
+  };
+
+  // Cashfree Payment Modal & Order Placement
+  const loadCashfreeSdk = async (): Promise<any> => {
+    if (typeof window !== 'undefined' && typeof (window as any).Cashfree === 'function') {
+      return (window as any).Cashfree;
+    }
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+      script.async = true;
+      script.onload = () => resolve((window as any).Cashfree);
+      script.onerror = () => reject(new Error('Cashfree SDK could not load. Check your network.'));
+      document.head.appendChild(script);
+    });
+  };
+
+  const markLocalOrderPaid = (orderNumber: string, updatedOrderObj: any) => {
+    const existing = readStoredJson<any[]>('gs_my_orders_v1', []);
+    const updated = existing.map((o) =>
+      o?.order?.orderNumber === orderNumber
+        ? {
+            ...o,
+            order: {
+              ...o.order,
+              ...updatedOrderObj,
+              paymentStatus: 'PAID',
+              orderStatus:
+                o.order.orderStatus === 'PAYMENT_PENDING' ? 'CONFIRMED' : o.order.orderStatus,
+            },
+          }
+        : o
+    );
+    localStorage.setItem('gs_my_orders_v1', JSON.stringify(updated));
+    setMyOrders(updated);
+  };
+
+  const triggerCashfreePayment = async (orderBundle: any) => {
+    const orderNumber = orderBundle.order.orderNumber;
+    setCheckoutSubmitting(true);
+    setCheckoutError(null);
+    try {
+      const CashfreeFactory = await loadCashfreeSdk();
+      let sessionId = orderBundle?.cashfree?.paymentSessionId || '';
+      let cfOrderId = orderBundle?.cashfree?.cfOrderId || orderNumber;
+      let env = orderBundle?.cashfree?.environment || 'SANDBOX';
+
+      if (!sessionId) {
+        const cfCfg = storeSettings?.cashfree_config || {};
+        const res = await fetch('/api/payments/cashfree/create-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderNumber,
+            amountRupees: Number((Number(orderBundle.order.totalPaise || 0) / 100).toFixed(2)),
+            customerName: orderBundle.order.customerName,
+            customerPhone: orderBundle.order.customerPhone,
+            customerEmail: orderBundle.order.customerEmail,
+            returnOrigin: window.location.origin,
+            ...(cfCfg.appId && cfCfg.secretKey
+              ? {
+                  appId: cfCfg.appId,
+                  secretKey: cfCfg.secretKey,
+                  environment: cfCfg.environment || 'SANDBOX',
+                }
+              : {}),
+          }),
+        });
+        const sData = await res.json();
+        if (sData?.fallback && !sData?.paymentSessionId) {
+          throw new Error(
+            sData.error ||
+              'Live Cashfree payment gateway is not connected right now. Retry or switch to Pay at Store Counter / Cash on Delivery below.'
+          );
+        }
+        if (!res.ok || !sData.paymentSessionId) {
+          throw new Error(sData.error || 'Could not start online payment session.');
+        }
+        sessionId = sData.paymentSessionId;
+        cfOrderId = sData.cfOrderId || orderNumber;
+        env = sData.environment || 'SANDBOX';
+      }
+
+      const cashfree = CashfreeFactory({
+        mode: env === 'PRODUCTION' ? 'production' : 'sandbox',
+      });
+      const result = await cashfree.checkout({
+        paymentSessionId: sessionId,
+        redirectTarget: '_modal',
+      });
+      if (result?.error) {
+        throw new Error(
+          result.error.message ||
+            'Payment popup was closed before finishing. Retry or switch to Counter/COD.'
+        );
+      }
+
+      const cfCfgVerify = storeSettings?.cashfree_config || {};
+      const vRes = await fetch('/api/payments/cashfree/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderNumber,
+          cfOrderId,
+          ...(cfCfgVerify.appId && cfCfgVerify.secretKey
+            ? {
+                appId: cfCfgVerify.appId,
+                secretKey: cfCfgVerify.secretKey,
+                environment: cfCfgVerify.environment || 'SANDBOX',
+              }
+            : {}),
+        }),
+      });
+      const vData = await vRes.json();
+      if (!vRes.ok || vData.order?.paymentStatus !== 'PAID') {
+        throw new Error(
+          vData.error ||
+            'Payment was not completed yet. Retry UPI/Card or finish via Counter/COD.'
+        );
+      }
+
+      markLocalOrderPaid(orderNumber, vData.order);
+      const finalized = {
+        ...orderBundle,
+        order: { ...orderBundle.order, ...vData.order, paymentStatus: 'PAID' },
+      };
+      setConfirmedOrderData(finalized);
+      setPendingOnlineOrder(null);
+      setCartItems([]);
+      setAppliedCouponCode('');
+      await loadMyOrders();
+      navigateTo('confirmation', '/confirmation');
+    } catch (err: any) {
+      setPendingOnlineOrder(orderBundle);
+      setCheckoutError(err.message || 'Online payment could not finish.');
+    } finally {
+      setCheckoutSubmitting(false);
+    }
+  };
+
+  const handleSwitchPendingOrderToOffline = async () => {
+    if (!pendingOnlineOrder?.order) return;
+    setCheckoutSubmitting(true);
+    try {
+      const nextMethod = fulfilmentMethod === 'STORE_PICKUP' ? 'PAY_AT_STORE' : 'COD';
+      const updatedEntry = {
+        ...pendingOnlineOrder,
+        order: {
+          ...pendingOnlineOrder.order,
+          paymentMethod: nextMethod,
+          orderStatus: 'ORDER_PLACED',
+        },
+      };
+      const existing = readStoredJson<any[]>('gs_my_orders_v1', []);
+      const synced = existing.map((o) =>
+        o?.order?.orderNumber === updatedEntry.order.orderNumber ? updatedEntry : o
+      );
+      localStorage.setItem('gs_my_orders_v1', JSON.stringify(synced));
+      setMyOrders(synced);
+      setConfirmedOrderData(updatedEntry);
+      setPendingOnlineOrder(null);
+      setCheckoutError(null);
+      setCartItems([]);
+      setAppliedCouponCode('');
+      navigateTo('confirmation', '/confirmation');
+      showToast('Order confirmed with offline payment!');
+    } finally {
+      setCheckoutSubmitting(false);
+    }
+  };
+
+  const handlePlaceOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCheckoutError(null);
+
+    if (!customerName.trim()) {
+      setCheckoutError('Please enter buyer name.');
+      return;
+    }
+    const phoneDigits = customerPhone.replace(/\D/g, '');
+    if (phoneDigits.length !== 10) {
+      setCheckoutError('Please enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    if (fulfilmentMethod === 'HOME_DELIVERY') {
+      if (!shippingAddress.trim()) {
+        setCheckoutError('Please enter your delivery street/house address.');
+        return;
+      }
+      if (shippingPincode.replace(/\D/g, '').length !== 6) {
+        setCheckoutError('Please enter a valid 6-digit Kanpur / UP PIN code.');
+        return;
+      }
     }
 
+    setCheckoutSubmitting(true);
+    try {
+      localStorage.setItem(
+        'gs_user_profile_v1',
+        JSON.stringify({
+          fullName: customerName.trim(),
+          phone: phoneDigits,
+          email: customerEmail.trim() || STORE_EMAIL,
+          shippingAddress: shippingAddress.trim(),
+          shippingCity: shippingCity.trim() || 'Kanpur',
+          shippingPincode: shippingPincode.trim() || '208021',
+        })
+      );
+
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({
+          fulfilmentMethod,
+          paymentMethod,
+          customerName: customerName.trim(),
+          customerPhone: phoneDigits,
+          customerEmail: customerEmail.trim() || STORE_EMAIL,
+          shippingAddress:
+            fulfilmentMethod === 'HOME_DELIVERY' ? shippingAddress.trim() : STORE_ADDRESS,
+          shippingCity: shippingCity.trim() || 'Kanpur',
+          shippingPincode: shippingPincode.trim() || '208021',
+          pickupWindow,
+          customerNote: orderNote,
+          gstin,
+          couponCode: appliedCouponCode,
+          items: cartCalculation.items,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error || !data.order) {
+        throw new Error(data.error || 'Could not create your order.');
+      }
+
+      if (paymentMethod === 'CASHFREE_ONLINE') {
+        await triggerCashfreePayment(data);
+        return;
+      }
+
+      setConfirmedOrderData(data);
+      setCartItems([]);
+      setAppliedCouponCode('');
+      await loadMyOrders();
+      navigateTo('confirmation', '/confirmation');
+    } catch (err: any) {
+      setCheckoutError(err.message || 'Order placement encountered an issue.');
+    } finally {
+      setCheckoutSubmitting(false);
+    }
+  };
+
+  // Add full Combo Bundle directly into Bag (supports both itemsJson & items)
+  const handleAddBundleToCart = (bundle: any) => {
+    const components = Array.isArray(bundle.items)
+      ? bundle.items
+      : Array.isArray(bundle.itemsJson)
+      ? bundle.itemsJson
+      : [];
+    let added = 0;
+    components.forEach((comp: any) => {
+      const targetProd = products.find((p) => Number(p.id) === Number(comp.productId));
+      if (targetProd) {
+        addItemToCart(
+          targetProd.id,
+          comp.variantId || targetProd.variants?.[0]?.id,
+          Number(comp.quantity || 1),
+          undefined,
+          false
+        );
+        added += 1;
+      }
+    });
+    if (added > 0) {
+      showToast(`${bundle.name} added to your bag!`);
+      setCartDrawerOpen(true);
+    }
+  };
+
+  const handleReorderPastOrder = (items: any[]) => {
+    items.forEach((it) => {
+      addItemToCart(
+        Number(it.productId),
+        Number(it.variantId),
+        Math.max(1, Number(it.quantity || 1)),
+        it.selectedColor,
+        false
+      );
+    });
+    showToast('Previous items added back to your bag!');
+    setCartDrawerOpen(true);
+  };
+
+  const themeCfg = storeSettings?.theme_config || {};
+  const announcementText =
+    themeCfg.announcementText ||
+    'Free 2-Hr Store Pickup in Kanpur · UPI & COD Available · GST Invoice Ready · Use BACKTOSCHOOL10';
+  const heroTitle =
+    themeCfg.heroTitle || 'Everyday Essentials, Fine Paper & Art Supplies.';
+
+  if (activeView === 'admin') {
     return (
       <AdminDashboard
-        idToken={idToken || 'gs_admin_direct_owner:vainhavgupta20052014@gmail.com'}
+        idToken={idToken}
         currentUser={dbUser}
         categories={categories}
         brands={brands}
         products={products}
         storeSettings={storeSettings}
-        bootstrap={{
-          categories,
-          brands,
-          products,
-          bundles,
-          coupons,
-          serviceablePincodes,
-          settings: storeSettings,
-          navigationItems,
-          homepageSections,
-          banners,
-          pages: cmsPages,
-          revisions: cmsRevisions,
-        }}
+        bootstrap={bootstrapData}
         onRefreshStorefront={() => loadStoreBootstrap()}
-        onRoleSwitched={handleSwitchRole}
-        onExitAdmin={() => {
-          window.history.pushState({}, '', '/');
-          setActiveView('storefront');
+        onRoleSwitched={async (nextRole) => {
+          if (dbUser) setDbUser({ ...dbUser, role: nextRole });
         }}
+        onExitAdmin={() => navigateTo('storefront', '/')}
         onNavigateStorefront={(target) => {
-          window.history.pushState({}, '', '/');
-          if (target.view === 'page' && target.pageSlug) {
-            setActivePageSlug(target.pageSlug);
-            setActiveView('page');
-            return;
-          }
-          if (target.categorySlug) {
-            setSelectedCategorySlug(target.categorySlug);
-            setSelectedBrandSlug('ALL');
-            setActiveView('storefront');
-            return;
-          }
-          if (target.brandSlug) {
-            setSelectedBrandSlug(target.brandSlug);
-            setSelectedCategorySlug('ALL');
-            setActiveView('storefront');
-            return;
-          }
-          setActiveView('storefront');
+          if (target.categorySlug) setSelectedCategorySlug(target.categorySlug);
+          if (target.brandSlug) setSelectedBrandSlug(target.brandSlug);
+          navigateTo((target.view as ActiveView) || 'storefront', '/');
         }}
       />
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col text-[#111827] bg-[#FAFAFA] pb-20 md:pb-0">
-      {/* Slim Promotional Announcement Bar */}
-      {themeConfig.announcementEnabled !== false && (
-        <div
-          className="px-3 sm:px-4 py-2 text-[11px] sm:text-xs"
-          style={{
-            backgroundColor: themeConfig.announcementBgColor || '#0F172A',
-            color: themeConfig.announcementTextColor || '#F8FAFC',
-          }}
-        >
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-            <p className="text-[11px] sm:text-xs font-medium leading-tight truncate sm:overflow-visible">
-              {(
-                themeConfig.announcementText ||
-                storeSettings?.promo_banner?.text ||
-                'Store Pickup Counter Ready (Zero Delivery Fee) · Use code BACKTOSCHOOL10 for 10% off above ₹399'
-              )
-                .replace(/Powered by Shiprocket/gi, 'Express Dispatch')
-                .replace(/Shiprocket/gi, 'Express Courier')
-                .replace(/Cashfree/gi, 'Online')}
-            </p>
-            <span className="hidden md:inline opacity-80 whitespace-nowrap shrink-0 text-[11px]">
-              Kanpur &amp; Pan-India Express Home Delivery · Free Store Pickup
-            </span>
+    <div className="min-h-screen flex flex-col text-[#1F1C18] pb-24 lg:pb-0">
+      {/* Live Toast Feedback */}
+      {toastText && (
+        <div className="fixed top-20 right-4 z-50 max-w-sm">
+          <div className="liquid-glass-accent text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#FCEAE3] shrink-0" />
+            <span>{toastText}</span>
           </div>
         </div>
       )}
 
-      {/* Sticky Top Header & Navigation Container — Oval Capsule on Mobile, Stays Still When Scrolling */}
-      <div className="sticky top-0 z-40 px-2.5 pt-2 pb-1.5 md:p-0 bg-[#FAFAFA]/85 md:bg-white/95 backdrop-blur-md md:shadow-xs space-y-1.5 md:space-y-0">
-        {/* Strict 3-Zone Top Bar — Floating Oval Capsule on Mobile */}
-        <header className="bg-white/95 backdrop-blur-xl border border-slate-200/90 md:border-x-0 md:border-t-0 md:border-b rounded-[28px] md:rounded-none shadow-sm md:shadow-none px-3 sm:px-6 py-2.5 sm:py-3 overflow-hidden">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4 min-w-0">
-            {/* Left Zone: Hamburger Button on Mobile + Wordmark */}
-            <div className="flex items-center gap-2 min-w-0 shrink">
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(true)}
-                aria-label="Open mobile navigation menu"
-                className="md:hidden p-1.5 -ml-1 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-full transition-colors cursor-pointer shrink-0"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setSelectedCategorySlug('ALL');
-                  setSelectedBrandSlug('ALL');
-                  setActiveView('storefront');
-                  setMobileMenuOpen(false);
-                }}
-                className="font-serif-display text-[15px] sm:text-xl font-bold tracking-tight text-slate-900 truncate text-left cursor-pointer"
-              >
-                {themeConfig.storeName || 'Gayatri Stationers'}
-              </button>
-            </div>
-
-            {/* Center Zone: Concise Desktop Navigation Links */}
-            <nav className="hidden md:flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setSelectedCategorySlug('ALL');
-                  setSelectedBrandSlug('ALL');
-                  setActiveView('storefront');
-                }}
-                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeView === 'storefront'
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                Shop Catalogue
-              </button>
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setActiveView('combos');
-                }}
-                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeView === 'combos'
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                School Combos
-              </button>
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setActiveView('bulk');
-                }}
-                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeView === 'bulk'
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                Bulk Orders
-              </button>
-              <button
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setActiveView('track');
-                }}
-                className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeView === 'track'
-                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                    : 'hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                Track Order
-              </button>
-              {cmsPages
-                .filter((p) => p.isActive !== false && p.showInHeader)
-                .map((p) => (
-                  <button
-                    key={`hdr-page-${p.id}`}
-                    onClick={() => {
-                      window.history.pushState({}, '', `/${p.slug}`);
-                      setActivePageSlug(p.slug);
-                      setActiveView('page');
-                    }}
-                    className={`px-3.5 py-1.5 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      activeView === 'page' && activePageSlug === p.slug
-                        ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                        : 'hover:bg-slate-100 hover:text-slate-950'
-                    }`}
-                  >
-                    {p.title}
-                  </button>
-                ))}
-            </nav>
-
-            {/* Right Zone: Oval Wishlist, Profile & Cart Buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/wishlist');
-                  setActiveView('wishlist');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-semibold rounded-full border transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  activeView === 'wishlist'
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-slate-50 text-slate-800 border-slate-200/90 hover:bg-slate-100'
-                }`}
-                aria-label={`Open Saved Wishlist (${wishlistProductIds.length} items)`}
-                title="Saved Wishlist"
-              >
-                <Heart
-                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${
-                    wishlistProductIds.length > 0
-                      ? activeView === 'wishlist'
-                        ? 'fill-red-400 text-red-400'
-                        : 'fill-[#B42318] text-[#B42318]'
-                      : ''
-                  }`}
-                />
-                <span className="font-bold hidden lg:inline">Wishlist</span>
-                {wishlistProductIds.length > 0 && (
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono-tabular font-bold ${
-                      activeView === 'wishlist'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-red-100 text-[#B42318]'
-                    }`}
-                  >
-                    {wishlistProductIds.length}
-                  </span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/profile');
-                  setActiveView('profile');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className={`px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs font-semibold rounded-full border transition-all duration-200 shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  activeView === 'profile'
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-slate-50 text-slate-800 border-slate-200/90 hover:bg-slate-100'
-                }`}
-                aria-label="Open My Profile Page"
-              >
-                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="font-bold hidden sm:inline max-w-[140px] truncate">
-                  {dbUser || supabaseUser
-                    ? (customerName || dbUser?.fullName || dbUser?.email || 'Profile').split(' ')[0]
-                    : 'Profile'}
-                </span>
-              </button>
-              <motion.button
-                ref={cartButtonRef}
-                type="button"
-                animate={
-                  cartButtonBouncing
-                    ? { scale: [1, 1.18, 0.94, 1.08, 1], rotate: [0, -4, 4, -2, 0] }
-                    : { scale: 1, rotate: 0 }
-                }
-                transition={{ duration: 0.55, ease: 'easeOut' }}
-                onClick={() => setCartDrawerOpen(true)}
-                className={`px-3 sm:px-5 py-1.5 sm:py-2 text-xs font-semibold text-white rounded-full shadow-xs transition-colors duration-200 whitespace-nowrap shrink-0 font-mono-tabular cursor-pointer flex items-center gap-1.5 ${
-                  cartButtonBouncing
-                    ? 'bg-emerald-600 ring-4 ring-emerald-200'
-                    : 'bg-[#B42318] hover:bg-[#991B1B]'
-                }`}
-                aria-label="Open Shopping Bag Drawer"
-              >
-                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                <span className="font-bold">Cart ({totalCartItemsCount})</span>
-                <span className="hidden sm:inline opacity-90">· {formatPaiseToINR(calculation.totalPaise)}</span>
-              </motion.button>
-            </div>
-          </div>
-        </header>
-
-        {/* Practical Retail Search, Account & Discovery Bar — Oval Pill Container on Mobile */}
-        <div className="bg-white/95 md:bg-transparent border border-slate-200/80 md:border-x-0 md:border-t-0 md:border-b rounded-full md:rounded-none shadow-2xs md:shadow-none px-2.5 sm:px-4 py-1.5 sm:py-2">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <div className="bg-slate-100/90 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900 border border-slate-200 rounded-full flex items-center px-3.5 py-1.5 transition-all">
-                <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                <input
-                  type="search"
-                  aria-label="Search stationery catalogue by product name, brand, or SKU"
-                  value={searchQuery}
-                  onFocus={() => setSearchSuggestionsOpen(true)}
-                  onBlur={() => setTimeout(() => setSearchSuggestionsOpen(false), 180)}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (activeView !== 'storefront') setActiveView('storefront');
-                  }}
-                  placeholder="Search notebooks, pens, DOMS, Classmate..."
-                  className="w-full px-2.5 py-0.5 text-xs bg-transparent focus:outline-none border-none text-slate-900 placeholder:text-slate-400"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="px-2 py-0.5 text-[11px] bg-slate-200/80 hover:bg-slate-300 rounded-full text-slate-700 cursor-pointer"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {searchSuggestionsOpen && searchSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-2 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-xl z-40 divide-y divide-slate-100 overflow-hidden p-1.5">
-                  {searchSuggestions.map((s) => (
-                    <button
-                      key={s.id}
-                      onMouseDown={() => openProductDetail(s)}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center justify-between gap-3 text-xs rounded-xl cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-11 h-9 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
-                          <ProductIllustration
-                            type={s.illustrationType}
-                            imageUrl={s.imageUrl}
-                            alt={s.name}
-                            className="w-full h-full"
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 truncate">{s.name}</p>
-                          <p className="text-slate-500 truncate">
-                            {s.brandName} · {s.categoryName} · SKU: {s.sku}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="font-mono-tabular font-semibold text-slate-900 shrink-0">
-                        {formatPaiseToINR(s.sellingPricePaise)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Ask Vidya AI Button (Gayatri Stationers AI Shopping & Study Guide) */}
-            <button
-              type="button"
-              onClick={() => setRufusOpen(true)}
-              className="hidden sm:flex px-3 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-slate-900 to-[#B42318] text-white text-[11px] sm:text-xs font-semibold items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs hover:opacity-95 transition-opacity"
-              title="Ask Vidya AI — Gayatri Stationers Smart Guide"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span>Ask Vidya AI</span>
-            </button>
-
-            {/* Side-by-Side Product Comparison Button */}
-            <button
-              type="button"
-              onClick={() => setCompareModalOpen(true)}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
-                compareProductIds.length > 0
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-              }`}
-              title="Compare up to 3 products side-by-side"
-            >
-              <Scale className="w-3.5 h-3.5 text-[#B42318] shrink-0" />
-              <span className="hidden md:inline">Compare</span>
-              <span className="font-mono-tabular">({compareProductIds.length}/3)</span>
-            </button>
-
-            {/* Quick Filter Button (School Kits & Combos) */}
-            <button
-              type="button"
-              onClick={() => setActiveView('combos')}
-              className="w-9 h-9 flex items-center justify-center shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-              title="School Kits & Combos"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-
-            {/* Desktop & Tablet Account, Admin & Wishlist Buttons */}
-            <div className="hidden sm:flex items-center justify-end gap-2 shrink-0 text-xs">
-              <button
-                onClick={() => setActiveView('track')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-              >
-                <Package className="w-3.5 h-3.5 text-slate-500" />
-                <span>My Orders</span>
-              </button>
-
-              <button
-                onClick={() => setActiveView('wishlist')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-              >
-                <Heart className="w-3.5 h-3.5 text-slate-500" />
-                <span>Wishlist ({wishlistProductIds.length})</span>
-              </button>
-
-              {dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com' && (
-                <button
-                  onClick={() => {
-                    window.history.pushState({}, '', '/admin');
-                    setActiveView('admin');
-                  }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Admin Console</span>
-                </button>
-              )}
-
-              {supabaseUser || dbUser ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveView('track')}
-                    className="text-slate-700 hidden xl:inline truncate max-w-[140px] px-3 py-1 bg-white hover:bg-slate-50 rounded-full border border-slate-200 text-[11px] cursor-pointer"
-                  >
-                    {dbUser?.email || supabaseUser?.email}
-                  </button>
-                  <button
-                    onClick={handleSignOut}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    window.history.pushState({}, '', '/signin');
-                    setActiveView('signin');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold whitespace-nowrap shrink-0 cursor-pointer text-xs transition-colors"
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>Sign In</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Dynamic CMS Navigation & Category Filter Strip — Oval Pill Strip on Mobile */}
-        <div className="bg-white/90 md:bg-slate-50/95 border border-slate-200/80 md:border-x-0 md:border-t-0 md:border-b rounded-full md:rounded-none shadow-2xs md:shadow-none px-2.5 sm:px-4 py-1.5 sm:py-2 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/');
-                setSelectedCategorySlug('ALL');
-                setSelectedBrandSlug('ALL');
-                setActiveView('storefront');
-              }}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer ${
-                selectedCategorySlug === 'ALL' && selectedBrandSlug === 'ALL' && activeView === 'storefront'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
-              }`}
-            >
-              All Stationery ({products.filter((p) => p.isActive !== false).length})
-            </button>
-
-            {/* Dynamic Categories managed from Store CMS */}
-            {activeNavCategories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  window.history.pushState({}, '', '/');
-                  setSelectedCategorySlug(cat.slug);
-                  setSelectedBrandSlug('ALL');
-                  setActiveView('storefront');
-                }}
-                className={`px-3.5 py-1.5 text-xs font-medium rounded-full whitespace-nowrap shrink-0 transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                  selectedCategorySlug === cat.slug && activeView === 'storefront'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80'
-                }`}
-              >
-                <span>{cat.name}</span>
-                {cat.slug === 'diy-and-crafts' && (
-                  <span className="px-1.5 py-0.2 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                    NEW
-                  </span>
-                )}
-              </button>
-            ))}
-
-            {/* Additional Custom Navigation Items from CMS Navigation Builder */}
-            {navigationItems
-              .filter(
-                (item) =>
-                  item.isActive !== false &&
-                  item.showOnDesktop !== false &&
-                  item.linkType !== 'CATEGORY'
-              )
-              .map((item) => (
-                <button
-                  key={`nav-${item.id}`}
-                  onClick={() => handleNavigateCmsDestination(item.linkType, item.targetValue)}
-                  className="px-4 py-1.5 text-xs font-medium rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200/80 transition-all whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5"
-                >
-                  <span>{item.label}</span>
-                  {item.highlightBadge && (
-                    <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                      {item.highlightBadge}
-                    </span>
-                  )}
-                </button>
-              ))}
-          </div>
+      {/* Top Warm Terracotta Notice Strip */}
+      <div className="liquid-glass-accent text-white text-[11px] sm:text-xs font-medium py-2 px-4 text-center">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 flex-wrap">
+          <Sparkles className="w-3.5 h-3.5 text-[#FCEAE3] shrink-0" />
+          <span>{announcementText}</span>
+          <button
+            type="button"
+            onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+            className="underline font-bold text-[#FFF5F0] hover:text-white cursor-pointer"
+          >
+            School & Office Bulk Orders →
+          </button>
         </div>
       </div>
 
-      {authError && (
-        <div className="max-w-7xl mx-auto mt-4 px-6">
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-full text-xs text-amber-900 flex items-center justify-between">
-            <span>{authError}</span>
-            <button onClick={() => setAuthError(null)} className="underline ml-4">
-              Dismiss
+      {/* Floating Liquid Glass Header + Interactive Mega Menu */}
+      <header className="sticky top-0 z-40 px-3 sm:px-6 pt-2.5">
+        <div className="max-w-7xl mx-auto relative">
+          <div className="liquid-glass-nav rounded-[28px] lg:rounded-full px-3.5 sm:px-6 py-2.5 flex items-center justify-between gap-2.5">
+            {/* Brand Identity */}
+            <button
+              type="button"
+              onClick={() => {
+                resetAllFilters();
+                navigateTo('storefront', '/');
+              }}
+              className="flex items-center gap-2.5 text-left shrink-0 cursor-pointer"
+            >
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl liquid-btn-primary flex items-center justify-center shrink-0">
+                <Store className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              </div>
+              <div>
+                <span className="block text-sm sm:text-base font-bold text-[#1F1C18] font-serif-display leading-none">
+                  Gayatri Stationers
+                </span>
+                <span className="block text-[10px] text-[#5C5349] font-semibold mt-0.5">
+                  Naubasta, Kanpur · Fine Stationery
+                </span>
+              </div>
             </button>
-          </div>
-        </div>
-      )}
 
-      {/* MAIN CONTENT VIEWPORT */}
-      <main className="flex-1">
-        {loadingBootstrap ? (
-          <div className="max-w-7xl mx-auto px-6 py-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <div
-                  key={n}
-                  className="h-80 bg-white border border-stone-200/80 rounded-[32px] p-5 flex flex-col justify-between shadow-xs"
-                >
-                  <div className="h-44 bg-stone-100 rounded-[22px]" />
-                  <div className="space-y-2">
-                    <div className="h-4 bg-stone-200 rounded-full w-2/3" />
-                    <div className="h-4 bg-stone-100 rounded-full w-1/2" />
-                  </div>
-                </div>
-              ))}
+            {/* Desktop Search */}
+            <div className="hidden md:flex flex-1 max-w-md relative">
+              <Search className="w-4 h-4 text-[#8B8075] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (activeView !== 'storefront') navigateTo('storefront', '/');
+                }}
+                placeholder="Search Classmate notebooks, Flair 0.5mm, Camlin..."
+                className="liquid-input w-full pl-10 pr-4 py-2 rounded-full text-xs"
+              />
             </div>
-          </div>
-        ) : bootstrapError ? (
-          <div className="max-w-3xl mx-auto px-6 py-12">
-            <div className="bg-white border border-red-200 rounded-[32px] p-8 text-center space-y-3 shadow-xs">
-              <p className="text-base font-semibold text-red-900">{bootstrapError}</p>
+
+            {/* Desktop Mega Menu Trigger & Navigation Links */}
+            <nav className="hidden lg:flex items-center gap-1 text-xs font-semibold text-[#1F1C18]">
               <button
-                onClick={() => loadStoreBootstrap()}
-                className="px-5 py-2.5 bg-stone-900 text-white text-xs font-medium rounded-full"
+                type="button"
+                onClick={() => setMegaMenuOpen((v) => !v)}
+                className={`px-3.5 py-2 rounded-full inline-flex items-center gap-1 transition cursor-pointer ${
+                  megaMenuOpen ? 'bg-[#FDF2ED] text-[#8C341B] font-bold' : 'hover:bg-white/80'
+                }`}
               >
-                Retry Connection
+                <Layers className="w-3.5 h-3.5 text-[#B44C2E]" />
+                <span>Shop Categories</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    megaMenuOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('combos', '/combos')}
+                className={`px-3.5 py-2 rounded-full transition cursor-pointer ${
+                  activeView === 'combos' ? 'bg-[#FDF2ED] text-[#8C341B] font-bold' : 'hover:bg-white/80'
+                }`}
+              >
+                Exam & Art Combos
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                className={`px-3.5 py-2 rounded-full transition cursor-pointer ${
+                  activeView === 'bulk' ? 'bg-[#FDF2ED] text-[#8C341B] font-bold' : 'hover:bg-white/80'
+                }`}
+              >
+                Bulk Inquiry
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('track', '/track')}
+                className={`px-3.5 py-2 rounded-full transition cursor-pointer ${
+                  activeView === 'track' ? 'bg-[#FDF2ED] text-[#8C341B] font-bold' : 'hover:bg-white/80'
+                }`}
+              >
+                Track
+              </button>
+            </nav>
+
+            {/* Right Utility Actions */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {compareProductIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsCompareOpen(true)}
+                  className="hidden sm:inline-flex items-center gap-1 liquid-btn-glass px-3 py-2 rounded-full text-xs font-semibold cursor-pointer"
+                >
+                  <Scale className="w-3.5 h-3.5 text-[#B44C2E]" />
+                  <span>({compareProductIds.length})</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => navigateTo('wishlist', '/wishlist')}
+                className="liquid-btn-glass p-2 sm:px-3 sm:py-2 rounded-full text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                aria-label="Wishlist"
+              >
+                <Heart className="w-4 h-4 text-[#B44C2E]" />
+                {wishlistProductIds.length > 0 && (
+                  <span className="text-[11px] font-bold">{wishlistProductIds.length}</span>
+                )}
+              </button>
+
+              {dbUser ? (
+                <div className="hidden sm:inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('profile', '/profile')}
+                    className="liquid-btn-glass px-3.5 py-2 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 max-w-[155px] cursor-pointer"
+                  >
+                    <User className="w-3.5 h-3.5 text-[#B44C2E] shrink-0" />
+                    <span className="truncate">{dbUser.fullName || dbUser.email}</span>
+                  </button>
+                  {(dbUser.role === 'owner' || dbUser.role === 'staff') && (
+                    <button
+                      type="button"
+                      onClick={() => navigateTo('admin', '/admin')}
+                      className="liquid-btn-primary px-3.5 py-2 rounded-full text-xs font-semibold cursor-pointer"
+                    >
+                      Admin
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigateTo('signin', '/signin')}
+                  className="hidden sm:inline-flex liquid-btn-glass px-3.5 py-2 rounded-full text-xs font-semibold items-center gap-1.5 cursor-pointer"
+                >
+                  <User className="w-3.5 h-3.5 text-[#B44C2E]" />
+                  Sign In
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setCartDrawerOpen(true)}
+                className="liquid-btn-primary px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                aria-label="Open Shopping Bag"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>{totalCartItemsCount}</span>
+                {totalCartItemsCount > 0 && (
+                  <span className="hidden sm:inline font-mono-tabular">
+                    · {formatPaiseToINR(cartCalculation.totalPaise, false)}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((v) => !v)}
+                className="lg:hidden liquid-btn-glass p-2 rounded-full cursor-pointer"
+                aria-label="Menu"
+              >
+                {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
               </button>
             </div>
           </div>
-        ) : (
-          <>
-            {/* VIEW 1: STOREFRONT & CATALOGUE */}
-            {activeView === 'storefront' && (
-              <div className="max-w-7xl mx-auto px-6 py-8 space-y-12">
-                {/* Dynamic CMS Storefront Hero & Promotional Banners */}
-                {selectedCategorySlug === 'ALL' && selectedBrandSlug === 'ALL' && !searchQuery.trim() && (
-                  <section className="space-y-4">
-                    {/* Clean Editorial Hero Showcase (Dynamically Driven by Admin CMS Banner) */}
-                    <div
-                      className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 relative overflow-hidden shadow-xs"
-                      style={
-                        currentHeroBanner?.backgroundColor &&
-                        currentHeroBanner.backgroundColor !== '#FFFFFF'
-                          ? {
-                              backgroundColor: currentHeroBanner.backgroundColor,
-                              color: currentHeroBanner.textColor || undefined,
-                            }
-                          : undefined
-                      }
+
+          {/* Desktop Liquid Glass Mega Menu Dropdown */}
+          {megaMenuOpen && (
+            <div className="hidden lg:grid grid-cols-12 gap-6 mt-2.5 liquid-glass rounded-[32px] p-6 shadow-2xl">
+              <div className="col-span-5 space-y-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#B44C2E]">
+                  Stationery Departments
+                </p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id || cat.slug}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategorySlug(cat.slug);
+                        setMegaMenuOpen(false);
+                        if (activeView !== 'storefront') navigateTo('storefront', '/');
+                        else
+                          document
+                            .getElementById('catalog-grid')
+                            ?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl hover:bg-[#FDF2ED] text-left transition cursor-pointer"
                     >
-                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                        <div className={currentHeroBanner?.desktopImageUrl ? 'lg:col-span-7 space-y-3' : 'lg:col-span-12 space-y-3 max-w-xl'}>
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-800 shadow-2xs">
-                            <Sparkles className="w-3.5 h-3.5 text-[#B42318]" />
-                            <span>
-                              {currentHeroBanner?.badgeText ||
-                                'Gayatri Stationers · Kanpur’s Trusted Stationery Destination'}
-                            </span>
-                          </div>
-
-                          <h1
-                            className="font-serif-display text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-slate-900 leading-tight"
-                            style={
-                              currentHeroBanner?.textColor
-                                ? { color: currentHeroBanner.textColor }
-                                : undefined
-                            }
-                          >
-                            {currentHeroBanner?.title ||
-                              'Craft Your Story with Premium Stationery'}
-                          </h1>
-
-                          <p
-                            className="text-xs sm:text-sm text-slate-600 leading-relaxed"
-                            style={
-                              currentHeroBanner?.textColor
-                                ? { color: currentHeroBanner.textColor, opacity: 0.88 }
-                                : undefined
-                            }
-                          >
-                            {currentHeroBanner?.subtitle ||
-                              'Curated ruled Classmate registers, Flair & Unomax pens, DOMS & Camlin art sets, and office essentials at honest retail rates in Kanpur.'}
-                          </p>
-
-                          <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => handleBannerCtaNavigate(currentHeroBanner?.ctaLink)}
-                              className="px-5 py-2.5 rounded-full bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                              style={
-                                currentHeroBanner?.accentColor
-                                  ? { backgroundColor: currentHeroBanner.accentColor }
-                                  : undefined
-                              }
-                            >
-                              <span>{currentHeroBanner?.ctaText || 'Explore Catalogue'}</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                currentHeroBanner?.secondaryCtaLink
-                                  ? handleBannerCtaNavigate(currentHeroBanner.secondaryCtaLink)
-                                  : setActiveView('combos')
-                              }
-                              className="px-4 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium cursor-pointer transition-colors"
-                            >
-                              {currentHeroBanner?.secondaryCtaText || 'School Kits'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setActiveView('bulk')}
-                              className="px-3.5 py-2 text-slate-700 text-xs font-medium hover:underline cursor-pointer"
-                            >
-                              Bulk Orders →
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                document
-                                  .getElementById('storefront-order-search')
-                                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              }}
-                              className="px-4 py-2 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-300/90 text-stone-900 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                            >
-                              <Package className="w-3.5 h-3.5 text-[#B42318]" />
-                              <span>Order Search (No Sign-In)</span>
-                            </button>
-                          </div>
-
-                          {activeHeroBanners.length > 1 && (
-                            <div className="flex items-center gap-1.5 pt-2">
-                              {activeHeroBanners.map((b, idx) => (
-                                <button
-                                  key={b.id || idx}
-                                  type="button"
-                                  aria-label={`View banner ${idx + 1}`}
-                                  onClick={() => setActiveHeroBannerIdx(idx)}
-                                  className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                                    idx === activeHeroBannerIdx % activeHeroBanners.length
-                                      ? 'w-6 bg-[#B42318]'
-                                      : 'w-2 bg-slate-300 hover:bg-slate-400'
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {currentHeroBanner?.desktopImageUrl && (
-                          <div className="lg:col-span-5">
-                            <div className="aspect-16/10 rounded-[24px] overflow-hidden border border-slate-200/80 bg-slate-50 shadow-xs">
-                              <img
-                                src={currentHeroBanner.desktopImageUrl}
-                                alt={currentHeroBanner.title}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Quick Category Showcase Cards */}
-                      <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mt-6">
-                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('notebooks-and-registers')}>
-                          <ProductIllustration type="spiral_notebook" alt="Ruled Books" className="w-full h-14 object-contain mx-auto" />
-                          <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Ruled Books</p>
-                        </div>
-                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('pens-and-writing')}>
-                          <ProductIllustration type="ballpoint_pen" alt="Pastel Pens" className="w-full h-14 object-contain mx-auto" />
-                          <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Pastel Pens</p>
-                        </div>
-                        <div className="p-3 text-center rounded-[24px] bg-slate-50 border border-slate-200/80 shadow-2xs hover:bg-white hover:border-slate-300 transition-all cursor-pointer" onClick={() => setSelectedCategorySlug('art-and-craft-supplies')}>
-                          <ProductIllustration type="drawing_book" alt="Fine Art Kits" className="w-full h-14 object-contain mx-auto" />
-                          <p className="text-[10px] sm:text-xs font-bold text-slate-800 mt-1.5">Fine Art Kits</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Position 2: Dynamic Middle Promotional Offer Strip (`MID_PAGE_STRIP` Banners or Default Offer) */}
-                    {activeMidPageBanners.length > 0 ? (
-                      <div className="space-y-3">
-                        {activeMidPageBanners.map((mb) => (
-                          <div
-                            key={`mid-banner-${mb.id}`}
-                            className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
-                            style={
-                              mb.backgroundColor && mb.backgroundColor !== '#FFFFFF'
-                                ? {
-                                    backgroundColor: mb.backgroundColor,
-                                    color: mb.textColor || undefined,
-                                  }
-                                : undefined
-                            }
-                          >
-                            <div className="space-y-1">
-                              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-                                <span
-                                  className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase text-white"
-                                  style={{ backgroundColor: mb.accentColor || '#B42318' }}
-                                >
-                                  {mb.badgeText || 'SPECIAL OFFER'}
-                                </span>
-                                <span>{mb.title}</span>
-                              </div>
-                              {mb.subtitle && (
-                                <p className="text-[11px] opacity-85">{mb.subtitle}</p>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleBannerCtaNavigate(mb.ctaLink)}
-                              className="self-start sm:self-auto shrink-0 px-4 py-1.5 text-white text-[11px] font-bold rounded-full shadow-2xs cursor-pointer"
-                              style={{ backgroundColor: mb.accentColor || '#0F172A' }}
-                            >
-                              {mb.ctaText || 'Shop Offer'} →
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-white border border-slate-200/90 rounded-[28px] sm:rounded-full px-5 py-4 flex items-center justify-between gap-4 shadow-xs">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 text-xs font-bold text-[#B42318]">
-                            <Tag className="w-3.5 h-3.5 text-[#B42318]" />
-                            <span>Flat 25% Off on First Order</span>
-                          </div>
-                          <p className="text-[11px] text-slate-600">
-                            Use code <strong className="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">BACKTOSCHOOL10</strong> on orders above ₹399
-                          </p>
-                        </div>
-                        <span className="shrink-0 px-3.5 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-full shadow-2xs">
-                          ₹0 Pickup Fee
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Prominent Dual Fulfilment Banner (Store Pickup & Home Delivery — Apple Oval Cards) */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="p-6 bg-white border border-stone-200/80 rounded-[32px] shadow-xs flex items-start justify-between gap-4">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <Store className="w-4 h-4 text-[#B42318] shrink-0" />
-                            <h2 className="text-sm font-bold text-stone-900">
-                              Option 1: Buy Online, Pick Up at Store Counter (₹0 Fee)
-                            </h2>
-                          </div>
-                          <p className="text-xs text-stone-600 leading-relaxed">
-                            Reserve stock online and choose <strong>Pay at Store</strong> or Online Payment. Collect your packed bag at our Kanpur counter using your 6-character Pickup Code — no order tracking required.
-                          </p>
-                          <p className="text-[11px] text-stone-600 font-medium pt-1">
-                            Visit Us: Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
-                          </p>
-                          <p className="text-[11px] text-stone-500">
-                            {(
-                              storeSettings?.store_profile?.pickupCounterLabel ||
-                              'Gayatri Stationers — Retail Pickup Counter'
-                            ).replace(/\s*\([^)]*Admin[^)]*\)/gi, '')}{' '}
-                            ·{' '}
-                            {(
-                              storeSettings?.store_profile?.businessHoursNote ||
-                              'Mon–Sat: 10:00 AM – 8:00 PM'
-                            ).replace(/\s*\([^)]*Admin[^)]*\)/gi, '')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-6 bg-white border border-stone-200/80 rounded-[32px] shadow-xs flex items-start justify-between gap-4">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <Truck className="w-4 h-4 text-stone-900 shrink-0" />
-                            <h2 className="text-sm font-bold text-stone-900">
-                              Option 2: Kanpur &amp; Pan-India Express Doorstep Delivery
-                            </h2>
-                          </div>
-                          <p className="text-xs text-stone-600 leading-relaxed">
-                            Fast local delivery across Kanpur and nationwide courier dispatch across all Indian 6-digit PIN codes. Enjoy reliable doorstep delivery, live AWB shipment tracking, and Cash on Delivery or Online Prepaid options.
-                          </p>
-                          <p className="text-[11px] text-emerald-800 font-semibold pt-1">
-                            ✓ All Kanpur &amp; Indian PIN Codes Serviceable with Live AWB Tracking
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* STOREFRONT GUEST ORDER SEARCH WIDGET (Order ID + Mobile Number — No Sign-In Required) */}
-                    <div
-                      id="storefront-order-search"
-                      className="bg-white border border-stone-200/90 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-5 relative overflow-hidden"
-                    >
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-100 pb-4">
-                        <div className="space-y-1">
-                          <div className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                            <Package className="w-3.5 h-3.5 text-[#B42318]" />
-                            <span>INSTANT ORDER STATUS LOOKUP · NO SIGN-IN REQUIRED</span>
-                          </div>
-                          <h2 className="font-serif-display text-lg sm:text-xl font-bold text-stone-900">
-                            Order Search — Track Your Order Status Instantly
-                          </h2>
-                          <p className="text-xs text-stone-600 max-w-2xl">
-                            Enter your <strong>Order ID</strong> and the <strong>10-digit mobile number</strong> used at checkout to check live delivery progress, your Store Pickup Counter Code, and item details without signing in.
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 self-start lg:self-center">
-                          <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-900 inline-flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                            <span>Guest Lookup Active</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      <form
-                        onSubmit={handleStorefrontOrderSearch}
-                        className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end"
-                      >
-                        <div className="md:col-span-5">
-                          <label
-                            htmlFor="storefront-order-id-input"
-                            className="block text-xs font-semibold text-stone-800 mb-1.5"
-                          >
-                            Order ID / Order Number *
-                          </label>
-                          <div className="relative">
-                            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                            <input
-                              id="storefront-order-id-input"
-                              type="text"
-                              required
-                              value={storefrontOrderIdInput}
-                              onChange={(e) => {
-                                setStorefrontOrderIdInput(e.target.value.toUpperCase());
-                                if (storefrontOrderSearchError) setStorefrontOrderSearchError(null);
-                              }}
-                              placeholder="e.g. GS-485779"
-                              className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-stone-300 focus:border-stone-900 rounded-full font-mono-tabular text-stone-900 outline-none transition-colors"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="md:col-span-4">
-                          <label
-                            htmlFor="storefront-order-phone-input"
-                            className="block text-xs font-semibold text-stone-800 mb-1.5"
-                          >
-                            10-Digit Mobile Number *
-                          </label>
-                          <div className="flex items-center bg-slate-50 focus-within:bg-white border border-stone-300 focus-within:border-stone-900 rounded-full overflow-hidden transition-colors">
-                            <span className="pl-3.5 pr-2 py-2.5 text-xs font-mono-tabular font-semibold text-stone-500 border-r border-stone-200 select-none">
-                              +91
-                            </span>
-                            <input
-                              id="storefront-order-phone-input"
-                              type="tel"
-                              inputMode="numeric"
-                              maxLength={10}
-                              required
-                              value={storefrontOrderPhoneInput}
-                              onChange={(e) => {
-                                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                setStorefrontOrderPhoneInput(digits);
-                                if (storefrontOrderSearchError) setStorefrontOrderSearchError(null);
-                              }}
-                              placeholder="9876543210"
-                              className="w-full px-3 py-2.5 text-xs sm:text-sm bg-transparent font-mono-tabular text-stone-900 outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="md:col-span-3 flex items-center gap-2">
-                          <button
-                            type="submit"
-                            disabled={storefrontOrderSearching}
-                            className="w-full py-2.5 px-5 bg-[#B42318] hover:bg-[#991B1B] disabled:opacity-60 text-white text-xs sm:text-sm font-semibold rounded-full shadow-xs cursor-pointer transition-colors inline-flex items-center justify-center gap-2"
-                          >
-                            <Search className="w-4 h-4 shrink-0" />
-                            <span>
-                              {storefrontOrderSearching ? 'Searching...' : 'Search Order'}
-                            </span>
-                          </button>
-                          {(storefrontSearchedOrder || storefrontOrderSearchError) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStorefrontSearchedOrder(null);
-                                setStorefrontOrderSearchError(null);
-                                setStorefrontOrderIdInput('');
-                                setStorefrontOrderPhoneInput('');
-                              }}
-                              className="px-3.5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-full cursor-pointer shrink-0 transition-colors"
-                              title="Clear search"
-                            >
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                      </form>
-
-                      {storefrontOrderSearchError && (
-                        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start justify-between gap-3 text-xs text-red-900">
-                          <div className="space-y-0.5">
-                            <p className="font-bold">Order Lookup Notice</p>
-                            <p>{storefrontOrderSearchError}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setStorefrontOrderSearchError(null)}
-                            className="text-red-700 hover:text-red-950 font-semibold underline shrink-0 cursor-pointer"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
-
-                      {storefrontSearchedOrder?.order && (() => {
-                        const ord = storefrontSearchedOrder.order;
-                        const items = Array.isArray(storefrontSearchedOrder.items)
-                          ? storefrontSearchedOrder.items
-                          : [];
-                        const pickup = storefrontSearchedOrder.pickupDetails;
-                        const shipment = storefrontSearchedOrder.shipmentDetails;
-                        const isPickup = ord.fulfilmentMethod === 'STORE_PICKUP';
-                        const isCancelled = ord.orderStatus === 'CANCELLED';
-
-                        const steps = isPickup
-                          ? [
-                              { key: 'ORDER_PLACED', label: 'Order Reserved' },
-                              { key: 'READY_FOR_PICKUP', label: 'Ready at Store Counter' },
-                              { key: 'COLLECTED', label: 'Collected at Store' },
-                            ]
-                          : [
-                              { key: 'ORDER_PLACED', label: 'Order Placed' },
-                              { key: 'CONFIRMED', label: 'Confirmed & Packed' },
-                              { key: 'DISPATCHED', label: 'Dispatched' },
-                              { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-                              { key: 'DELIVERED', label: 'Delivered' },
-                            ];
-
-                        const resolveStepIndex = () => {
-                          if (isPickup) {
-                            if (ord.orderStatus === 'COLLECTED') return 2;
-                            if (
-                              ['READY_FOR_PICKUP', 'PACKED', 'PREPARING', 'CONFIRMED'].includes(
-                                ord.orderStatus
-                              )
-                            ) {
-                              return 1;
-                            }
-                            return 0;
-                          }
-                          if (ord.orderStatus === 'DELIVERED') return 4;
-                          if (ord.orderStatus === 'OUT_FOR_DELIVERY') return 3;
-                          if (ord.orderStatus === 'DISPATCHED') return 2;
-                          if (['CONFIRMED', 'PREPARING', 'PACKED'].includes(ord.orderStatus)) {
-                            return 1;
-                          }
-                          return 0;
-                        };
-
-                        const currentStepIdx = resolveStepIndex();
-                        const placedDateStr = ord.createdAt
-                          ? new Date(ord.createdAt).toLocaleString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'Recently Placed';
-
-                        return (
-                          <div className="p-5 sm:p-6 bg-slate-50 border border-slate-200/90 rounded-[28px] space-y-5">
-                            {/* Top Summary Row */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono-tabular text-base sm:text-lg font-bold text-stone-900">
-                                    Order #{ord.orderNumber}
-                                  </span>
-                                  <span
-                                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${
-                                      isCancelled
-                                        ? 'bg-red-100 text-red-900'
-                                        : ord.orderStatus === 'DELIVERED' ||
-                                            ord.orderStatus === 'COLLECTED'
-                                          ? 'bg-emerald-100 text-emerald-900'
-                                          : 'bg-amber-100 text-amber-950'
-                                    }`}
-                                  >
-                                    {ord.orderStatus.replace(/_/g, ' ')}
-                                  </span>
-                                  <span
-                                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                      ord.paymentStatus === 'PAID'
-                                        ? 'bg-emerald-700 text-white'
-                                        : 'bg-stone-200 text-stone-800'
-                                    }`}
-                                  >
-                                    Payment: {ord.paymentStatus}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-stone-600">
-                                  Placed on <strong>{placedDateStr}</strong> · Customer:{' '}
-                                  <strong>{ord.customerName}</strong> (+91 {ord.customerPhone})
-                                </p>
-                              </div>
-
-                              <div className="text-left sm:text-right font-mono-tabular">
-                                <div className="text-xs text-stone-500">Order Total</div>
-                                <div className="text-lg font-bold text-stone-900">
-                                  {formatPaiseToINR(ord.totalPaise)}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Visual Progress Steps */}
-                            {!isCancelled && (
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between text-[11px] font-semibold text-stone-600">
-                                  <span>
-                                    Fulfilment:{' '}
-                                    <strong className="text-stone-900">
-                                      {isPickup
-                                        ? 'Store Pickup at Kanpur Counter'
-                                        : 'Express Doorstep Home Delivery'}
-                                    </strong>
-                                  </span>
-                                  <span className="font-mono-tabular text-stone-700">
-                                    Step {currentStepIdx + 1} of {steps.length}
-                                  </span>
-                                </div>
-                                <div
-                                  className={`grid grid-cols-1 ${
-                                    isPickup ? 'sm:grid-cols-3' : 'sm:grid-cols-5'
-                                  } gap-2`}
-                                >
-                                  {steps.map((st, idx) => {
-                                    const isCompleted = idx <= currentStepIdx;
-                                    const isCurrent = idx === currentStepIdx;
-                                    return (
-                                      <div
-                                        key={st.key}
-                                        className={`p-3 rounded-2xl border flex items-center gap-2.5 text-xs ${
-                                          isCurrent
-                                            ? 'bg-stone-900 text-white border-stone-900 font-bold shadow-2xs'
-                                            : isCompleted
-                                              ? 'bg-emerald-50 border-emerald-200 text-emerald-950 font-semibold'
-                                              : 'bg-white border-stone-200 text-stone-400'
-                                        }`}
-                                      >
-                                        <span
-                                          className={`w-5 h-5 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shrink-0 ${
-                                            isCurrent
-                                              ? 'bg-amber-400 text-stone-950'
-                                              : isCompleted
-                                                ? 'bg-emerald-600 text-white'
-                                                : 'bg-stone-100 text-stone-500'
-                                          }`}
-                                        >
-                                          {isCompleted && !isCurrent ? '✓' : idx + 1}
-                                        </span>
-                                        <span className="truncate">{st.label}</span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Store Pickup Code OR Delivery Address & AWB Details */}
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                              <div className="lg:col-span-6 p-4 bg-white border border-stone-200/90 rounded-2xl space-y-2 text-xs">
-                                {isPickup ? (
-                                  <>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
-                                        Store Counter Pickup Pass
-                                      </span>
-                                      {pickup?.pickupCode && (
-                                        <span className="px-3 py-1 rounded-full bg-amber-100 border border-amber-300 font-mono-tabular font-bold text-amber-950 text-xs">
-                                          Pickup Code: {pickup.pickupCode}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-stone-700 leading-relaxed">
-                                      Show Order <strong>#{ord.orderNumber}</strong>{' '}
-                                      {pickup?.pickupCode ? `(Code: ${pickup.pickupCode})` : ''} at{' '}
-                                      <strong>
-                                        Gayatri Stationers, Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
-                                      </strong>{' '}
-                                      to collect your items.
-                                    </p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
-                                        Delivery &amp; Shipment Details
-                                      </span>
-                                      {shipment?.trackingNumber && (
-                                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-mono-tabular font-bold text-[11px]">
-                                          AWB: {shipment.trackingNumber}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {shipment ? (
-                                      <p className="text-stone-700 leading-relaxed">
-                                        Delivering to <strong>{shipment.recipientName}</strong>:{' '}
-                                        {shipment.addressLine1}
-                                        {shipment.landmark ? `, ${shipment.landmark}` : ''},{' '}
-                                        {shipment.city}, {shipment.state} –{' '}
-                                        <strong className="font-mono-tabular">
-                                          {shipment.pincode}
-                                        </strong>
-                                      </p>
-                                    ) : (
-                                      <p className="text-stone-600">
-                                        Express doorstep courier dispatch is being prepared for your address.
-                                      </p>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-
-                              {/* Items Summary */}
-                              <div className="lg:col-span-6 p-4 bg-white border border-stone-200/90 rounded-2xl space-y-2 text-xs">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-stone-900 uppercase tracking-wider text-[11px]">
-                                    Items in Order ({items.length})
-                                  </span>
-                                  <span className="text-stone-500 font-mono-tabular">
-                                    {ord.paymentMethod.replace(/_/g, ' ')}
-                                  </span>
-                                </div>
-                                <div className="divide-y divide-stone-100 max-h-36 overflow-y-auto">
-                                  {items.map((it: any, i: number) => (
-                                    <div
-                                      key={it.id || i}
-                                      className="py-1.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2"
-                                    >
-                                      <span className="text-stone-800 truncate">
-                                        <strong>{it.quantity}×</strong> {it.productName}{' '}
-                                        <span className="text-stone-500">({it.variantName})</span>
-                                      </span>
-                                      <span className="font-mono-tabular font-semibold text-stone-900 shrink-0">
-                                        {formatPaiseToINR(
-                                          it.lineTotalPaise || it.unitPricePaise * it.quantity
-                                        )}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Footer Actions */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                              <p className="text-[11px] text-stone-500">
-                                Need full tax invoice or live courier timeline? Open the detailed view.
-                              </p>
-                              <div className="flex items-center gap-2.5">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setTrackedOrderResult(storefrontSearchedOrder);
-                                    setActiveView('track');
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  }}
-                                  className="px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer transition-colors"
-                                >
-                                  Open Full Tracking &amp; Receipt →
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Dynamic Shop by Category Grid */}
-                    {activeHomepageCategories.length > 0 && (
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-8 space-y-5">
-                        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                              COMPLETE DEPARTMENT DIRECTORY
-                            </span>
-                            <h2 className="font-serif-display text-xl font-bold text-stone-900">
-                              Shop by Stationery & Craft Category
-                            </h2>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                          {activeHomepageCategories.map((cat) => {
-                            const childCatSlugs = categories
-                              .filter((c) => c.parentId === cat.id)
-                              .map((c) => String(c.slug || '').toLowerCase());
-                            const liveCatCount = products.filter((p) =>
-                              doesProductMatchCategory(p, cat, childCatSlugs)
-                            ).length;
-                            const displayCatCount = Math.max(liveCatCount, Number(cat.productCount || 0));
-                            return (
-                              <button
-                                key={cat.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedCategorySlug(cat.slug);
-                                  setSelectedBrandSlug('ALL');
-                                  document
-                                    .getElementById('catalogue-section')
-                                    ?.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className="apple-card-btn p-4 bg-slate-50 border border-slate-200/90 hover:border-slate-800 rounded-[26px] text-left transition-all flex flex-col justify-between gap-2.5 cursor-pointer group hover:-translate-y-0.5"
-                              >
-                                <div>
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="font-bold text-xs sm:text-sm text-stone-900 group-hover:text-[#B42318]">
-                                      {cat.name}
-                                    </span>
-                                    {cat.slug === 'diy-and-crafts' && (
-                                      <span className="px-2 py-0.5 bg-[#B42318] text-white text-[9px] font-mono font-bold rounded-full">
-                                        DIY
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-stone-500 line-clamp-2 mt-1">
-                                    {cat.description}
-                                  </p>
-                                </div>
-                                <div className="text-[10px] font-mono text-stone-700 font-semibold pt-1.5 border-t border-stone-200/70 flex items-center justify-between">
-                                  <span>{displayCatCount} Items</span>
-                                  <span>Browse →</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Dynamic Shop by Stationery Company / Brand Strip (Apple Oval Brand Pills) */}
-                    {activeBrands.length > 0 && (
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-8 space-y-5">
-                        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                              AUTHORISED RETAIL BRANDS
-                            </span>
-                            <h2 className="font-serif-display text-xl font-bold text-stone-900">
-                              Shop by Stationery Company & Brand
-                            </h2>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 overflow-x-auto pb-1">
-                          {activeBrands.map((brand) => {
-                            const liveBrandCount = products.filter((p) =>
-                              doesProductMatchBrand(p, brand)
-                            ).length;
-                            const displayBrandCount = Math.max(liveBrandCount, Number(brand.productCount || 0));
-                            return (
-                              <button
-                                key={brand.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedBrandSlug(brand.slug);
-                                  setSelectedCategorySlug('ALL');
-                                  document
-                                    .getElementById('catalogue-section')
-                                    ?.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className={`px-5 py-2.5 border rounded-full flex items-center gap-3 shrink-0 transition-all cursor-pointer ${
-                                  selectedBrandSlug === brand.slug
-                                    ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                    : 'bg-slate-50 text-stone-900 border-slate-200/90 hover:border-slate-800'
-                                }`}
-                              >
-                                {brand.logoUrl ? (
-                                  <img
-                                    src={brand.logoUrl}
-                                    alt={brand.name}
-                                    className="w-7 h-7 object-contain bg-white rounded-full p-0.5"
-                                  />
-                                ) : (
-                                  <span className="w-7 h-7 bg-stone-900 text-white text-[10px] font-mono font-bold flex items-center justify-center rounded-full">
-                                    {brand.name.slice(0, 2).toUpperCase()}
-                                  </span>
-                                )}
-                                <div className="text-left">
-                                  <div className="text-xs font-bold leading-tight">{brand.name}</div>
-                                  <div className="text-[10px] opacity-75 font-mono">
-                                    {displayBrandCount} {displayBrandCount === 1 ? 'Product' : 'Products'}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Curated Bestsellers & New Arrivals Showcase */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Bestsellers Card */}
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-4">
-                        <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                              MOST POPULAR ESSENTIALS
-                            </span>
-                            <h2 className="font-serif-display text-lg font-bold text-stone-900">
-                              Store Bestsellers
-                            </h2>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSortBy('bestseller');
-                              document
-                                .getElementById('catalogue-section')
-                                ?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900 cursor-pointer"
-                          >
-                            View All →
-                          </button>
-                        </div>
-                        <div className="divide-y divide-stone-100">
-                          {products
-                            .filter((p) => p.isActive !== false && p.isBestseller)
-                            .slice(0, 3)
-                            .map((item) => {
-                              const v = item.variants?.[0];
-                              const itemPrice = v?.sellingPricePaise || item.sellingPricePaise;
-                              const itemStock = v?.stockQuantity ?? item.totalStock;
-                              return (
-                                <div
-                                  key={`bs-${item.id}`}
-                                  className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => openProductDetail(item)}
-                                    className="apple-row-btn flex items-center gap-3 text-left group cursor-pointer min-w-0"
-                                  >
-                                    <div className="w-14 h-12 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
-                                      <ProductIllustration
-                                        type={item.illustrationType}
-                                        imageUrl={item.imageUrl}
-                                        alt={item.name}
-                                        className="w-full h-full"
-                                      />
-                                    </div>
-                                      <div className="min-w-0">
-                                        <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
-                                          {item.name}
-                                        </p>
-                                        <p className="text-[11px] text-stone-500 truncate">
-                                          <span
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleViewBrandProducts(item.brandSlug, item.brandName);
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter') {
-                                                e.stopPropagation();
-                                                handleViewBrandProducts(item.brandSlug, item.brandName);
-                                              }
-                                            }}
-                                            className="font-semibold text-[#B42318] hover:underline cursor-pointer"
-                                          >
-                                            {item.brandName}
-                                          </span>{' '}
-                                          · {item.categoryName}
-                                        </p>
-                                      </div>
-                                    </button>
-                                    <div className="flex items-center gap-2.5 shrink-0">
-                                      <span className="font-mono-tabular text-xs font-bold text-stone-900">
-                                        {formatPaiseToINR(itemPrice)}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        disabled={itemStock <= 0}
-                                        onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
-                                        className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
-                                      >
-                                        + Add
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-
-                        {/* New Arrivals & DIY Highlights Card */}
-                        <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-4">
-                          <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-                            <div>
-                              <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                                FRESH COUNTER ARRIVALS
-                              </span>
-                              <h2 className="font-serif-display text-lg font-bold text-stone-900">
-                                New Arrivals & DIY Craft Kits
-                              </h2>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSortBy('newest');
-                                document
-                                  .getElementById('catalogue-section')
-                                  ?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900 cursor-pointer"
-                            >
-                              View All →
-                            </button>
-                          </div>
-                          <div className="divide-y divide-stone-100">
-                            {products
-                              .filter(
-                                (p) =>
-                                  p.isActive !== false &&
-                                  (p.isNewArrival || p.categorySlug === 'diy-and-crafts')
-                              )
-                              .slice(0, 3)
-                              .map((item) => {
-                                const v = item.variants?.[0];
-                                const itemPrice = v?.sellingPricePaise || item.sellingPricePaise;
-                                const itemStock = v?.stockQuantity ?? item.totalStock;
-                                return (
-                                  <div
-                                    key={`na-${item.id}`}
-                                    className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={() => openProductDetail(item)}
-                                      className="apple-row-btn flex items-center gap-3 text-left group cursor-pointer min-w-0"
-                                    >
-                                      <div className="w-14 h-12 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shrink-0">
-                                        <ProductIllustration
-                                          type={item.illustrationType}
-                                          imageUrl={item.imageUrl}
-                                          alt={item.name}
-                                          className="w-full h-full"
-                                        />
-                                      </div>
-                                      <div className="min-w-0">
-                                        <p className="text-xs font-semibold text-stone-900 group-hover:underline truncate">
-                                          {item.name}
-                                        </p>
-                                        <p className="text-[11px] text-stone-500 truncate">
-                                          <span
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleViewBrandProducts(item.brandSlug, item.brandName);
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter') {
-                                                e.stopPropagation();
-                                                handleViewBrandProducts(item.brandSlug, item.brandName);
-                                              }
-                                            }}
-                                            className="font-semibold text-[#B42318] hover:underline cursor-pointer"
-                                          >
-                                            {item.brandName}
-                                          </span>{' '}
-                                          · {item.categoryName}
-                                        </p>
-                                      </div>
-                                    </button>
-                                    <div className="flex items-center gap-2.5 shrink-0">
-                                      <span className="font-mono-tabular text-xs font-bold text-stone-900">
-                                        {formatPaiseToINR(itemPrice)}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        disabled={itemStock <= 0}
-                                        onClick={(e) => handleAddToCart(item, v?.id, 1, e)}
-                                        className="px-3.5 py-1.5 bg-stone-900 text-white text-[11px] font-semibold rounded-full hover:bg-stone-800 disabled:opacity-40 cursor-pointer"
-                                      >
-                                        + Add
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                  )}
-
-                {/* Catalogue Filter & Product Grid Section */}
-                <section id="catalogue-section" className="space-y-6">
-                  {/* Active Brand Showcase Banner when filtering by a Brand */}
-                  {selectedBrandSlug !== 'ALL' && (() => {
-                    const activeBrandObj = brands.find(
-                      (b) =>
-                        String(b.slug || '').toLowerCase() === selectedBrandSlug.toLowerCase() ||
-                        String(b.name || '').toLowerCase() === selectedBrandSlug.toLowerCase()
-                    );
-                    const brandTitle =
-                      activeBrandObj?.name ||
-                      filteredProducts[0]?.brandName ||
-                      selectedBrandSlug.replace(/-/g, ' ');
-                    return (
-                      <div className="p-4 sm:p-5 bg-white border-2 border-stone-900 rounded-[28px] shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3.5">
-                          {activeBrandObj?.logoUrl ? (
-                            <img
-                              src={activeBrandObj.logoUrl}
-                              alt={brandTitle}
-                              className="w-12 h-12 rounded-2xl object-contain border border-stone-200 bg-white p-1 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-stone-900 text-white flex items-center justify-center font-bold text-sm font-mono shrink-0">
-                              {String(brandTitle).slice(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <div className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                              OFFICIAL BRAND STOREFRONT
-                            </div>
-                            <h3 className="font-serif-display text-lg font-bold text-stone-900">
-                              All {brandTitle} Stationery Products ({filteredProducts.length})
-                            </h3>
-                            <p className="text-xs text-stone-600">
-                              {activeBrandObj?.description ||
-                                `Showing all verified ${brandTitle} products available at Gayatri Stationers.`}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedBrandSlug('ALL')}
-                          className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-900 text-xs font-semibold rounded-full shrink-0 cursor-pointer"
-                        >
-                          × Show All Brands
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Position 3: Dynamic Catalogue Spotlight Banners (`CATALOGUE_SPOTLIGHT`) */}
-                  {activeCatalogueBanners.length > 0 && (
-                    <div className="space-y-3">
-                      {activeCatalogueBanners.map((cb) => (
-                        <div
-                          key={`cat-banner-${cb.id}`}
-                          className="rounded-[28px] border border-slate-200/90 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs"
-                          style={{
-                            backgroundColor: cb.backgroundColor || '#0F172A',
-                            color: cb.textColor || '#F8FAFC',
-                          }}
-                        >
-                          <div className="space-y-1.5 max-w-2xl">
-                            <span
-                              className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase font-bold text-white"
-                              style={{ backgroundColor: cb.accentColor || '#B42318' }}
-                            >
-                              {cb.badgeText || 'CATALOGUE SPOTLIGHT'}
-                            </span>
-                            <h3 className="font-serif-display text-lg sm:text-xl font-bold leading-snug">
-                              {cb.title}
-                            </h3>
-                            {cb.subtitle && (
-                              <p className="text-xs opacity-85 leading-relaxed">{cb.subtitle}</p>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleBannerCtaNavigate(cb.ctaLink)}
-                              className="px-4 py-2 rounded-full text-xs font-bold text-white shadow-xs cursor-pointer"
-                              style={{ backgroundColor: cb.accentColor || '#B42318' }}
-                            >
-                              {cb.ctaText || 'Explore Now'} →
-                            </button>
-                            {cb.secondaryCtaText && (
-                              <button
-                                type="button"
-                                onClick={() => handleBannerCtaNavigate(cb.secondaryCtaLink)}
-                                className="px-3.5 py-2 rounded-full text-xs font-semibold border border-current opacity-90 cursor-pointer"
-                              >
-                                {cb.secondaryCtaText}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-stone-200 pb-4">
-                    <div>
-                      <h2 className="font-serif-display text-2xl font-bold text-stone-900">
-                        {selectedCategorySlug === 'ALL'
-                          ? 'Stationery & School Supply Catalogue'
-                          : categories.find((c) => c.slug === selectedCategorySlug)?.name ||
-                            'Products'}
-                      </h2>
-                      <p className="text-xs text-stone-600 mt-1">
-                        Showing {filteredProducts.length} items · All product &amp; service prices are in{' '}
-                        <strong className="text-stone-900">Indian Rupees (INR / ₹)</strong> inclusive of GST
-                      </p>
-                    </div>
-
-                    {/* Budget & Sort Controls (Apple Pill Controls) */}
-                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
-                      {/* Budget quick filters inspired by practical stationery shopping */}
-                      <div className="flex items-center bg-stone-200/75 p-1 rounded-full gap-1">
-                        {[
-                          { label: 'All Prices', val: 0 },
-                          { label: 'Under ₹100', val: 10000 },
-                          { label: 'Under ₹200', val: 20000 },
-                          { label: 'Under ₹500', val: 50000 },
-                        ].map((b) => (
-                          <button
-                            key={b.val}
-                            onClick={() => setMaxPriceFilterPaise(b.val)}
-                            className={`px-3 py-1 rounded-full font-medium transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                              maxPriceFilterPaise === b.val
-                                ? 'bg-white text-stone-900 shadow-xs'
-                                : 'text-stone-600 hover:text-stone-900'
-                            }`}
-                          >
-                            {b.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      <select
-                        aria-label="Filter by Brand"
-                        value={selectedBrandSlug}
-                        onChange={(e) => setSelectedBrandSlug(e.target.value)}
-                        className="px-4 py-1.5 bg-white border border-stone-300/90 rounded-full text-stone-800 shadow-2xs"
-                      >
-                        <option value="ALL">All Brands</option>
-                        {brands.map((b) => (
-                          <option key={b.id} value={b.slug}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <label className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-stone-300/90 rounded-full text-stone-800 shadow-2xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={inStockOnly}
-                          onChange={(e) => setInStockOnly(e.target.checked)}
-                        />
-                        <span>In Stock Only</span>
-                      </label>
-
-                      <select
-                        aria-label="Sort products"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as any)}
-                        className="px-4 py-1.5 bg-white border border-stone-300/90 rounded-full text-stone-800 shadow-2xs"
-                      >
-                        <option value="featured">Sort: Featured</option>
-                        <option value="bestseller">Sort: Bestsellers</option>
-                        <option value="newest">Sort: New Arrivals</option>
-                        <option value="price_asc">Price: Low to High</option>
-                        <option value="price_desc">Price: High to Low</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Product Grid (3 columns on desktop, 2 on tablet, 1 on mobile) */}
-                  {filteredProducts.length === 0 ? (
-                    <div className="bg-white border border-stone-200/80 rounded-[32px] p-10 text-center space-y-3 shadow-xs">
-                      <p className="text-base font-semibold text-stone-900">
-                        No matching stationery products found
-                      </p>
-                      <p className="text-xs text-stone-600">
-                        Try clearing your search query or adjusting the brand and price filters.
-                      </p>
-                      <button
-                        onClick={() => {
-                          setSearchQuery('');
-                          setSelectedCategorySlug('ALL');
-                          setSelectedBrandSlug('ALL');
-                          setMaxPriceFilterPaise(0);
-                          setInStockOnly(false);
-                        }}
-                        className="px-5 py-2.5 bg-stone-900 text-white text-xs font-medium rounded-full"
-                      >
-                        Reset All Filters
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-                        {filteredProducts.slice(0, visibleProductCount).map((product) => {
-                        const selectedVarId =
-                          selectedVariantByProduct[product.id] || product.variants?.[0]?.id;
-                        const activeVariant =
-                          product.variants?.find((v: any) => v.id === selectedVarId) ||
-                          product.variants?.[0];
-                        const mrp = activeVariant?.mrpPaise || product.mrpPaise;
-                        const price = activeVariant?.sellingPricePaise || product.sellingPricePaise;
-                        const savingsPercent =
-                          mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-                        const stock = activeVariant?.stockQuantity ?? product.totalStock;
-                        const isWishlisted = wishlistProductIds.includes(product.id);
-
-                        return (
-                          <article
-                            key={product.id}
-                            className="bg-white border border-slate-200/90 rounded-2xl sm:rounded-[28px] flex flex-col justify-between overflow-hidden shadow-2xs hover:border-slate-300 hover:shadow-xs transition-all"
-                          >
-                            <div>
-                              {/* Product Image / Studio SVG Container */}
-                              <div className="relative aspect-square sm:aspect-4/3 border-b border-slate-100 overflow-hidden bg-slate-50/50">
-                                <button
-                                  onClick={() => openProductDetail(product)}
-                                  className="w-full h-full block text-left cursor-pointer"
-                                >
-                                  <ProductIllustration
-                                    type={product.illustrationType}
-                                    imageUrl={product.imageUrl}
-                                    alt={product.name}
-                                    colorTint={selectedColorByProduct[product.id]}
-                                  />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleToggleCompare(product.id);
-                                  }}
-                                  aria-label={
-                                    compareProductIds.includes(product.id)
-                                      ? `Remove ${product.name} from comparison`
-                                      : `Add ${product.name} to side-by-side comparison`
-                                  }
-                                  className={`absolute top-2.5 left-2.5 sm:top-3.5 sm:left-3.5 px-2.5 py-1 rounded-full text-[10px] font-semibold backdrop-blur-md border shadow-2xs flex items-center gap-1 cursor-pointer transition-colors ${
-                                    compareProductIds.includes(product.id)
-                                      ? 'bg-slate-900 text-white border-slate-900'
-                                      : 'bg-white/90 hover:bg-white text-slate-700 border-slate-200/80'
-                                  }`}
-                                >
-                                  <Scale className="w-3 h-3 shrink-0" />
-                                  <span>
-                                    {compareProductIds.includes(product.id)
-                                      ? 'Comparing'
-                                      : '+ Compare'}
-                                  </span>
-                                </button>
-                                <button
-                                  onClick={() => handleToggleWishlist(product.id)}
-                                  aria-label="Save to wishlist"
-                                  className="absolute top-2.5 right-2.5 sm:top-3.5 sm:right-3.5 w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-full shadow-2xs flex items-center justify-center hover:bg-white cursor-pointer"
-                                >
-                                  <Heart
-                                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                                      isWishlisted
-                                        ? 'fill-[#B42318] text-[#B42318]'
-                                        : 'text-slate-500'
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-
-                              {/* Clean Unboxed Metadata & Product Title */}
-                              <div className="p-3 sm:p-5 space-y-1 sm:space-y-2">
-                                <div className="text-[10px] sm:text-xs text-slate-500 flex items-center flex-wrap gap-1">
-                                  <button
-                                    type="button"
-                                    title={`See all ${product.brandName} products`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleViewBrandProducts(product.brandSlug, product.brandName);
-                                    }}
-                                    className="uppercase tracking-wider font-bold text-[#B42318] hover:underline truncate max-w-[110px] sm:max-w-none cursor-pointer inline-flex items-center gap-0.5"
-                                  >
-                                    <span>{product.brandName}</span>
-                                    <span className="hidden sm:inline text-[9px] font-normal">→</span>
-                                  </button>
-                                  <span aria-hidden="true">·</span>
-                                  <span className="truncate max-w-[80px] sm:max-w-none">{product.categoryName}</span>
-                                </div>
-
-                                <h3 className="text-xs sm:text-base font-semibold text-slate-900 leading-snug line-clamp-2">
-                                  <button
-                                    onClick={() => openProductDetail(product)}
-                                    className="hover:underline text-left cursor-pointer"
-                                  >
-                                    {product.name}
-                                  </button>
-                                </h3>
-
-                                <p className="hidden sm:block text-xs text-slate-600 line-clamp-2">
-                                  {product.shortDescription}
-                                </p>
-
-                                {/* Interactive Colour Swatches on Catalogue Card (for Pens & Colour Items) */}
-                                {(() => {
-                                  const cardColors = getProductColorOptions(product);
-                                  if (cardColors.length === 0) return null;
-                                  const activeCol =
-                                    selectedColorByProduct[product.id] || cardColors[0]?.label;
-                                  return (
-                                    <div className="pt-1 flex items-center gap-1.5 flex-wrap">
-                                      <span className="text-[10px] font-medium text-slate-500">
-                                        Colour:
-                                      </span>
-                                      <div className="flex items-center gap-1.5">
-                                        {cardColors.map((colOpt) => {
-                                          const isColSelected = activeCol === colOpt.label;
-                                          return (
-                                            <button
-                                              key={colOpt.label}
-                                              type="button"
-                                              title={`Select ${colOpt.label}`}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedColorByProduct((prev) => ({
-                                                  ...prev,
-                                                  [product.id]: colOpt.label,
-                                                }));
-                                                if (colOpt.variantId) {
-                                                  setSelectedVariantByProduct((prev) => ({
-                                                    ...prev,
-                                                    [product.id]: colOpt.variantId!,
-                                                  }));
-                                                }
-                                              }}
-                                              className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full transition-transform cursor-pointer flex items-center justify-center ${
-                                                isColSelected
-                                                  ? 'ring-2 ring-offset-1 ring-slate-900 scale-110'
-                                                  : 'opacity-80 hover:opacity-100 hover:scale-105'
-                                              }`}
-                                              style={{
-                                                background: colOpt.swatch,
-                                                border: `1px solid ${colOpt.border}`,
-                                              }}
-                                            />
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Variant Selector if multiple variants exist */}
-                                {product.variants && product.variants.length > 1 && (
-                                  <div className="pt-1">
-                                    <select
-                                      aria-label={`Select variant for ${product.name}`}
-                                      value={activeVariant?.id}
-                                      onChange={(e) =>
-                                        setSelectedVariantByProduct({
-                                          ...selectedVariantByProduct,
-                                          [product.id]: Number(e.target.value),
-                                        })
-                                      }
-                                      className="w-full px-2 py-1 sm:px-3.5 sm:py-1.5 text-[11px] sm:text-xs bg-slate-50 border border-slate-200 rounded-full text-slate-800"
-                                    >
-                                      {product.variants.map((v: any) => (
-                                        <option key={v.id} value={v.id}>
-                                          {v.variantName} — {formatPaiseToINR(v.sellingPricePaise)}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Price & Add to Cart Footer */}
-                            <div className="p-3 sm:px-5 sm:pb-5 sm:pt-3 border-t border-slate-100 space-y-2 sm:space-y-3">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3">
-                                <div className="font-mono-tabular">
-                                  <div className="flex items-baseline gap-1.5">
-                                    <span className="text-sm sm:text-[15px] font-bold text-slate-900">
-                                      {formatPaiseToINR(price)}{' '}
-                                      <span className="text-[10px] font-normal text-slate-500">INR</span>
-                                    </span>
-                                    {mrp > price && (
-                                      <span className="text-[10px] sm:text-xs text-slate-400 line-through">
-                                        {formatPaiseToINR(mrp)}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-[10px] sm:text-[11px] text-slate-500">
-                                    {savingsPercent > 0 ? `Save ${savingsPercent}% · ` : ''}
-                                    {stock > 0 ? `${stock} left` : 'Out of stock'}
-                                  </div>
-                                </div>
-
-                                {(() => {
-                                  const existingCartEntry = cartItems.find(
-                                    (ci) =>
-                                      Number(ci.productId) === Number(product.id) &&
-                                      Number(ci.variantId) ===
-                                        Number(activeVariant?.id || product.variants?.[0]?.id || product.id)
-                                  );
-                                  const qtyInCart = existingCartEntry?.quantity || 0;
-
-                                  if (qtyInCart > 0 && stock > 0) {
-                                    return (
-                                      <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto">
-                                        <div className="inline-flex items-center bg-emerald-50 border border-emerald-300 rounded-full p-0.5">
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleUpdateCartQuantity(
-                                                product.id,
-                                                existingCartEntry!.variantId,
-                                                qtyInCart - 1
-                                              );
-                                            }}
-                                            className="w-6 h-6 rounded-full bg-white hover:bg-emerald-100 text-emerald-950 font-bold text-xs flex items-center justify-center cursor-pointer"
-                                            aria-label="Decrease quantity"
-                                          >
-                                            -
-                                          </button>
-                                          <span className="px-2 text-[11px] font-mono-tabular font-bold text-emerald-950">
-                                            {qtyInCart} in Bag
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={(e) =>
-                                              handleAddToCart(product, activeVariant?.id, 1, e)
-                                            }
-                                            className="w-6 h-6 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center cursor-pointer"
-                                            aria-label="Add one more"
-                                          >
-                                            +
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-
-                                  return (
-                                    <button
-                                      disabled={stock <= 0}
-                                      onClick={(e) => handleAddToCart(product, activeVariant?.id, 1, e)}
-                                      className={`w-full sm:w-auto px-3 sm:px-5 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full whitespace-nowrap shrink-0 cursor-pointer transition-transform active:scale-95 ${
-                                        stock > 0
-                                          ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-2xs'
-                                          : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                                      }`}
-                                    >
-                                      {stock > 0 ? '+ Add to Bag' : 'Out of Stock'}
-                                    </button>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-
-                    {/* Incremental Pagination Controls */}
-                      {filteredProducts.length > visibleProductCount && (
-                        <div className="pt-2 flex flex-col items-center justify-center gap-2">
-                          <p className="text-xs text-stone-500 font-mono-tabular">
-                            Showing {Math.min(visibleProductCount, filteredProducts.length)} of{' '}
-                            {filteredProducts.length} stationery products
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setVisibleProductCount((prev) => prev + 12)}
-                            className="px-6 py-2.5 bg-white border border-stone-300 hover:border-stone-900 text-stone-900 text-xs font-semibold rounded-full shadow-2xs transition-colors cursor-pointer"
-                          >
-                            Load More Products ({filteredProducts.length - visibleProductCount} remaining)
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </section>
-
-                {/* School Combos & Bundles Highlight Section */}
-                {bundles.length > 0 && selectedCategorySlug === 'ALL' && (
-                  <section className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 lg:p-8 space-y-5">
-                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-stone-200 pb-4">
                       <div>
-                        <h2 className="font-serif-display text-xl font-bold text-stone-900">
-                          Curated School & Studio Stationery Combos
-                        </h2>
-                        <p className="text-xs text-stone-600 mt-0.5">
-                          Ready-made examination and art supply kits with all items added to your cart in one click.
-                        </p>
+                        <p className="text-xs font-bold text-[#1F1C18]">{cat.name}</p>
+                        <p className="text-[11px] text-[#5C5349]">{cat.description}</p>
                       </div>
-                      <button
-                        onClick={() => setActiveView('combos')}
-                        className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900 whitespace-nowrap"
-                      >
-                        View All Combos →
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {bundles.map((bundle) => (
-                        <div
-                          key={bundle.id}
-                          className="p-6 bg-slate-50 border border-slate-200/90 rounded-[28px] flex flex-col justify-between space-y-4"
-                        >
-                          <div className="space-y-2">
-                            <p className="text-xs text-stone-500">
-                              {bundle.targetGroup} · Verified Bundle
-                            </p>
-                            <h3 className="text-base font-bold text-stone-900">{bundle.name}</h3>
-                            <p className="text-xs text-stone-600 leading-relaxed">
-                              {bundle.description}
-                            </p>
-                            <ul className="text-xs text-stone-700 space-y-1 pt-1">
-                              {(bundle.itemsJson || []).map((item: any, idx: number) => (
-                                <li key={idx}>
-                                  • {item.quantity}x {item.productName} ({item.variantName})
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="pt-3 border-t border-stone-200 flex items-center justify-between">
-                            <div className="font-mono-tabular">
-                              <span className="text-sm font-bold text-stone-900">
-                                Combined Value: {formatPaiseToINR(bundle.originalTotalPaise)}
-                              </span>
-                            </div>
-                            <button
-                              onClick={(e) => handleAddBundleToCart(bundle, e)}
-                              className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] active:scale-95 transition-transform whitespace-nowrap shrink-0 cursor-pointer"
-                            >
-                              Add All Kit Items to Cart
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </div>
-            )}
-
-            {/* VIEW 2: CONTIGUOUS PRODUCT DETAIL PAGE (PDP) */}
-            {activeView === 'pdp' && activePdpProduct && (
-              <div className="max-w-7xl mx-auto px-6 py-8 space-y-10">
-                <button
-                  onClick={() => setActiveView('storefront')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 shadow-2xs cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Catalogue</span>
-                </button>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start bg-white border border-stone-200/80 rounded-[36px] shadow-xs p-6 lg:p-10">
-                  {/* Left: Sticky Product Gallery */}
-                  <div className="lg:col-span-6 space-y-4">
-                    {(() => {
-                      const allPdpImages = Array.from(
-                        new Set(
-                          [
-                            activePdpProduct.imageUrl,
-                            ...(Array.isArray(activePdpProduct.galleryUrls)
-                              ? activePdpProduct.galleryUrls
-                              : []),
-                          ].filter(Boolean)
-                        )
-                      );
-                      const currentImg = pdpSelectedImageUrl || activePdpProduct.imageUrl;
-                      const currentIdx = Math.max(0, allPdpImages.indexOf(currentImg));
-
-                      return (
-                        <>
-                          <div className="relative aspect-4/3 border border-stone-200/80 rounded-[28px] overflow-hidden group">
-                            <ProductIllustration
-                              type={activePdpProduct.illustrationType}
-                              imageUrl={currentImg}
-                              alt={activePdpProduct.name}
-                              colorTint={pdpSelectedColor}
-                            />
-                            {allPdpImages.length > 1 && (
-                              <>
-                                <button
-                                  type="button"
-                                  aria-label="Previous photo"
-                                  onClick={() => {
-                                    const prevIdx =
-                                      (currentIdx - 1 + allPdpImages.length) % allPdpImages.length;
-                                    setPdpSelectedImageUrl(allPdpImages[prevIdx]);
-                                  }}
-                                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-900 font-bold cursor-pointer"
-                                >
-                                  ‹
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label="Next photo"
-                                  onClick={() => {
-                                    const nextIdx = (currentIdx + 1) % allPdpImages.length;
-                                    setPdpSelectedImageUrl(allPdpImages[nextIdx]);
-                                  }}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 hover:bg-white border border-stone-200 shadow-xs flex items-center justify-center text-stone-900 font-bold cursor-pointer"
-                                >
-                                  ›
-                                </button>
-                                <span className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-stone-900/85 text-white text-[10px] font-mono">
-                                  Photo {currentIdx + 1} of {allPdpImages.length}
-                                </span>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleWishlist(activePdpProduct.id)}
-                              aria-label={
-                                wishlistProductIds.includes(activePdpProduct.id)
-                                  ? 'Remove from Wishlist'
-                                  : 'Save to Wishlist'
-                              }
-                              className="absolute top-3.5 right-3.5 w-10 h-10 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center justify-center hover:bg-white transition-transform active:scale-95 cursor-pointer"
-                            >
-                              <Heart
-                                className={`w-5 h-5 ${
-                                  wishlistProductIds.includes(activePdpProduct.id)
-                                    ? 'fill-[#B42318] text-[#B42318]'
-                                    : 'text-stone-600'
-                                }`}
-                              />
-                            </button>
-                            {pdpSelectedColor && (
-                              <div className="absolute bottom-3 left-3 px-3.5 py-1.5 bg-white/95 backdrop-blur-md border border-stone-200/90 rounded-full shadow-xs flex items-center gap-2 text-xs font-semibold text-stone-900">
-                                <span
-                                  className="w-3.5 h-3.5 rounded-full shrink-0"
-                                  style={{
-                                    background: getColorSwatchStyle(pdpSelectedColor).swatch,
-                                    border: `1px solid ${getColorSwatchStyle(pdpSelectedColor).border}`,
-                                  }}
-                                />
-                                <span>Selected: {pdpSelectedColor}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {allPdpImages.length > 1 && (
-                            <div className="flex items-center gap-2.5 overflow-x-auto pb-1">
-                              {allPdpImages.map((gUrl: string, idx: number) => {
-                                const isCurrent = currentImg === gUrl;
-                                return (
-                                  <button
-                                    key={`${idx}-${gUrl.slice(-16)}`}
-                                    type="button"
-                                    onClick={() => setPdpSelectedImageUrl(gUrl)}
-                                    className={`apple-row-btn w-16 h-12 rounded-2xl border overflow-hidden shrink-0 cursor-pointer transition-all ${
-                                      isCurrent
-                                        ? 'border-stone-900 ring-2 ring-stone-900'
-                                        : 'border-stone-300 opacity-75 hover:opacity-100'
-                                    }`}
-                                  >
-                                    <img
-                                      src={gUrl}
-                                      alt={`${activePdpProduct.name} view ${idx + 1}`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                    <p className="text-xs text-stone-500">
-                      SKU: <span className="font-mono-tabular">{activePdpVariant?.sku || activePdpProduct.sku}</span> · Verified Gayatri Stationers Catalogue Item
-                    </p>
-
-                    {/* Quick Switch Product Options with Images (Same Category / Related Stationery) */}
-                    {(() => {
-                      const relatedOptions = products
-                        .filter(
-                          (p) =>
-                            p.isActive !== false &&
-                            (p.categorySlug === activePdpProduct.categorySlug ||
-                              p.categoryName === activePdpProduct.categoryName)
-                        )
-                        .slice(0, 6);
-                      if (relatedOptions.length <= 1) return null;
-                      return (
-                        <div className="p-4 bg-slate-50/90 border border-slate-200/80 rounded-[24px] space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-stone-900">
-                              Switch Product in {activePdpProduct.categoryName} (With Images):
-                            </span>
-                            <span className="text-[11px] text-stone-500">
-                              {relatedOptions.length} options
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                            {relatedOptions.map((relProd) => {
-                              const isCurrentProd = relProd.id === activePdpProduct.id;
-                              const relPrice =
-                                relProd.variants?.[0]?.sellingPricePaise ||
-                                relProd.sellingPricePaise;
-                              return (
-                                <button
-                                  key={`pdp-rel-${relProd.id}`}
-                                  type="button"
-                                  onClick={() => openProductDetail(relProd)}
-                                  className={`p-2 rounded-2xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
-                                    isCurrentProd
-                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
-                                      : 'bg-white text-stone-900 border-stone-200 hover:border-stone-500'
-                                  }`}
-                                >
-                                  <div className="w-12 h-10 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
-                                    <ProductIllustration
-                                      type={relProd.illustrationType}
-                                      imageUrl={relProd.imageUrl}
-                                      alt={relProd.name}
-                                      className="w-full h-full"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="text-[11px] font-bold line-clamp-1">
-                                      {relProd.name}
-                                    </p>
-                                    <p
-                                      className={`text-[10px] font-mono-tabular font-semibold ${
-                                        isCurrentProd ? 'text-amber-300' : 'text-stone-600'
-                                      }`}
-                                    >
-                                      {formatPaiseToINR(relPrice)}
-                                    </p>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* More Products from the Same Brand */}
-                    {(() => {
-                      const sameBrandProducts = products.filter(
-                        (p) =>
-                          p.isActive !== false &&
-                          (p.brandSlug === activePdpProduct.brandSlug ||
-                            String(p.brandName || '').toLowerCase() ===
-                              String(activePdpProduct.brandName || '').toLowerCase())
-                      );
-                      return (
-                        <div className="p-4 bg-amber-50/60 border border-amber-200/90 rounded-[24px] space-y-2.5">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div>
-                              <span className="text-[10px] font-mono uppercase tracking-wider text-[#B42318] font-bold block">
-                                OFFICIAL BRAND COLLECTION
-                              </span>
-                              <span className="text-xs font-bold text-stone-900">
-                                More from {activePdpProduct.brandName} ({sameBrandProducts.length} items)
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleViewBrandProducts(
-                                  activePdpProduct.brandSlug,
-                                  activePdpProduct.brandName
-                                )
-                              }
-                              className="px-3.5 py-1.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer"
-                            >
-                              See All {activePdpProduct.brandName} Products →
-                            </button>
-                          </div>
-                          {sameBrandProducts.length > 1 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                              {sameBrandProducts
-                                .filter((bp) => bp.id !== activePdpProduct.id)
-                                .slice(0, 3)
-                                .map((bp) => (
-                                  <button
-                                    key={`brand-rel-${bp.id}`}
-                                    type="button"
-                                    onClick={() => openProductDetail(bp)}
-                                    className="p-2 rounded-2xl bg-white border border-stone-200 hover:border-stone-500 text-left flex items-center gap-2 cursor-pointer"
-                                  >
-                                    <div className="w-10 h-9 rounded-lg overflow-hidden border border-stone-200 bg-slate-50 shrink-0">
-                                      <ProductIllustration
-                                        type={bp.illustrationType}
-                                        imageUrl={bp.imageUrl}
-                                        alt={bp.name}
-                                        className="w-full h-full"
-                                      />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-[11px] font-bold text-stone-900 line-clamp-1">
-                                        {bp.name}
-                                      </p>
-                                      <p className="text-[10px] font-mono-tabular text-stone-600">
-                                        {formatPaiseToINR(
-                                          bp.variants?.[0]?.sellingPricePaise || bp.sellingPricePaise
-                                        )}
-                                      </p>
-                                    </div>
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Right: Contiguous Purchase Module */}
-                  <div className="lg:col-span-6 space-y-5">
-                    <div className="space-y-2 border-b border-stone-200 pb-4">
-                      <div className="flex items-center flex-wrap gap-2 text-xs text-stone-500">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleViewBrandProducts(
-                              activePdpProduct.brandSlug,
-                              activePdpProduct.brandName
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 rounded-full text-xs font-bold text-[#B42318] cursor-pointer transition-colors"
-                        >
-                          <span>Brand: {activePdpProduct.brandName}</span>
-                          <span className="underline">See all products →</span>
-                        </button>
-                        <span>·</span>
-                        <span>{activePdpProduct.categoryName}</span>
-                        <span>·</span>
-                        <span>GST {activePdpProduct.taxRatePercent}% Inclusive</span>
-                      </div>
-                      <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                        {activePdpProduct.name}
-                      </h1>
-                      <div className="flex items-baseline gap-3 font-mono-tabular pt-1">
-                        <span className="text-2xl font-bold text-stone-900">
-                          {formatPaiseToINR(
-                            activePdpVariant?.sellingPricePaise ||
-                              activePdpProduct.sellingPricePaise
-                          )}
-                        </span>
-                        {(activePdpVariant?.mrpPaise || activePdpProduct.mrpPaise) >
-                          (activePdpVariant?.sellingPricePaise ||
-                            activePdpProduct.sellingPricePaise) && (
-                          <span className="text-sm text-stone-400 line-through">
-                            MRP:{' '}
-                            {formatPaiseToINR(
-                              activePdpVariant?.mrpPaise || activePdpProduct.mrpPaise
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-sm text-stone-700 leading-relaxed">
-                      {activePdpProduct.description}
-                    </p>
-
-                    {/* INTERACTIVE COLOUR / INK SHADE SELECTOR WITH PRODUCT IMAGES */}
-                    {(() => {
-                      const pdpColorOptions = getProductColorOptions(activePdpProduct);
-                      if (pdpColorOptions.length === 0) return null;
-                      const currentSelectedColor =
-                        pdpSelectedColor || pdpColorOptions[0]?.label || '';
-                      return (
-                        <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-[24px] space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-stone-900">
-                              {isPenOrWritingProduct(activePdpProduct)
-                                ? 'Select Ink / Pen Colour Option:'
-                                : 'Select Colour Option:'}
-                            </label>
-                            <span className="text-xs font-semibold text-stone-800 flex items-center gap-1.5 px-2.5 py-0.5 bg-white border border-stone-200 rounded-full">
-                              <span
-                                className="w-3 h-3 rounded-full inline-block"
-                                style={{
-                                  background: getColorSwatchStyle(currentSelectedColor).swatch,
-                                  border: `1px solid ${getColorSwatchStyle(currentSelectedColor).border}`,
-                                }}
-                              />
-                              <span>{currentSelectedColor}</span>
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                            {pdpColorOptions.map((colOpt) => {
-                              const isSelected = currentSelectedColor === colOpt.label;
-                              const matchingVar = colOpt.variantId
-                                ? activePdpProduct.variants?.find(
-                                    (v: any) => v.id === colOpt.variantId
-                                  )
-                                : activePdpVariant;
-                              const optPrice =
-                                matchingVar?.sellingPricePaise ||
-                                activePdpProduct.sellingPricePaise;
-                              return (
-                                <button
-                                  key={colOpt.label}
-                                  type="button"
-                                  onClick={() => {
-                                    setPdpSelectedColor(colOpt.label);
-                                    setSelectedColorByProduct((prev) => ({
-                                      ...prev,
-                                      [activePdpProduct.id]: colOpt.label,
-                                    }));
-                                    if (colOpt.variantId) {
-                                      setPdpVariantId(colOpt.variantId);
-                                      setSelectedVariantByProduct((prev) => ({
-                                        ...prev,
-                                        [activePdpProduct.id]: colOpt.variantId!,
-                                      }));
-                                    }
-                                  }}
-                                  className={`p-2 rounded-2xl text-xs font-semibold border flex items-center gap-2.5 text-left transition-all cursor-pointer ${
-                                    isSelected
-                                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs ring-2 ring-stone-900/20'
-                                      : 'bg-white text-stone-800 border-stone-200 hover:border-stone-500'
-                                  }`}
-                                >
-                                  {/* Option Image Thumbnail with Colour Tint */}
-                                  <div className="relative w-12 h-10 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
-                                    <ProductIllustration
-                                      type={activePdpProduct.illustrationType}
-                                      imageUrl={activePdpProduct.imageUrl}
-                                      alt={`${activePdpProduct.name} - ${colOpt.label}`}
-                                      colorTint={colOpt.label}
-                                      className="w-full h-full"
-                                    />
-                                    <span
-                                      className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-2xs"
-                                      style={{
-                                        background: colOpt.swatch,
-                                        border: '1.5px solid #FFFFFF',
-                                      }}
-                                    >
-                                      {isSelected && (
-                                        <Check className="w-2.5 h-2.5 text-white drop-shadow" />
-                                      )}
-                                    </span>
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-bold truncate">{colOpt.label}</p>
-                                    <p
-                                      className={`text-[10px] font-mono-tabular ${
-                                        isSelected ? 'text-amber-300' : 'text-stone-500'
-                                      }`}
-                                    >
-                                      {formatPaiseToINR(optPrice)}
-                                    </p>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Variant / Pack Selection with Thumbnail Images */}
-                    {activePdpProduct.variants && activePdpProduct.variants.length > 0 && (
-                      <div className="space-y-2.5">
-                        <label className="block text-xs font-semibold text-stone-800">
-                          Select Pack / Option ({activePdpProduct.variants[0].attributeType || 'Pack Size'}):
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {activePdpProduct.variants.map((v: any) => {
-                            const isVarSelected = activePdpVariant?.id === v.id;
-                            const pdpColors = getProductColorOptions(activePdpProduct);
-                            const matchingCol = pdpColors.find((c) => c.variantId === v.id);
-                            return (
-                              <button
-                                key={v.id}
-                                type="button"
-                                onClick={() => {
-                                  setPdpVariantId(v.id);
-                                  setPdpQuantity(1);
-                                  if (matchingCol) {
-                                    setPdpSelectedColor(matchingCol.label);
-                                    setSelectedColorByProduct((prev) => ({
-                                      ...prev,
-                                      [activePdpProduct.id]: matchingCol.label,
-                                    }));
-                                  }
-                                }}
-                                className={`p-2.5 text-xs font-medium rounded-2xl border flex items-center justify-between gap-2.5 text-left transition-all cursor-pointer ${
-                                  isVarSelected
-                                    ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                    : 'bg-white text-stone-800 border-stone-300 hover:border-stone-500'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div className="w-11 h-9 rounded-xl overflow-hidden border border-stone-200/80 bg-slate-50 shrink-0">
-                                    <ProductIllustration
-                                      type={activePdpProduct.illustrationType}
-                                      imageUrl={activePdpProduct.imageUrl}
-                                      alt={v.variantName}
-                                      colorTint={matchingCol?.label || pdpSelectedColor}
-                                      className="w-full h-full"
-                                    />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-bold truncate">{v.variantName}</p>
-                                    <p
-                                      className={`text-[10px] font-mono-tabular ${
-                                        isVarSelected ? 'text-stone-300' : 'text-stone-500'
-                                      }`}
-                                    >
-                                      {v.stockQuantity ?? 25} in stock
-                                    </p>
-                                  </div>
-                                </div>
-                                <span
-                                  className={`font-mono-tabular font-bold shrink-0 ${
-                                    isVarSelected ? 'text-amber-300' : 'text-stone-900'
-                                  }`}
-                                >
-                                  {formatPaiseToINR(v.sellingPricePaise)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Quantity Stepper & Stock Guard */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-stone-800">Quantity</span>
-                        <span className="font-mono-tabular text-stone-600">
-                          Available Stock: {activePdpVariant?.stockQuantity ?? 0} units
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="inline-flex items-center border border-stone-300 rounded-full bg-white p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setPdpQuantity((q) => Math.max(1, q - 1))}
-                            className="p-2 text-stone-700 hover:bg-stone-100 rounded-full"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <span className="px-4 py-1 text-sm font-mono-tabular font-semibold">
-                            {pdpQuantity}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPdpQuantity((q) =>
-                                Math.min(activePdpVariant?.stockQuantity || 1, q + 1)
-                              )
-                            }
-                            className="p-2 text-stone-700 hover:bg-stone-100 rounded-full"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
-                        <button
-                          disabled={(activePdpVariant?.stockQuantity ?? 0) <= 0}
-                          onClick={(e) =>
-                            handleAddToCart(
-                              activePdpProduct,
-                              activePdpVariant?.id,
-                              pdpQuantity,
-                              e,
-                              false,
-                              pdpSelectedColor
-                            )
-                          }
-                          className="flex-1 py-3 px-6 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-xs hover:bg-stone-800 disabled:bg-stone-300 cursor-pointer"
-                        >
-                          Add to Cart
-                        </button>
-
-                        <button
-                          disabled={(activePdpVariant?.stockQuantity ?? 0) <= 0}
-                          onClick={(e) => {
-                            handleAddToCart(
-                              activePdpProduct,
-                              activePdpVariant?.id,
-                              pdpQuantity,
-                              e,
-                              false,
-                              pdpSelectedColor
-                            );
-                            setActiveView('checkout');
-                          }}
-                          className="py-3 px-6 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-xs hover:bg-[#991B1B] disabled:bg-stone-300 cursor-pointer"
-                        >
-                          Buy Now
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleWishlist(activePdpProduct.id)}
-                          className={`py-3 px-4 text-xs font-semibold rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
-                            wishlistProductIds.includes(activePdpProduct.id)
-                              ? 'bg-red-50 text-[#B42318] border-red-200'
-                              : 'bg-white text-stone-800 border-stone-300 hover:bg-stone-50'
-                          }`}
-                        >
-                          <Heart
-                            className={`w-4 h-4 ${
-                              wishlistProductIds.includes(activePdpProduct.id)
-                                ? 'fill-[#B42318] text-[#B42318]'
-                                : 'text-stone-600'
-                            }`}
-                          />
-                          <span className="hidden sm:inline">
-                            {wishlistProductIds.includes(activePdpProduct.id)
-                              ? 'Wishlisted'
-                              : 'Wishlist'}
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!compareProductIds.includes(activePdpProduct.id)) {
-                              handleToggleCompare(activePdpProduct.id);
-                            }
-                            setCompareModalOpen(true);
-                          }}
-                          className={`py-3 px-4 text-xs font-semibold rounded-full border transition-all flex items-center gap-1.5 cursor-pointer ${
-                            compareProductIds.includes(activePdpProduct.id)
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-white text-stone-800 border-stone-300 hover:bg-stone-50'
-                          }`}
-                        >
-                          <Scale className="w-4 h-4" />
-                          <span className="hidden sm:inline">
-                            {compareProductIds.includes(activePdpProduct.id)
-                              ? `Comparing (${compareProductIds.length}/3)`
-                              : 'Compare'}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Fulfilment Availability Summary */}
-                    <div className="p-5 bg-slate-50 border border-slate-200/90 rounded-[24px] space-y-2 text-xs">
-                      <p className="font-semibold text-stone-900">
-                        Fulfilment Options for this Item:
-                      </p>
-                      <p className="text-stone-700">
-                        • <strong>Store Pickup:</strong>{' '}
-                        {activePdpProduct.pickupEligible
-                          ? 'Available at Kanpur Counter (Pay Online or Pay at Store Counter upon collection)'
-                          : 'Not available for counter pickup'}
-                      </p>
-                      <p className="text-stone-700">
-                        • <strong>Express Home Delivery:</strong>{' '}
-                        {activePdpProduct.deliveryEligible
-                          ? 'Kanpur & Pan-India Doorstep Courier Delivery (All 6-digit Indian PIN codes supported)'
-                          : 'Store pickup only'}
-                      </p>
-                    </div>
-
-                    {/* Specifications Table */}
-                    {activePdpProduct.specifications &&
-                      Object.keys(activePdpProduct.specifications).length > 0 && (
-                        <div className="border-t border-stone-200 pt-4">
-                          <h3 className="text-xs font-semibold text-stone-800 mb-2">
-                            Product Specifications
-                          </h3>
-                          <dl className="divide-y divide-stone-200 text-xs">
-                            {Object.entries(activePdpProduct.specifications).map(([k, v]) => (
-                              <div key={k} className="py-2 flex justify-between gap-4">
-                                <dt className="text-stone-500">{k}</dt>
-                                <dd className="font-medium text-stone-900 text-right">
-                                  {String(v)}
-                                </dd>
-                              </div>
-                            ))}
-                          </dl>
-                        </div>
-                      )}
-
-                    {/* "Ask Vidya AI about this product" widget on PDP */}
-                    <div className="p-5 bg-gradient-to-br from-slate-900 via-slate-900 to-[#B42318]/90 text-white rounded-[28px] space-y-3 shadow-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                          </span>
-                          <div>
-                            <h3 className="text-xs font-bold tracking-tight">
-                              Looking for specific info? Ask Vidya AI
-                            </h3>
-                            <p className="text-[10px] text-slate-300">
-                              Gayatri Stationers AI Guide · Product Q&amp;A &amp; Comparison
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 bg-white/10 rounded-full text-amber-200">
-                          Vidya AI
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          `Is ${activePdpProduct.name} good for board exams?`,
-                          `What is included in this ${activePdpProduct.brandName} pack?`,
-                          `Compare this with other ${activePdpProduct.categoryName}`,
-                        ].map((qText, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              setRufusInitialQuestion(qText);
-                              setRufusOpen(true);
-                            }}
-                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/15 rounded-full text-[11px] text-white text-left cursor-pointer transition-colors"
-                          >
-                            {qText}
-                          </button>
-                        ))}
-                      </div>
-
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!pdpRufusQuestionInput.trim()) return;
-                          setRufusInitialQuestion(pdpRufusQuestionInput.trim());
-                          setPdpRufusQuestionInput('');
-                          setRufusOpen(true);
-                        }}
-                        className="flex items-center gap-2 pt-1"
-                      >
-                        <input
-                          type="text"
-                          value={pdpRufusQuestionInput}
-                          onChange={(e) => setPdpRufusQuestionInput(e.target.value)}
-                          placeholder={`Ask Vidya AI anything about ${activePdpProduct.name}...`}
-                          className="flex-1 px-4 py-2 rounded-full bg-white/95 text-slate-900 text-xs placeholder:text-slate-400 focus:outline-none"
-                        />
-                        <button
-                          type="submit"
-                          className="px-4 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold cursor-pointer shrink-0"
-                        >
-                          Ask Vidya AI
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 3: SCHOOL COMBOS & BUNDLES */}
-            {activeView === 'combos' && (
-              <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-                <div>
-                  <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                    School Supply Bundles & Stationery Combos
-                  </h1>
-                  <p className="text-xs text-stone-600 mt-1">
-                    Add complete examination kits or fine-art studio packs directly to your cart.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {bundles.map((b) => (
-                    <div
-                      key={b.id}
-                      className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 flex flex-col justify-between space-y-4"
-                    >
-                      <div className="space-y-2">
-                        <p className="text-xs text-stone-500">{b.targetGroup}</p>
-                        <h2 className="text-lg font-bold text-stone-900">{b.name}</h2>
-                        <p className="text-xs text-stone-600">{b.description}</p>
-                        <div className="pt-2 space-y-1 text-xs text-stone-800">
-                          {(b.itemsJson || []).map((item: any, idx: number) => (
-                            <div key={idx}>
-                              • {item.quantity}x {item.productName} ({item.variantName})
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="pt-4 border-t border-stone-200 flex items-center justify-between">
-                        <span className="font-mono-tabular text-sm font-bold">
-                          Kit Total: {formatPaiseToINR(b.originalTotalPaise)}
-                        </span>
-                        <button
-                          onClick={(e) => handleAddBundleToCart(b, e)}
-                          className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] cursor-pointer"
-                        >
-                          Add Bundle Items to Cart
-                        </button>
-                      </div>
-                    </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#B44C2E]" />
+                    </button>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* VIEW 4: INSTITUTIONAL BULK ORDERS */}
-            {activeView === 'bulk' && (
-              <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-                <div>
-                  <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                    Bulk Orders for Schools, Colleges & Offices
-                  </h1>
-                  <p className="text-xs text-stone-600 mt-1">
-                    Submit your institutional requirement list for custom wholesale pricing and GST tax invoicing.
-                  </p>
+              <div className="col-span-4 space-y-3 border-x border-[#E8DFD5] px-5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#B44C2E]">
+                  Popular Indian Brands
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {brands.map((brand) => (
+                    <button
+                      key={brand.id || brand.slug}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBrandSlug(brand.slug);
+                        setMegaMenuOpen(false);
+                        if (activeView !== 'storefront') navigateTo('storefront', '/');
+                        else
+                          document
+                            .getElementById('catalog-grid')
+                            ?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="liquid-btn-glass px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
+                    >
+                      {brand.name}
+                    </button>
+                  ))}
                 </div>
 
-                {bulkSubmittedEnquiry ? (
-                  <div className="bg-white border border-emerald-300 rounded-[32px] p-6 sm:p-8 space-y-3 shadow-xs">
-                    <h2 className="text-lg font-bold text-emerald-950">
-                      Bulk Enquiry Received — Reference #{bulkSubmittedEnquiry.enquiryNumber}
-                    </h2>
-                    <p className="text-xs text-stone-700">
-                      Thank you, <strong>{bulkSubmittedEnquiry.contactPerson}</strong> (
-                      {bulkSubmittedEnquiry.institutionName}). Our wholesale desk has logged your enquiry and will contact you shortly with a formal quotation.
-                    </p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#B44C2E] pt-3">
+                  Quick Ruling & Spec Shortcuts
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'Single Ruled Notebooks', fn: () => setRulingFilter('SINGLE_RULED') },
+                    { label: '0.5mm Needle Gel Pens', fn: () => setTipFilter('0.5mm') },
+                    { label: 'Spiral Registers', fn: () => setRulingFilter('SPIRAL') },
+                    { label: 'Under ₹150 Budget Picks', fn: () => setPriceRangeFilter('UNDER_150') },
+                  ].map((item) => (
                     <button
-                      onClick={() => setBulkSubmittedEnquiry(null)}
-                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-medium rounded-full"
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        item.fn();
+                        setMegaMenuOpen(false);
+                        if (activeView !== 'storefront') navigateTo('storefront', '/');
+                        else
+                          document
+                            .getElementById('catalog-grid')
+                            ?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="px-2.5 py-1 rounded-full bg-[#FDF2ED] text-[#8C341B] text-[11px] font-semibold hover:underline cursor-pointer"
                     >
-                      Submit Another Enquiry
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="col-span-3 liquid-glass-accent text-white rounded-3xl p-5 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
+                    Institutional Desk
+                  </span>
+                  <h3 className="text-base font-bold font-serif-display">
+                    Schools & Office Wholesale Slabs
+                  </h3>
+                  <p className="text-[11px] text-[#FFF5F0]/85 leading-relaxed">
+                    Get GST-compliant B2B quotes for annual booklists, A4 ream cartons & exam kits.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                  className="mt-4 w-full py-2 rounded-full bg-white text-[#1F1C18] text-xs font-bold cursor-pointer"
+                >
+                  Open Bulk Quote Form →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Drawer */}
+          {mobileMenuOpen && (
+            <div className="lg:hidden mt-2 liquid-glass rounded-3xl p-4 space-y-3">
+              <div className="relative">
+                <Search className="w-4 h-4 text-[#8B8075] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (activeView !== 'storefront') navigateTo('storefront', '/');
+                  }}
+                  placeholder="Search notebooks, Classmate, Flair..."
+                  className="liquid-input w-full pl-10 pr-4 py-2.5 rounded-full text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('combos', '/combos')}
+                  className="liquid-btn-glass py-2.5 rounded-2xl cursor-pointer"
+                >
+                  Exam & Art Combos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                  className="liquid-btn-glass py-2.5 rounded-2xl cursor-pointer"
+                >
+                  Bulk & Schools
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('track', '/track')}
+                  className="liquid-btn-glass py-2.5 rounded-2xl cursor-pointer"
+                >
+                  Track Orders
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigateTo(dbUser ? 'profile' : 'signin', dbUser ? '/profile' : '/signin')
+                  }
+                  className="liquid-btn-glass py-2.5 rounded-2xl cursor-pointer"
+                >
+                  {dbUser ? 'My Profile' : 'Sign In'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('admin-login', '/admin/login')}
+                className="w-full liquid-btn-primary py-2.5 rounded-full text-xs font-bold cursor-pointer"
+              >
+                Shop Owner Admin Portal
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* MAIN PAGE AREA */}
+      <main className="flex-1">
+        {/* ================================================================
+            VIEW: HOMEPAGE & STOREFRONT CATALOGUE
+           ================================================================ */}
+        {activeView === 'storefront' && (
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 py-5 sm:py-8 space-y-8">
+            {/* 1. BRIGHT HIGH-RESOLUTION LIQUID GLASS HERO BANNER */}
+            <section className="liquid-hero-bright rounded-[34px] p-5 sm:p-8 lg:p-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+              <div className="lg:col-span-7 space-y-5">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FDF2ED] border border-[#E8D8CC] text-[11px] font-bold text-[#8C341B]">
+                  <MapPin className="w-3.5 h-3.5 text-[#B44C2E]" />
+                  <span>Awas Vikas Market, Naubasta, Kanpur</span>
+                </div>
+
+                <h1 className="text-3xl sm:text-5xl font-bold font-serif-display text-[#1F1C18] leading-[1.08]">
+                  {heroTitle}
+                </h1>
+
+                <p className="text-xs sm:text-base text-[#4A423B] max-w-xl leading-relaxed">
+                  Tactile archival notebooks, precision gel & rollerball pens, Camlin & DOMS fine art
+                  palettes, and complete school & corporate desk supplies at genuine MRP prices.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document.getElementById('catalog-grid')?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="liquid-btn-primary px-6 py-3 rounded-full text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    Shop All Stationery
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                    className="liquid-btn-glass px-5 py-3 rounded-full text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Building2 className="w-4 h-4 text-[#B44C2E]" />
+                    School & Office Bulk Orders
+                  </button>
+                </div>
+
+                {/* Indian Shopper Trust Badges */}
+                <div className="pt-2 flex flex-wrap items-center gap-2.5 text-[11px] font-semibold text-[#1F1C18]">
+                  <span className="liquid-glass-subtle px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-[#B44C2E]" />
+                    UPI & Cash on Delivery
+                  </span>
+                  <span className="liquid-glass-subtle px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-[#B44C2E]" />
+                    100% GST Tax Invoice
+                  </span>
+                  <span className="liquid-glass-subtle px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-[#B44C2E]" />
+                    2-Hr Kanpur Pickup & Fast Delivery
+                  </span>
+                </div>
+              </div>
+
+              {/* Bright Curated Paper & Craft Hero Visual */}
+              <div className="lg:col-span-5">
+                <div className="liquid-glass rounded-[28px] p-3 relative overflow-hidden">
+                  <div className="aspect-[4/3] rounded-[22px] overflow-hidden bg-[#F4EDE4]">
+                    <img
+                      src="https://images.unsplash.com/photo-1513519245088-02929501502f?auto=format&fit=crop&w=1100&q=85"
+                      alt="Fine paper notebooks, wooden pencils, fountain pens and art brushes"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="mt-3 px-2 pb-1 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold text-[#1F1C18]">
+                        Back-to-School & Art Studio Collection
+                      </p>
+                      <p className="text-[11px] text-[#5C5349]">
+                        Use code <span className="font-mono-tabular font-bold text-[#B44C2E]">BACKTOSCHOOL10</span>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRufusInitialQuestion('Best stationery picks under ₹300');
+                        setIsRufusOpen(true);
+                      }}
+                      className="liquid-btn-glass px-3 py-1.5 rounded-full text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3 text-[#B44C2E]" /> Ask Vidya AI
                     </button>
                   </div>
-                ) : (
-                  <form
-                    onSubmit={handleSubmitBulkEnquiry}
-                    className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-8 space-y-5 text-sm"
-                  >
-                    {bulkError && (
-                      <div className="p-3.5 bg-red-50 border border-red-200 rounded-3xl text-xs text-red-900">
-                        {bulkError}
-                      </div>
-                    )}
+                </div>
+              </div>
+            </section>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          School / Office / Institution Name *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={bulkForm.institutionName}
-                          onChange={(e) =>
-                            setBulkForm({ ...bulkForm, institutionName: e.target.value })
-                          }
-                          placeholder="e.g. St. Peter's Senior Secondary School"
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          Contact Person Name *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={bulkForm.contactPerson}
-                          onChange={(e) =>
-                            setBulkForm({ ...bulkForm, contactPerson: e.target.value })
-                          }
-                          placeholder="Purchase Officer / Principal Name"
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          Phone Number *
-                        </label>
-                        <input
-                          type="tel"
-                          required
-                          value={bulkForm.phone}
-                          onChange={(e) => setBulkForm({ ...bulkForm, phone: e.target.value })}
-                          placeholder="10-digit mobile or landline"
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          Official Email *
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          value={bulkForm.email}
-                          onChange={(e) => setBulkForm({ ...bulkForm, email: e.target.value })}
-                          placeholder="office@institution.edu.in"
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          GSTIN (Optional — for B2B Input Tax Credit)
-                        </label>
-                        <input
-                          type="text"
-                          value={bulkForm.gstin}
-                          onChange={(e) =>
-                            setBulkForm({ ...bulkForm, gstin: e.target.value.toUpperCase() })
-                          }
-                          placeholder="e.g. 09AAACG1234A1Z5"
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full font-mono-tabular"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          Required Delivery / Pickup Date
-                        </label>
-                        <input
-                          type="date"
-                          value={bulkForm.requiredByDate}
-                          onChange={(e) =>
-                            setBulkForm({ ...bulkForm, requiredByDate: e.target.value })
-                          }
-                          className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                        />
-                      </div>
-                    </div>
+            {/* 2. IMMEDIATE VISUAL CATEGORY GRID RIGHT BELOW BANNER */}
+            <section aria-label="Visual Categories" className="space-y-3">
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#1F1C18] font-serif-display">
+                    Browse by Department
+                  </h2>
+                  <p className="text-xs text-[#5C5349]">
+                    Jump directly to classroom essentials, desk hardware, fine art or gift pens.
+                  </p>
+                </div>
+              </div>
 
-                    {/* Requested Items List */}
-                    <div className="space-y-3 border-t border-stone-200 pt-4">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-semibold text-stone-800">
-                          Stationery Items & Quantities Requested
-                        </label>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {[
+                  {
+                    title: 'School & College',
+                    caption: 'Notebooks, Registers & Geometry Boxes',
+                    slug: 'notebooks-and-diaries',
+                    image:
+                      'https://images.unsplash.com/photo-1531346878377-a5be20888e57?auto=format&fit=crop&w=700&q=80',
+                  },
+                  {
+                    title: 'Office Supplies',
+                    caption: 'Calculators, Files & Accounting Books',
+                    slug: 'office-stationery',
+                    image:
+                      'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=700&q=80',
+                  },
+                  {
+                    title: 'Art & Craft',
+                    caption: 'Watercolour Cakes, Sketchbooks & Pencils',
+                    slug: 'art-and-craft-supplies',
+                    image:
+                      'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=700&q=80',
+                  },
+                  {
+                    title: 'Gifting & Festive Pens',
+                    caption: 'Rollerballs, Fineliners & Highlighters',
+                    slug: 'pens-and-writing-instruments',
+                    image:
+                      'https://images.unsplash.com/photo-1585336261026-6a66e2e6f3fd?auto=format&fit=crop&w=700&q=80',
+                  },
+                ].map((cat) => {
+                  const isActive = selectedCategorySlug === cat.slug;
+                  return (
+                    <button
+                      key={cat.title}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategorySlug(isActive ? '' : cat.slug);
+                        document
+                          .getElementById('catalog-grid')
+                          ?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className={`liquid-card-hover rounded-[26px] p-3 sm:p-4 text-left flex flex-col gap-3 cursor-pointer ${
+                        isActive ? 'ring-2 ring-[#B44C2E]' : ''
+                      }`}
+                    >
+                      <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-[#F4EDE4]">
+                        <img
+                          src={cat.image}
+                          alt={cat.title}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm sm:text-base font-bold text-[#1F1C18] font-serif-display leading-snug">
+                          {cat.title}
+                        </p>
+                        <p className="text-[11px] text-[#5C5349] mt-0.5 line-clamp-1">
+                          {cat.caption}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 3. DEDICATED HORIZONTAL SLIDER: EXAM KITS, JOURNALING & DESK COMBOS */}
+            <section className="space-y-3">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#B44C2E]">
+                    Value Combo Sliders
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#1F1C18] font-serif-display">
+                    Curated Exam Kits, Art & Desk Bundles
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('combos', '/combos')}
+                  className="liquid-btn-glass px-4 py-2 rounded-full text-xs font-bold shrink-0 cursor-pointer"
+                >
+                  View All Combos →
+                </button>
+              </div>
+
+              <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory pb-2">
+                {bundles.map((bundle) => {
+                  const bundleItems = Array.isArray(bundle.items)
+                    ? bundle.items
+                    : Array.isArray(bundle.itemsJson)
+                    ? bundle.itemsJson
+                    : [];
+                  const mrpPaise = Number(
+                    bundle.mrpPaise || bundle.originalTotalPaise || bundle.bundlePricePaise
+                  );
+                  const discountPct =
+                    bundle.discountPercent ||
+                    (mrpPaise > bundle.bundlePricePaise
+                      ? Math.round(((mrpPaise - bundle.bundlePricePaise) / mrpPaise) * 100)
+                      : 0);
+
+                  return (
+                    <div
+                      key={bundle.id || bundle.slug}
+                      className="liquid-glass rounded-[28px] p-5 w-[300px] sm:w-[340px] shrink-0 snap-start flex flex-col justify-between gap-4"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="px-2.5 py-1 rounded-full bg-[#FDF2ED] text-[#8C341B] text-[10px] font-bold uppercase tracking-wider">
+                            {bundle.targetGroup || 'Value Kit'}
+                          </span>
+                          {discountPct > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-[#B44C2E] text-white text-[10px] font-bold">
+                              SAVE {discountPct}%
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-base sm:text-lg font-bold text-[#1F1C18] font-serif-display leading-snug">
+                          {bundle.name}
+                        </h3>
+                        <p className="text-xs text-[#5C5349] line-clamp-2">{bundle.description}</p>
+
+                        <ul className="space-y-1 text-[11px] text-[#2E2924] pt-1">
+                          {bundleItems.slice(0, 3).map((comp: any, idx: number) => (
+                            <li key={idx} className="flex items-center gap-1.5 truncate">
+                              <Check className="w-3.5 h-3.5 text-[#B44C2E] shrink-0" />
+                              <span className="truncate">{comp.productName || comp.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="pt-3 border-t border-[#E8DFD5] flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-lg font-bold text-[#1F1C18] tabular-nums">
+                            {formatPaiseToINR(bundle.bundlePricePaise, false)}
+                          </span>
+                          {mrpPaise > bundle.bundlePricePaise && (
+                            <span className="ml-1.5 text-xs line-through text-[#8B8075] tabular-nums">
+                              {formatPaiseToINR(mrpPaise, false)}
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
-                          onClick={() =>
-                            setBulkItems([
-                              ...bulkItems,
-                              { itemName: '', skuOrCategory: 'Notebooks & Diaries', quantity: 50 },
-                            ])
-                          }
-                          className="px-3.5 py-1 bg-slate-100 hover:bg-slate-200/80 rounded-full text-xs font-semibold text-stone-900"
+                          onClick={() => handleAddBundleToCart(bundle)}
+                          className="liquid-btn-primary px-4 py-2 rounded-full text-xs font-bold cursor-pointer"
                         >
-                          + Add Item Row
+                          + Add Kit
                         </button>
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
-                      {bulkItems.map((row, idx) => (
-                        <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Item description (e.g. A4 Ruled Registers 240p)"
-                            value={row.itemName}
-                            onChange={(e) => {
-                              const next = [...bulkItems];
-                              next[idx].itemName = e.target.value;
-                              setBulkItems(next);
-                            }}
-                            className="sm:col-span-6 px-4 py-1.5 text-xs border border-stone-300 rounded-full"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Category or SKU"
-                            value={row.skuOrCategory}
-                            onChange={(e) => {
-                              const next = [...bulkItems];
-                              next[idx].skuOrCategory = e.target.value;
-                              setBulkItems(next);
-                            }}
-                            className="sm:col-span-3 px-4 py-1.5 text-xs border border-stone-300 rounded-full"
-                          />
-                          <input
-                            type="number"
-                            min={1}
-                            required
-                            value={row.quantity}
-                            onChange={(e) => {
-                              const next = [...bulkItems];
-                              next[idx].quantity = Number(e.target.value);
-                              setBulkItems(next);
-                            }}
-                            className="sm:col-span-2 px-4 py-1.5 text-xs border border-stone-300 rounded-full font-mono-tabular"
-                          />
+            {/* 4. SMART MULTI-ATTRIBUTE FILTER TOOLBAR & CATALOGUE GRID */}
+            <section id="catalog-grid" className="space-y-4">
+              <div className="liquid-glass rounded-[28px] p-4 sm:p-5 space-y-3.5">
+                {/* Category Horizontal Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategorySlug('')}
+                    className={`category-pill px-4 py-2 text-xs font-semibold shrink-0 cursor-pointer ${
+                      selectedCategorySlug === '' ? 'active' : 'liquid-btn-glass text-[#1F1C18]'
+                    }`}
+                  >
+                    All Stationery
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id || cat.slug}
+                      type="button"
+                      onClick={() =>
+                        setSelectedCategorySlug(
+                          selectedCategorySlug === cat.slug ? '' : cat.slug
+                        )
+                      }
+                      className={`category-pill px-4 py-2 text-xs font-semibold shrink-0 cursor-pointer ${
+                        selectedCategorySlug === cat.slug
+                          ? 'active'
+                          : 'liquid-btn-glass text-[#1F1C18]'
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Smart Indian Stationery Filters: Brand, Ruling Type, Tip Size, Price Range & Sort */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1 items-center">
+                  <select
+                    aria-label="Filter by Brand"
+                    value={selectedBrandSlug}
+                    onChange={(e) => setSelectedBrandSlug(e.target.value)}
+                    className="liquid-input px-3 py-2 rounded-full text-xs font-semibold"
+                  >
+                    <option value="">All Brands (Classmate, DOMS...)</option>
+                    {brands.map((b) => (
+                      <option key={b.id || b.slug} value={b.slug}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    aria-label="Filter by Ruling Type"
+                    value={rulingFilter}
+                    onChange={(e) => setRulingFilter(e.target.value)}
+                    className="liquid-input px-3 py-2 rounded-full text-xs font-semibold"
+                  >
+                    <option value="ALL">Ruling: All Formats</option>
+                    <option value="SINGLE_RULED">Single Ruled</option>
+                    <option value="UNRULED">Unruled / Sketchbook</option>
+                    <option value="SPIRAL">Spiral Bound</option>
+                    <option value="HARDBOUND">Hardbound Register</option>
+                  </select>
+
+                  <select
+                    aria-label="Filter by Tip Size or Spec"
+                    value={tipFilter}
+                    onChange={(e) => setTipFilter(e.target.value)}
+                    className="liquid-input px-3 py-2 rounded-full text-xs font-semibold"
+                  >
+                    <option value="ALL">Tip / Grade: All Specs</option>
+                    <option value="0.5mm">0.5mm Needle Gel</option>
+                    <option value="0.7mm">0.6–0.7mm Liquid / Ball</option>
+                    <option value="HIGHLIGHTER">Highlighters & Pastels</option>
+                    <option value="ART_SHADES">24 Shades / Pencil / Brush</option>
+                  </select>
+
+                  <select
+                    aria-label="Filter by Price Range"
+                    value={priceRangeFilter}
+                    onChange={(e) => setPriceRangeFilter(e.target.value)}
+                    className="liquid-input px-3 py-2 rounded-full text-xs font-semibold"
+                  >
+                    <option value="ALL">Price: Any ₹</option>
+                    <option value="UNDER_150">Under ₹150</option>
+                    <option value="150_299">₹150 – ₹299</option>
+                    <option value="300_599">₹300 – ₹599</option>
+                    <option value="600_PLUS">₹600 & Above</option>
+                  </select>
+
+                  <select
+                    aria-label="Sort Products"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="liquid-input px-3 py-2 rounded-full text-xs font-semibold"
+                  >
+                    <option value="featured">Sort: Featured</option>
+                    <option value="price-asc">Price: Low to High</option>
+                    <option value="price-desc">Price: High to Low</option>
+                  </select>
+
+                  <div className="flex items-center justify-between lg:justify-end gap-2">
+                    <span className="text-[11px] font-semibold text-[#5C5349] inline-flex items-center gap-1">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-[#B44C2E]" />
+                      {filteredProducts.length} items
+                    </span>
+                    {hasActiveFilters && (
+                      <button
+                        type="button"
+                        onClick={resetAllFilters}
+                        className="px-3 py-1.5 rounded-full bg-[#FDF2ED] text-[#8C341B] text-[11px] font-bold cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Product Cards Grid */}
+              {filteredProducts.length === 0 ? (
+                <div className="liquid-glass rounded-3xl p-10 text-center space-y-3">
+                  <Package className="w-10 h-10 text-[#B44C2E]/40 mx-auto" />
+                  <p className="text-sm font-bold text-[#1F1C18]">
+                    No stationery matches your selected filters
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAllFilters}
+                    className="liquid-btn-primary px-5 py-2.5 rounded-full text-xs font-semibold cursor-pointer"
+                  >
+                    Clear Filters & Show All
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
+                  {filteredProducts.map((prod) => {
+                    const colorOptions = getProductColorOptions(prod);
+                    const selectedColor =
+                      selectedColorByProduct[prod.id] ||
+                      (colorOptions.length > 0 ? colorOptions[0].label : undefined);
+                    const selectedVariantId =
+                      selectedVariantByProduct[prod.id] ||
+                      prod.variants?.[0]?.id ||
+                      prod.id;
+                    const activeVar =
+                      prod.variants?.find((v: any) => Number(v.id) === Number(selectedVariantId)) ||
+                      prod.variants?.[0];
+                    const sellPaise = Number(
+                      activeVar?.sellingPricePaise ?? prod.sellingPricePaise ?? 0
+                    );
+                    const mrpPaise = Number(activeVar?.mrpPaise ?? prod.mrpPaise ?? sellPaise);
+                    const discountPct =
+                      mrpPaise > sellPaise
+                        ? Math.round(((mrpPaise - sellPaise) / mrpPaise) * 100)
+                        : 0;
+                    const stock = Number(activeVar?.stockQuantity ?? prod.totalStock ?? 0);
+                    const isWishlisted = wishlistProductIds.includes(Number(prod.id));
+                    const isCompared = compareProductIds.includes(Number(prod.id));
+
+                    return (
+                      <article
+                        key={prod.id}
+                        className="liquid-card-hover rounded-[26px] p-3 sm:p-4 flex flex-col justify-between gap-3"
+                      >
+                        <div>
+                          <div className="relative aspect-[4/3] rounded-2xl bg-[#FFFDF9] overflow-hidden mb-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigateTo('pdp', `/product/${prod.slug}`, {
+                                  productSlug: prod.slug,
+                                })
+                              }
+                              className="w-full h-full block cursor-pointer"
+                            >
+                              <ProductIllustration
+                                type={prod.illustrationType}
+                                imageUrl={prod.imageUrl}
+                                alt={prod.name}
+                                colorTint={selectedColor}
+                                className="w-full h-full object-cover"
+                              />
+                            </button>
+
+                            {discountPct > 0 && (
+                              <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-[#B44C2E] text-white text-[10px] font-bold">
+                                {discountPct}% OFF
+                              </span>
+                            )}
+
+                            <div className="absolute top-2 right-2 flex flex-col gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleWishlist(Number(prod.id))}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm cursor-pointer transition ${
+                                  isWishlisted
+                                    ? 'bg-[#B44C2E] text-white'
+                                    : 'bg-white/95 text-[#1F1C18] hover:bg-white'
+                                }`}
+                                title="Save to Wishlist"
+                              >
+                                <Heart
+                                  className={`w-3.5 h-3.5 ${isWishlisted ? 'fill-current' : ''}`}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleCompareProduct(Number(prod.id))}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center shadow-sm cursor-pointer transition ${
+                                  isCompared
+                                    ? 'bg-[#B44C2E] text-white'
+                                    : 'bg-white/95 text-[#1F1C18] hover:bg-white'
+                                }`}
+                                title="Compare Item"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#B44C2E]">
+                            {prod.brandName}
+                          </p>
                           <button
                             type="button"
                             onClick={() =>
-                              setBulkItems(bulkItems.filter((_, i) => i !== idx))
+                              navigateTo('pdp', `/product/${prod.slug}`, {
+                                productSlug: prod.slug,
+                              })
                             }
-                            className="sm:col-span-1 text-xs text-red-700 hover:underline rounded-full"
+                            className="text-xs sm:text-sm font-bold text-[#1F1C18] text-left hover:underline line-clamp-2 mt-0.5 cursor-pointer"
                           >
-                            Remove
+                            {prod.name}
                           </button>
-                        </div>
-                      ))}
-                    </div>
 
-                    <div>
-                      <label className="block text-xs font-medium text-stone-700 mb-1">
-                        Custom Printing / Packaging or Delivery Notes
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={bulkForm.notes}
-                        onChange={(e) => setBulkForm({ ...bulkForm, notes: e.target.value })}
-                        placeholder="Mention custom school crest printing, class-wise bundling, or delivery schedule..."
-                        className="w-full px-4 py-2.5 border border-stone-300 rounded-[24px] text-xs"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="px-6 py-3 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-xs hover:bg-[#991B1B]"
-                    >
-                      Submit Institutional Bulk Enquiry
-                    </button>
-                  </form>
-                )}
-              </div>
-            )}
-
-            {/* VIEW 5: MY ORDERS, HOME DELIVERY TRACKING & STORE PICKUP PASS */}
-            {activeView === 'track' && (
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-                {/* Responsive Header */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-stone-200 pb-4">
-                  <div>
-                    <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-stone-900">
-                      My Orders · Express Delivery Tracker &amp; Store Counter Pass
-                    </h1>
-                    <p className="text-xs sm:text-sm text-stone-600 mt-1">
-                      Track <strong>Home Delivery</strong> parcels live, or view your <strong>Get at Store</strong> counter pass (no tracking needed — just visit &amp; collect in Kanpur).
-                    </p>
-                  </div>
-                  {dbUser || supabaseUser ? (
-                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-full text-xs font-medium text-stone-800 shadow-2xs">
-                      <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                      <span>
-                        Signed in as: <strong>{dbUser?.email || supabaseUser?.email}</strong>
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveView('signin');
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-xs hover:bg-[#991B1B] cursor-pointer"
-                      >
-                        Sign In / Sync Account
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <>
-                  {/* Search Lookup Bar (Order ID + 10-Digit Mobile Number — No Sign-In Required) */}
-                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-5 space-y-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                        <Search className="w-3.5 h-3.5 text-[#B42318]" />
-                        <span>Order Search by Order ID &amp; Mobile Number (No Sign-In Required)</span>
-                      </span>
-                      <span className="text-[11px] text-stone-500">
-                        Enter your Order ID and 10-digit mobile number to look up any order
-                      </span>
-                    </div>
-                    <form
-                      onSubmit={handleTrackOrder}
-                      className="grid grid-cols-1 sm:grid-cols-12 gap-3"
-                    >
-                      <input
-                        type="text"
-                        value={trackOrderNumberInput}
-                        onChange={(e) => setTrackOrderNumberInput(e.target.value.toUpperCase())}
-                        placeholder="Order ID (e.g. GS-485779)"
-                        className="sm:col-span-5 px-4 py-2.5 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
-                      />
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        maxLength={10}
-                        placeholder="10-Digit Mobile Number (e.g. 9876543210)"
-                        value={trackPhoneInput}
-                        onChange={(e) =>
-                          setTrackPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10))
-                        }
-                        className="sm:col-span-4 px-4 py-2.5 text-xs sm:text-sm border border-stone-300 rounded-full font-mono-tabular"
-                      />
-                      <div className="sm:col-span-3 flex items-center gap-2">
-                        <button
-                          type="submit"
-                          className="flex-1 px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] whitespace-nowrap cursor-pointer"
-                        >
-                          Search Order
-                        </button>
-                        {Boolean(dbUser || supabaseUser) && (
-                          <button
-                            type="button"
-                            onClick={handleLoadMyOrders}
-                            className="px-4 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-stone-800 whitespace-nowrap cursor-pointer"
-                          >
-                            Filter List
-                          </button>
-                        )}
-                      </div>
-                    </form>
-                  </div>
-
-                    {trackError && (
-                      <div className="p-4 bg-red-50 border border-red-200 rounded-3xl text-xs text-red-900">
-                        {trackError}
-                      </div>
-                    )}
-
-                    {/* Responsive Two-Column Split: Left = Signed-In Account Orders, Right = Visual Order Tracker */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                      {/* Left Column: Orders Assigned to Signed-In Account */}
-                      <div className="lg:col-span-4 bg-white border border-slate-200/90 rounded-[28px] sm:rounded-[32px] shadow-xs overflow-hidden">
-                        <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h2 className="text-sm font-bold text-slate-900">
-                                My Account Orders
-                              </h2>
-                              <p className="text-[11px] text-slate-500 font-mono-tabular">
-                                {myOrdersList.length} total orders
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleLoadMyOrders}
-                              className="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs text-slate-700 hover:bg-slate-100 cursor-pointer shadow-2xs"
-                            >
-                              Refresh
-                            </button>
-                          </div>
-
-                          {/* Date-Range Filter Selector (Last 30 days, Last 3 months, Last 6 months, All time) */}
-                          <div className="space-y-1.5 pt-1 border-t border-slate-200/70">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="flex items-center gap-1.5 font-semibold text-slate-700">
-                                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                                <span>Period:</span>
-                              </span>
-                              {orderDateRangeFilter !== 'ALL_TIME' && (
-                                <button
-                                  type="button"
-                                  onClick={() => setOrderDateRangeFilter('ALL_TIME')}
-                                  className="text-[10px] text-slate-500 hover:text-slate-900 underline cursor-pointer"
-                                >
-                                  Clear filter
-                                </button>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-1 text-[11px]">
-                              {[
-                                { id: '30_DAYS', label: 'Last 30 days' },
-                                { id: '3_MONTHS', label: 'Last 3 months' },
-                                { id: '6_MONTHS', label: 'Last 6 months' },
-                                { id: 'ALL_TIME', label: 'All time' },
-                              ].map((dr) => (
-                                <button
-                                  key={dr.id}
-                                  type="button"
-                                  onClick={() => setOrderDateRangeFilter(dr.id as any)}
-                                  className={`px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer ${
-                                    orderDateRangeFilter === dr.id
-                                      ? 'bg-slate-900 text-white font-medium shadow-2xs'
-                                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {dr.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Status Filter Tabs */}
-                          <div className="space-y-1.5 pt-1 border-t border-slate-200/70">
-                            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700">
-                              <span>Status Filter:</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1 text-[11px]">
-                              {[
-                                { id: 'ALL', label: 'All' },
-                                { id: 'ACTION_NEEDED', label: 'Needs Action' },
-                                { id: 'READY_PICKUP', label: 'Ready Pickup' },
-                                { id: 'IN_TRANSIT', label: 'Dispatched' },
-                                { id: 'COMPLETED', label: 'Completed' },
-                              ].map((tab) => (
-                                <button
-                                  key={tab.id}
-                                  type="button"
-                                  onClick={() => setTrackBoardFilter(tab.id as any)}
-                                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors cursor-pointer ${
-                                    trackBoardFilter === tab.id
-                                      ? 'bg-slate-900 text-white shadow-2xs'
-                                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {tab.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        {myOrdersList.length === 0 ? (
-                          <div className="p-6 text-center space-y-3 text-xs text-slate-500">
-                            <p>
-                              No orders are assigned to{' '}
-                              <strong>
-                                {dbUser?.email ||
-                                  supabaseUser?.email ||
-                                  customerEmail ||
-                                  'your account'}
-                              </strong>{' '}
-                              yet. Any order you place will appear here automatically.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setActiveView('storefront')}
-                              className="px-5 py-2 bg-slate-900 text-white font-semibold rounded-full cursor-pointer hover:bg-slate-800"
-                            >
-                              Browse Catalogue
-                            </button>
-                          </div>
-                        ) : (() => {
-                          const filteredOrders = myOrdersList.filter((entry: any) => {
-                            // 1. Status Filter
-                            const st = entry.order.orderStatus;
-                            if (trackBoardFilter === 'ACTION_NEEDED') {
-                              if (!['ORDER_PLACED', 'CONFIRMED', 'PREPARING', 'PACKED'].includes(st)) {
-                                return false;
-                              }
-                            } else if (trackBoardFilter === 'READY_PICKUP') {
-                              if (st !== 'READY_FOR_PICKUP') return false;
-                            } else if (trackBoardFilter === 'IN_TRANSIT') {
-                              if (!['DISPATCHED', 'OUT_FOR_DELIVERY'].includes(st)) return false;
-                            } else if (trackBoardFilter === 'COMPLETED') {
-                              if (!['COLLECTED', 'DELIVERED'].includes(st)) return false;
-                            }
-
-                            // 2. Date-Range Filter
-                            if (orderDateRangeFilter !== 'ALL_TIME') {
-                              const rawDate = entry.order.createdAt;
-                              if (rawDate) {
-                                const orderTs = new Date(rawDate).getTime();
-                                if (!isNaN(orderTs)) {
-                                  const now = Date.now();
-                                  if (orderDateRangeFilter === '30_DAYS') {
-                                    if (now - orderTs > 30 * 24 * 60 * 60 * 1000) return false;
-                                  } else if (orderDateRangeFilter === '3_MONTHS') {
-                                    if (now - orderTs > 90 * 24 * 60 * 60 * 1000) return false;
-                                  } else if (orderDateRangeFilter === '6_MONTHS') {
-                                    if (now - orderTs > 180 * 24 * 60 * 60 * 1000) return false;
-                                  }
-                                }
-                              }
-                            }
-
-                            return true;
-                          });
-
-                          if (filteredOrders.length === 0) {
-                            return (
-                              <div className="p-6 text-center space-y-3 text-xs text-slate-500">
-                                <p className="font-semibold text-slate-700">
-                                  No orders match your selected filters.
-                                </p>
-                                <p className="text-[11px] text-slate-400">
-                                  Try switching to "All time" or clearing the status filter.
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setOrderDateRangeFilter('ALL_TIME');
-                                    setTrackBoardFilter('ALL');
-                                  }}
-                                  className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium rounded-full cursor-pointer transition-colors"
-                                >
-                                  Reset All Filters
-                                </button>
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div className="divide-y divide-slate-100 max-h-[540px] overflow-y-auto">
-                              <div className="px-4 py-2 bg-slate-50/70 flex items-center justify-between text-[11px] text-slate-500 border-b border-slate-100 font-mono-tabular">
-                                <span>Showing {filteredOrders.length} of {myOrdersList.length} orders</span>
-                                {orderDateRangeFilter !== 'ALL_TIME' && (
-                                  <span className="text-[10px] font-semibold text-[#B42318]">
-                                    {orderDateRangeFilter.replace('_', ' ')}
-                                  </span>
-                                )}
-                              </div>
-                              {filteredOrders.map((entry: any) => {
-                                const isSelected = trackedOrderResult?.order?.id === entry.order.id;
-                                const formattedDate = entry.order.createdAt
-                                  ? new Date(entry.order.createdAt).toLocaleDateString('en-IN', {
-                                      day: 'numeric',
-                                      month: 'short',
-                                      year: 'numeric',
-                                    })
-                                  : null;
-
+                          {colorOptions.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                              {colorOptions.slice(0, 5).map((opt) => {
+                                const isActive = selectedColor === opt.label;
                                 return (
                                   <button
-                                    key={entry.order.id}
+                                    key={opt.label}
                                     type="button"
                                     onClick={() => {
-                                      setTrackedOrderResult(entry);
-                                      setTrackOrderNumberInput(entry.order.orderNumber);
+                                      setSelectedColorByProduct((prev) => ({
+                                        ...prev,
+                                        [prod.id]: opt.label,
+                                      }));
+                                      if (opt.variantId) {
+                                        setSelectedVariantByProduct((prev) => ({
+                                          ...prev,
+                                          [prod.id]: opt.variantId!,
+                                        }));
+                                      }
                                     }}
-                                    className={`w-full p-4 text-left transition-colors flex items-start justify-between gap-3 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-amber-50/90 border-l-4 border-l-[#B42318]'
-                                        : 'hover:bg-slate-50/80'
+                                    title={opt.label}
+                                    className={`w-4 h-4 rounded-full cursor-pointer transition ${
+                                      isActive
+                                        ? 'ring-2 ring-[#B44C2E] ring-offset-1 scale-110'
+                                        : ''
                                     }`}
-                                  >
-                                    <div className="space-y-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono-tabular font-bold text-xs sm:text-sm text-slate-900">
-                                          {entry.order.orderNumber}
-                                        </span>
-                                        {entry.pickupDetails && (
-                                          <span className="font-mono-tabular text-[11px] px-2 py-0.5 bg-amber-100 text-amber-950 rounded-full font-semibold">
-                                            Code: {entry.pickupDetails.pickupCode}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs font-medium text-slate-800 truncate">
-                                        {entry.order.customerName} · {entry.order.customerPhone}
-                                      </p>
-                                      <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
-                                        <span
-                                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                            entry.order.fulfilmentMethod === 'STORE_PICKUP'
-                                              ? 'bg-amber-100 text-amber-900'
-                                              : 'bg-emerald-100 text-emerald-900'
-                                          }`}
-                                        >
-                                          {entry.order.fulfilmentMethod === 'STORE_PICKUP'
-                                            ? 'Get at Store · No Tracking'
-                                            : 'Express Home Delivery'}
-                                        </span>
-                                        <span>·</span>
-                                        <strong className="text-slate-800">
-                                          {entry.order.fulfilmentMethod === 'STORE_PICKUP'
-                                            ? entry.order.orderStatus === 'COLLECTED'
-                                              ? 'COLLECTED AT STORE'
-                                              : 'VISIT & COLLECT'
-                                            : entry.order.orderStatus.replace(/_/g, ' ')}
-                                        </strong>
-                                        {formattedDate && (
-                                          <>
-                                            <span>·</span>
-                                            <span className="inline-flex items-center gap-1 font-mono-tabular text-slate-500">
-                                              <Calendar className="w-3 h-3 text-slate-400" />
-                                              {formattedDate}
-                                            </span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    <div className="text-right font-mono-tabular shrink-0">
-                                      <p className="text-xs font-bold text-slate-900">
-                                        {formatPaiseToINR(entry.order.totalPaise)}
-                                      </p>
-                                      <p
-                                        className={`text-[11px] font-semibold ${
-                                          entry.order.paymentStatus === 'PAID'
-                                            ? 'text-emerald-700'
-                                            : 'text-amber-700'
-                                        }`}
-                                      >
-                                        {entry.order.paymentStatus}
-                                      </p>
-                                    </div>
-                                  </button>
+                                    style={{
+                                      background: opt.swatch,
+                                      border: `1px solid ${opt.border}`,
+                                    }}
+                                  />
                                 );
                               })}
                             </div>
-                          );
-                        })()}
-                      </div>
+                          )}
+                        </div>
 
-                      {/* Right Column: Express Order Tracking OR Direct Store Pickup Pass */}
-                      <div className="lg:col-span-8">
-                        {trackedOrderResult ? (
-                          <OrderTrackingTimeline
-                            orderEntry={trackedOrderResult}
-                            isOwnerOrStaff={Boolean(
-                              dbUser && (dbUser.role === 'owner' || dbUser.role === 'staff')
-                            )}
-                            idToken={idToken}
-                            onOrderUpdated={async (updatedEntry) => {
-                              if (updatedEntry) {
-                                setTrackedOrderResult(updatedEntry);
-                              }
-                              await handleLoadMyOrders();
-                              await loadStoreBootstrap();
-                            }}
-                          />
-                        ) : (
-                          <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-8 text-center space-y-3">
-                            <p className="text-base font-semibold text-stone-900">
-                              Select an order from your account list on the left
-                            </p>
-                            <p className="text-xs text-stone-600 max-w-md mx-auto">
-                              For <strong>Home Delivery</strong> orders, view live AWB courier tracking. For <strong>Get at Store</strong> orders, no tracking is needed — simply view your Pickup Pass and collect your items at our Kanpur counter.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-              </div>
-            )}
-
-            {/* VIEW 6: WISHLIST */}
-            {activeView === 'wishlist' && (
-              <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200 pb-4">
-                  <div>
-                    <h1 className="font-serif-display text-2xl font-bold text-stone-900 flex items-center gap-2">
-                      <Heart className="w-6 h-6 fill-[#B42318] text-[#B42318]" />
-                      <span>Saved Wishlist ({wishlistProductIds.length})</span>
-                    </h1>
-                    <p className="text-xs text-stone-600 mt-1">
-                      Your favourite notebooks, pens, and art supplies saved for quick shopping.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    {wishlistProductIds.length > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            const wishedProducts = products.filter((p) =>
-                              wishlistProductIds.includes(p.id)
-                            );
-                            for (const prod of wishedProducts) {
-                              handleAddToCart(prod, prod.variants?.[0]?.id, 1, e, true);
-                            }
-                            showToast(`Added all ${wishedProducts.length} wishlist items to bag`);
-                          }}
-                          className="px-4 py-2 bg-[#B42318] hover:bg-[#991B1B] text-white rounded-full text-xs font-semibold shadow-2xs cursor-pointer transition-colors"
-                        >
-                          Add All to Bag ({wishlistProductIds.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWishlistProductIds([])}
-                          className="px-4 py-2 bg-white border border-stone-300 hover:border-red-600 hover:text-red-700 rounded-full text-xs font-medium cursor-pointer transition-colors"
-                        >
-                          Clear Wishlist
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('storefront');
-                      }}
-                      className="px-4 py-2 bg-white border border-stone-300 rounded-full text-xs font-medium hover:border-stone-900 cursor-pointer"
-                    >
-                      Continue Shopping
-                    </button>
-                  </div>
-                </div>
-
-                {wishlistProductIds.length === 0 ? (
-                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-10 text-center space-y-4">
-                    <div className="w-12 h-12 rounded-full bg-red-50 text-[#B42318] flex items-center justify-center mx-auto">
-                      <Heart className="w-6 h-6" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-base font-bold text-stone-900">Your wishlist is empty</p>
-                      <p className="text-xs text-stone-600 max-w-md mx-auto">
-                        Tap the heart icon on any stationery product card or product page to save items here for quick access.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('storefront');
-                      }}
-                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full hover:bg-stone-800 cursor-pointer"
-                    >
-                      Explore Stationery Catalogue
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {products
-                      .filter((p) => wishlistProductIds.includes(p.id))
-                      .map((p) => {
-                        const activeVar =
-                          p.variants?.find(
-                            (v: any) => v.id === selectedVariantByProduct[p.id]
-                          ) || p.variants?.[0];
-                        const price = activeVar?.sellingPricePaise || p.sellingPricePaise;
-                        const mrp = activeVar?.mrpPaise || p.mrpPaise;
-                        const savedCol = selectedColorByProduct[p.id];
-                        return (
-                          <div
-                            key={p.id}
-                            className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-5 flex flex-col justify-between space-y-4 overflow-hidden hover:border-stone-300 transition-all"
-                          >
+                        <div className="space-y-2.5 pt-1">
+                          <div className="flex items-baseline justify-between gap-2">
                             <div>
-                              <button
-                                type="button"
-                                onClick={() => openProductDetail(p)}
-                                className="w-full text-left cursor-pointer group"
-                              >
-                                <div className="aspect-4/3 mb-3 rounded-[22px] overflow-hidden border border-stone-100 bg-slate-50">
-                                  <ProductIllustration
-                                    type={p.illustrationType}
-                                    imageUrl={p.imageUrl}
-                                    alt={p.name}
-                                    colorTint={savedCol}
-                                  />
-                                </div>
-                              </button>
-                              <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1 flex-wrap">
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewBrandProducts(p.brandSlug, p.brandName)}
-                                  className="text-[#B42318] hover:underline font-bold cursor-pointer"
-                                >
-                                  {p.brandName} →
-                                </button>
-                                <span>·</span>
-                                <span>{p.categoryName}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openProductDetail(p)}
-                                className="w-full text-left cursor-pointer group"
-                              >
-                                <h3 className="font-semibold text-sm text-stone-900 group-hover:underline mt-0.5 line-clamp-2">
-                                  {p.name}
-                                </h3>
-                              </button>
-                              <div className="flex items-baseline gap-2 font-mono-tabular mt-2">
-                                <span className="text-sm font-bold text-stone-900">
-                                  {formatPaiseToINR(price)}
+                              <span className="text-sm sm:text-base font-bold text-[#1F1C18] tabular-nums">
+                                {formatPaiseToINR(sellPaise, false)}
+                              </span>
+                              {mrpPaise > sellPaise && (
+                                <span className="ml-1.5 text-[11px] line-through text-[#8B8075] tabular-nums">
+                                  {formatPaiseToINR(mrpPaise, false)}
                                 </span>
-                                {mrp > price && (
-                                  <span className="text-xs text-stone-400 line-through">
-                                    {formatPaiseToINR(mrp)}
-                                  </span>
-                                )}
-                              </div>
-                              {savedCol && (
-                                <p className="text-[11px] text-stone-600 mt-1">
-                                  Selected Colour: <strong>{savedCol}</strong>
-                                </p>
                               )}
                             </div>
-                            <div className="flex gap-2 pt-2 border-t border-stone-100">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  handleAddToCart(p, activeVar?.id, 1, e, true, savedCol);
-                                  handleToggleWishlist(p.id);
-                                }}
-                                className="flex-1 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-xs font-semibold rounded-full cursor-pointer"
-                              >
-                                Move to Bag
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleWishlist(p.id)}
-                                className="px-4 py-2.5 border border-stone-300 text-xs font-medium text-stone-700 rounded-full cursor-pointer hover:bg-red-50 hover:text-red-700 hover:border-red-200 transition-colors"
-                              >
-                                Remove
-                              </button>
-                            </div>
+                            <span className="text-[10px] font-semibold text-[#5C5349]">
+                              {stock > 0 ? 'In Stock' : 'Out of Stock'}
+                            </span>
                           </div>
-                        );
-                      })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* VIEW 7: COMPLETE 4-STEP CHECKOUT (Store Pickup vs Home Delivery) */}
-            {activeView === 'checkout' && (
-              <div className="max-w-6xl mx-auto px-6 py-8">
-                <button
-                  onClick={() => setActiveView('storefront')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 mb-6 shadow-2xs cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Return to Catalogue</span>
-                </button>
-
-                {cartItems.length === 0 ? (
-                  <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-8 text-center space-y-3">
-                    <p className="text-base font-semibold">Your cart is empty</p>
-                    <button
-                      onClick={() => setActiveView('storefront')}
-                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-medium rounded-full"
-                    >
-                      Browse Stationery
-                    </button>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={handlePlaceOrder}
-                    className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
-                  >
-                    <div className="lg:col-span-7 space-y-6">
-                      <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                        Checkout & Fulfilment Selection
-                      </h1>
-
-                      {!dbUser && !supabaseUser ? (
-                        <div className="p-5 bg-slate-50 border border-slate-200 rounded-[28px] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-1 text-xs">
-                            <p className="font-bold text-stone-900">
-                              Have a Customer Account? Sign In with Google or Email
-                            </p>
-                            <p className="text-stone-600">
-                              Sign in on our dedicated account page, or place your order directly below and we will link it to your email automatically.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveView('signin');
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="px-5 py-2.5 bg-[#B42318] text-white text-xs font-semibold rounded-full shadow-2xs hover:bg-[#991B1B] whitespace-nowrap cursor-pointer"
-                          >
-                            Go to Sign In Page
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-[24px] flex items-center justify-between gap-3 text-xs text-emerald-950">
-                          <span>
-                            Signed in as: <strong>{dbUser?.email || supabaseUser?.email}</strong>
-                          </span>
-                        </div>
-                      )}
-
-                      {checkoutError && (
-                        <div className="p-4 bg-red-50 border border-red-200 rounded-3xl text-xs text-red-900 space-y-1">
-                          <p className="font-bold">Checkout Validation Notice</p>
-                          <p>{checkoutError}</p>
-                        </div>
-                      )}
-
-                      {/* STEP 1: Payment Method Selection (Online Payment vs Cash on Delivery vs Store Counter) */}
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <h2 className="text-sm font-bold text-stone-900">
-                            01. Select Payment Method (Online Payment or Cash on Delivery)
-                          </h2>
-                          <span className="text-[11px] font-mono-tabular text-stone-500">
-                            Currency: INR (₹)
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                          <label
-                            onClick={() => setPaymentMethod('CASHFREE_ONLINE')}
-                            className={`flex items-start gap-3 p-4 border-2 rounded-[24px] cursor-pointer transition-all ${
-                              paymentMethod === 'CASHFREE_ONLINE'
-                                ? 'border-emerald-600 bg-emerald-50/40 shadow-xs'
-                                : 'border-stone-200 hover:border-stone-400 bg-white'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="paymentMethod"
-                              checked={paymentMethod === 'CASHFREE_ONLINE'}
-                              onChange={() => setPaymentMethod('CASHFREE_ONLINE')}
-                              className="mt-0.5 accent-emerald-700"
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-bold text-stone-900 text-sm">
-                                  Secure Online Payment
-                                </p>
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
-                                  UPI / CARDS / NETBANKING
-                                </span>
-                              </div>
-                              <p className="text-stone-600 mt-1 leading-relaxed">
-                                Pay instantly in INR (₹) via Google Pay, PhonePe, Paytm, BHIM UPI, Credit/Debit Cards, or NetBanking.
-                              </p>
-                            </div>
-                          </label>
-
-                          <label
-                            onClick={() => {
-                              setPaymentMethod('COD');
-                              setFulfilmentMethod('HOME_DELIVERY');
-                            }}
-                            className={`flex items-start gap-3 p-4 border-2 rounded-[24px] cursor-pointer transition-all ${
-                              paymentMethod === 'COD'
-                                ? 'border-[#B42318] bg-red-50/30 shadow-xs'
-                                : 'border-stone-200 hover:border-stone-400 bg-white'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="paymentMethod"
-                              checked={paymentMethod === 'COD'}
-                              onChange={() => {
-                                setPaymentMethod('COD');
-                                setFulfilmentMethod('HOME_DELIVERY');
-                              }}
-                              className="mt-0.5 accent-[#B42318]"
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-bold text-stone-900 text-sm">
-                                  Cash on Delivery (COD)
-                                </p>
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-900 rounded-full">
-                                  PAY ON DELIVERY
-                                </span>
-                              </div>
-                              <p className="text-stone-600 mt-1 leading-relaxed">
-                                Pay {formatPaiseToINR(calculation.totalPaise)} INR in cash or UPI upon doorstep delivery to your address.
-                              </p>
-                            </div>
-                          </label>
-                        </div>
-
-                        <label
-                          onClick={() => {
-                            setPaymentMethod('PAY_AT_STORE');
-                            setFulfilmentMethod('STORE_PICKUP');
-                          }}
-                          className={`flex items-start gap-3 p-3.5 border rounded-[20px] cursor-pointer text-xs transition-all ${
-                            paymentMethod === 'PAY_AT_STORE'
-                              ? 'border-stone-900 bg-stone-100/80'
-                              : 'border-stone-200 hover:bg-stone-50'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'PAY_AT_STORE'}
-                            onChange={() => {
-                              setPaymentMethod('PAY_AT_STORE');
-                              setFulfilmentMethod('STORE_PICKUP');
-                            }}
-                            className="mt-0.5"
-                          />
-                          <div>
-                            <p className="font-bold text-stone-900">
-                              Pay at Store Counter (Store Pickup — Zero Shipping Fee)
-                            </p>
-                            <p className="text-stone-600 mt-0.5">
-                              Reserve your items online and pay at Gayatri Stationers counter in Kanpur when collecting your order.
-                            </p>
-                          </div>
-                        </label>
-                      </div>
-
-                      {/* STEP 2: Fulfilment Method (Get at Store vs Express Home Delivery) */}
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
-                        <h2 className="text-sm font-bold text-stone-900">
-                          02. Choose Fulfilment Method (Get at Store or Express Home Delivery)
-                        </h2>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                          <button
-                            type="button"
-                            onClick={() => setFulfilmentMethod('STORE_PICKUP')}
-                            className={`apple-card-btn p-4 rounded-[26px] border text-left transition-colors cursor-pointer ${
-                              fulfilmentMethod === 'STORE_PICKUP'
-                                ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                : 'bg-slate-50 text-stone-900 border-stone-300 hover:border-stone-500'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold uppercase tracking-wider">
-                                Option A: Get at Store
-                              </span>
-                              <span className="font-mono-tabular text-xs font-semibold">FREE</span>
-                            </div>
-                            <p
-                              className={`text-xs mt-1.5 ${
-                                fulfilmentMethod === 'STORE_PICKUP'
-                                  ? 'text-stone-300'
-                                  : 'text-stone-600'
-                              }`}
-                            >
-                              No order tracking — just place your order, visit our Kanpur store counter &amp; get it immediately!
-                            </p>
-                          </button>
 
                           <button
                             type="button"
-                            onClick={() => setFulfilmentMethod('HOME_DELIVERY')}
-                            className={`apple-card-btn p-4 rounded-[26px] border text-left transition-colors cursor-pointer ${
-                              fulfilmentMethod === 'HOME_DELIVERY'
-                                ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                                : 'bg-slate-50 text-stone-900 border-stone-300 hover:border-stone-500'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold uppercase tracking-wider">
-                                Option B: Express Home Delivery
-                              </span>
-                              <span className="font-mono-tabular text-xs font-semibold">
-                                {calculation.shippingPaise === 0
-                                  ? 'FREE'
-                                  : formatPaiseToINR(calculation.shippingPaise)}
-                              </span>
-                            </div>
-                            <p
-                              className={`text-xs mt-1.5 ${
-                                fulfilmentMethod === 'HOME_DELIVERY'
-                                  ? 'text-stone-300'
-                                  : 'text-stone-600'
-                              }`}
-                            >
-                              Kanpur &amp; Pan-India doorstep courier dispatch with live AWB order tracking.
-                            </p>
-                          </button>
-                        </div>
-
-                        {fulfilmentMethod === 'STORE_PICKUP' ? (
-                          <div className="p-5 bg-amber-50/80 border border-amber-200 rounded-[24px] space-y-2.5 text-xs">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <p className="font-bold text-amber-950 text-sm">
-                                ✓ Just Order &amp; Get It at Store (No Order Tracking Required)
-                              </p>
-                              <span className="px-2.5 py-0.5 rounded-full bg-white border border-amber-300 text-[10px] font-mono uppercase font-bold text-amber-900">
-                                Direct Counter Collection
-                              </span>
-                            </div>
-                            <p className="text-amber-900 leading-relaxed">
-                              Place your order online and walk directly into our retail counter to collect your items — no shipping wait or multi-step order tracking needed.
-                            </p>
-                            <div className="p-3.5 bg-white border border-amber-200/80 rounded-2xl space-y-1">
-                              <p className="font-bold text-stone-900">
-                                Gayatri Stationers — Retail Pickup Counter
-                              </p>
-                              <p className="text-stone-800 font-medium">
-                                Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021
-                              </p>
-                              <p className="text-stone-500">
-                                Store Hours: {storeSettings?.store_profile?.businessHoursNote || 'Mon–Sat: 10:00 AM – 8:00 PM IST'}
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-[24px] flex items-center justify-between gap-3 text-xs text-emerald-950">
-                            <div>
-                              <p className="font-bold text-sm">
-                                🚚 Express Doorstep Delivery &amp; Live AWB Tracking
-                              </p>
-                              <p className="text-emerald-900 mt-0.5">
-                                Your order will be dispatched via our express courier network with real-time AWB tracking.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* STEP 3: Customer & Delivery Details (Always visible so customer can enter Name, Mobile & Address) */}
-                      <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-4">
-                        <h2 className="text-sm font-bold text-stone-900">
-                          03. Customer &amp; {fulfilmentMethod === 'HOME_DELIVERY' ? 'Home Delivery Address' : 'Store Pickup Contact'} Details
-                        </h2>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <label className="block text-xs font-medium text-stone-700 mb-1">
-                                Full Name *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
-                                placeholder="Enter full name"
-                                className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-stone-700 mb-1">
-                                10-Digit Mobile Number *
-                              </label>
-                              <input
-                                type="tel"
-                                required
-                                value={customerPhone}
-                                onChange={(e) => setCustomerPhone(e.target.value)}
-                                placeholder="For pickup code / delivery updates"
-                                className="w-full px-4 py-2 border border-stone-300 rounded-full font-mono-tabular"
-                              />
-                            </div>
-                            <div className="sm:col-span-2">
-                              <label className="block text-xs font-medium text-stone-700 mb-1">
-                                Email Address (Optional — for GST invoice & receipt)
-                              </label>
-                              <input
-                                type="email"
-                                value={customerEmail}
-                                onChange={(e) => setCustomerEmail(e.target.value)}
-                                placeholder="you@example.com"
-                                className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                              />
-                            </div>
-                          </div>
-
-                          {fulfilmentMethod === 'HOME_DELIVERY' && (
-                            <div className="space-y-3 pt-3 border-t border-stone-100 text-sm">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                                    6-Digit Delivery PIN Code *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    maxLength={6}
-                                    value={shippingAddress.pincode}
-                                    onChange={(e) =>
-                                      setShippingAddress({
-                                        ...shippingAddress,
-                                        pincode: e.target.value,
-                                      })
-                                    }
-                                    placeholder="e.g. 208021"
-                                    className="w-full px-4 py-2 border border-stone-300 rounded-full font-mono-tabular"
-                                  />
-                                </div>
-                                <div className="flex items-end">
-                                  {/^\d{6}$/.test(shippingAddress.pincode.trim()) ? (
-                                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 w-full">
-                                      ✓ <strong>Express Doorstep Delivery:</strong> PIN{' '}
-                                      <span className="font-mono-tabular font-bold">
-                                        {shippingAddress.pincode.trim()}
-                                      </span>{' '}
-                                      is serviceable · Courier &amp; COD Enabled
-                                    </div>
-                                  ) : (
-                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 w-full">
-                                      Enter any 6-digit Kanpur or Indian PIN code for doorstep delivery.
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="block text-xs font-medium text-stone-700 mb-1">
-                                  House / Flat / Building & Street Address *
-                                </label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={shippingAddress.addressLine1}
-                                  onChange={(e) =>
-                                    setShippingAddress({
-                                      ...shippingAddress,
-                                      addressLine1: e.target.value,
-                                    })
-                                  }
-                                  placeholder="House No., Street, Locality"
-                                  className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                                />
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                                    City / District *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={shippingAddress.city}
-                                    onChange={(e) =>
-                                      setShippingAddress({
-                                        ...shippingAddress,
-                                        city: e.target.value,
-                                      })
-                                    }
-                                    className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs font-medium text-stone-700 mb-1">
-                                    State *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    required
-                                    value={shippingAddress.state}
-                                    onChange={(e) =>
-                                      setShippingAddress({
-                                        ...shippingAddress,
-                                        state: e.target.value,
-                                      })
-                                    }
-                                    className="w-full px-4 py-2 border border-stone-300 rounded-full"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                    </div>
-
-                    {/* Right Column: Server-Validated Order Summary */}
-                    <div className="lg:col-span-5 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 sm:p-7 space-y-5 sticky top-20">
-                      <h2 className="text-base font-bold text-stone-900 border-b border-stone-200 pb-3">
-                        Shopping Bag & Order Summary ({totalCartItemsCount} items)
-                      </h2>
-
-                      <div className="space-y-3 max-h-80 overflow-y-auto text-xs pr-1">
-                        {calculation.items.map((item: any) => (
-                          <div
-                            key={`${item.productId}-${item.variantId}`}
-                            className="py-2.5 border-b border-stone-100 space-y-2"
-                          >
-                            <div className="flex justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-stone-900">
-                                  {item.productName}
-                                </p>
-                                <p className="text-stone-500">
-                                  {item.variantName} · {formatPaiseToINR(item.unitPricePaise)} each
-                                </p>
-                              </div>
-                              <span className="font-mono-tabular font-bold shrink-0">
-                                {formatPaiseToINR(item.lineSubtotalPaise)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="inline-flex items-center border border-stone-300 rounded-full p-0.5 bg-slate-50">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateCartQuantity(
-                                      item.productId,
-                                      item.variantId,
-                                      item.quantity - 1
-                                    )
-                                  }
-                                  className="px-2.5 py-0.5 text-xs hover:bg-stone-200 rounded-full cursor-pointer font-bold"
-                                >
-                                  -
-                                </button>
-                                <span className="px-3 py-0.5 text-xs font-mono-tabular font-semibold">
-                                  {item.quantity}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateCartQuantity(
-                                      item.productId,
-                                      item.variantId,
-                                      item.quantity + 1
-                                    )
-                                  }
-                                  className="px-2.5 py-0.5 text-xs hover:bg-stone-200 rounded-full cursor-pointer font-bold"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateCartQuantity(item.productId, item.variantId, 0)
-                                }
-                                className="px-2.5 py-1 text-[11px] text-stone-500 hover:text-red-700 hover:bg-red-50 rounded-full cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Coupon Application */}
-                      <div className="space-y-2 pt-2 border-t border-stone-200">
-                        <label className="block text-xs font-medium text-stone-700">
-                          Promo / Coupon Code
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={couponInput}
-                            onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                            placeholder="e.g. BACKTOSCHOOL10"
-                            className="flex-1 px-4 py-1.5 text-xs border border-stone-300 rounded-full font-mono-tabular"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setAppliedCouponCode(couponInput)}
-                            className="px-4 py-1.5 bg-stone-900 text-white text-xs font-medium rounded-full"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                        {calculation.couponMessage && (
-                          <p className="text-xs text-emerald-800">{calculation.couponMessage}</p>
-                        )}
-                      </div>
-
-                      {/* Price Breakdown in Integer Paise */}
-                      <div className="space-y-2 text-xs border-t border-stone-200 pt-3 font-mono-tabular">
-                        <div className="flex justify-between text-stone-600">
-                          <span>Items Subtotal (Incl. GST)</span>
-                          <span>{formatPaiseToINR(calculation.subtotalPaise)}</span>
-                        </div>
-                        {calculation.catalogSavingsPaise > 0 && (
-                          <div className="flex justify-between text-emerald-700">
-                            <span>Savings on MRP</span>
-                            <span>-{formatPaiseToINR(calculation.catalogSavingsPaise)}</span>
-                          </div>
-                        )}
-                        {calculation.couponDiscountPaise > 0 && (
-                          <div className="flex justify-between text-emerald-700 font-semibold">
-                            <span>Coupon ({calculation.appliedCouponCode})</span>
-                            <span>-{formatPaiseToINR(calculation.couponDiscountPaise)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between text-stone-600">
-                          <span>
-                            {fulfilmentMethod === 'STORE_PICKUP'
-                              ? 'Store Pickup Fee'
-                              : 'Home Delivery Shipping'}
-                          </span>
-                          <span>
-                            {calculation.shippingPaise === 0
-                              ? 'FREE'
-                              : formatPaiseToINR(calculation.shippingPaise)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-stone-500 text-[11px]">
-                          <span>Included GST Component</span>
-                          <span>{formatPaiseToINR(calculation.taxPaise, true)}</span>
-                        </div>
-                        <div className="flex justify-between text-base font-bold text-stone-900 border-t border-stone-200 pt-3">
-                          <span>Final Payable Total</span>
-                          <span>{formatPaiseToINR(calculation.totalPaise)}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={checkoutSubmitting}
-                        className={`w-full py-3.5 text-white text-sm font-semibold rounded-full shadow-xs disabled:opacity-50 cursor-pointer transition-colors ${
-                          paymentMethod === 'CASHFREE_ONLINE'
-                            ? 'bg-emerald-700 hover:bg-emerald-800'
-                            : 'bg-[#B42318] hover:bg-[#991B1B]'
-                        }`}
-                      >
-                        {checkoutSubmitting
-                          ? paymentMethod === 'CASHFREE_ONLINE'
-                            ? 'Opening Secure Payment Window...'
-                            : 'Validating Stock & Placing Order...'
-                          : paymentMethod === 'CASHFREE_ONLINE'
-                          ? `Pay Online Now (${formatPaiseToINR(calculation.totalPaise)})`
-                          : `Complete Order (${formatPaiseToINR(calculation.totalPaise)})`}
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            )}
-
-            {/* VIEW 8: STEP 4 ORDER CONFIRMATION RECEIPT */}
-            {activeView === 'confirmation' && confirmedOrderData && (
-              <div className="max-w-3xl mx-auto px-6 py-10">
-                <div className="bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 lg:p-8 space-y-6">
-                  <div className="border-b border-stone-200 pb-4 flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">
-                        Order Confirmed & Stock Reserved
-                      </p>
-                      <h1 className="font-serif-display text-2xl font-bold text-stone-900 mt-1">
-                        Order #{confirmedOrderData.order.orderNumber}
-                      </h1>
-                      <p className="text-xs text-stone-600 mt-1">
-                        Placed by {confirmedOrderData.order.customerName} (
-                        {confirmedOrderData.order.customerPhone})
-                      </p>
-                    </div>
-                    <div className="text-right font-mono-tabular text-xs">
-                      <p className="font-bold text-stone-900">
-                        {confirmedOrderData.order.fulfilmentMethod === 'STORE_PICKUP'
-                          ? 'Fulfilment: Get at Store (Direct Collect)'
-                          : `Delivery Status: ${confirmedOrderData.order.orderStatus.replace(/_/g, ' ')}`}
-                      </p>
-                      <p className="text-stone-600 mt-0.5">
-                        Payment: {confirmedOrderData.order.paymentStatus} (
-                        {confirmedOrderData.order.paymentMethod === 'CASHFREE_ONLINE'
-                          ? 'ONLINE PAYMENT'
-                          : confirmedOrderData.order.paymentMethod.replace(/_/g, ' ')})
-                      </p>
-                    </div>
-                  </div>
-
-                  {confirmedOrderData.order.fulfilmentMethod === 'STORE_PICKUP' ? (
-                    <div className="p-5 bg-amber-50 border border-amber-200 rounded-[24px] space-y-2 text-xs">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <p className="font-bold text-amber-950 text-sm">
-                          ✓ Get at Store — Just Visit Counter &amp; Collect (No Order Tracking Needed)
-                        </p>
-                        {confirmedOrderData.pickupDetails?.pickupCode && (
-                          <span className="px-3 py-1 bg-white border border-amber-300 rounded-full font-mono-tabular font-bold text-stone-900">
-                            Pickup Code: {confirmedOrderData.pickupDetails.pickupCode}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-amber-900 leading-relaxed">
-                        Your items are reserved at our store counter. No order tracking is required — simply visit <strong>Gayatri Stationers (Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021)</strong> during store hours and show Order <strong>#{confirmedOrderData.order.orderNumber}</strong> or your Pickup Code to get your order immediately.
-                      </p>
-                    </div>
-                  ) : (
-                    confirmedOrderData.shipmentDetails && (
-                      <div className="p-5 bg-emerald-50/70 border border-emerald-200 rounded-[24px] space-y-1.5 text-xs">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <p className="font-bold text-emerald-950 text-sm">
-                            🚚 Express Home Delivery (Live Tracking Enabled)
-                          </p>
-                          <span className="px-2.5 py-0.5 bg-white border border-emerald-300 rounded-full font-mono-tabular font-semibold text-emerald-900">
-                            Courier: {(confirmedOrderData.shipmentDetails.courierName || 'Express Home Delivery').replace(/Shiprocket/gi, 'Express')}
-                          </span>
-                        </div>
-                        <p className="text-stone-800">
-                          <strong>Delivery Destination:</strong>{' '}
-                          {confirmedOrderData.shipmentDetails.recipientName},{' '}
-                          {confirmedOrderData.shipmentDetails.addressLine1},{' '}
-                          {confirmedOrderData.shipmentDetails.city},{' '}
-                          {confirmedOrderData.shipmentDetails.state} -{' '}
-                          {confirmedOrderData.shipmentDetails.pincode}
-                        </p>
-                      </div>
-                    )
-                  )}
-
-                  {confirmedOrderData.order.paymentMethod === 'CASHFREE_ONLINE' && (
-                    <div className={`p-5 rounded-[24px] border text-xs space-y-2.5 ${
-                      confirmedOrderData.order.paymentStatus === 'PAID'
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                        : 'bg-amber-50 border-amber-300 text-amber-950'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-sm">
-                          {confirmedOrderData.order.paymentStatus === 'PAID'
-                            ? '✓ Online Payment Verified & Confirmed'
-                            : '⚡ Payment Pending — Complete Online Payment'}
-                        </span>
-                        <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-white/80 border border-current">
-                          {confirmedOrderData.order.paymentStatus}
-                        </span>
-                      </div>
-                      {confirmedOrderData.order.paymentStatus !== 'PAID' ? (
-                        <>
-                          <p className="text-amber-900 leading-relaxed">
-                            Your order is saved as <strong>Pending Payment</strong>. Click below to complete your payment via <strong>UPI (GPay / PhonePe / Paytm / BHIM)</strong>, Credit/Debit Cards, or NetBanking.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => triggerCashfreePaymentModal(confirmedOrderData.order.orderNumber)}
-                            disabled={checkoutSubmitting}
-                            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-full shadow-md transition-all cursor-pointer flex items-center gap-2"
-                          >
-                            <span>Pay Now via UPI / Cards / NetBanking</span>
-                          </button>
-                        </>
-                      ) : (
-                        <p className="text-emerald-800 text-[11px]">
-                          Your online payment has been securely verified. Thank you for shopping with Gayatri Stationers!
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="space-y-2 text-xs">
-                    <h2 className="font-bold text-stone-900">Ordered Items</h2>
-                    <div className="divide-y divide-stone-100">
-                      {(confirmedOrderData.items || []).map((item: any, idx: number) => (
-                        <div key={idx} className="py-2 flex justify-between">
-                          <span>
-                            {item.quantity}x {item.productName} ({item.variantName})
-                          </span>
-                          <span className="font-mono-tabular font-medium">
-                            {formatPaiseToINR(item.lineSubtotalPaise)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="border-t border-stone-200 pt-3 flex justify-between text-sm font-bold font-mono-tabular">
-                      <span>Final Order Total</span>
-                      <span>{formatPaiseToINR(confirmedOrderData.order.totalPaise)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 pt-2">
-                    {confirmedOrderData.order.fulfilmentMethod === 'HOME_DELIVERY' && (
-                      <button
-                        onClick={() => {
-                          setTrackOrderNumberInput(confirmedOrderData.order.orderNumber);
-                          setTrackedOrderResult(confirmedOrderData);
-                          setActiveView('track');
-                        }}
-                        className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full cursor-pointer"
-                      >
-                        Track Home Delivery
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActiveView('storefront')}
-                      className="px-5 py-2.5 bg-stone-100 text-stone-800 text-xs font-medium rounded-full hover:bg-stone-200 cursor-pointer"
-                    >
-                      Continue Shopping
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {/* VIEW 8.5: DYNAMIC CMS INFORMATIONAL & POLICY PAGES (Contact Us, Terms & Conditions, Refunds & Cancellations) */}
-            {activeView === 'page' && (
-              <div className="max-w-5xl mx-auto px-6 py-10">
-                <button
-                  onClick={() => {
-                    window.history.pushState({}, '', '/');
-                    setActiveView('storefront');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 mb-6 shadow-2xs cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Storefront</span>
-                </button>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                  <div className="lg:col-span-8 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 lg:p-8 space-y-5">
-                    {activeCmsPage ? (
-                      <>
-                        <div className="border-b border-stone-200 pb-4 space-y-1">
-                          <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                            GAYATRI STATIONERS · OFFICIAL MERCHANT POLICY & COMPLIANCE
-                          </span>
-                          <h1 className="font-serif-display text-2xl sm:text-3xl font-bold text-stone-900">
-                            {activeCmsPage.title}
-                          </h1>
-                          {activeCmsPage.summary && (
-                            <p className="text-xs sm:text-sm text-stone-600 pt-1">
-                              {activeCmsPage.summary}
-                            </p>
-                          )}
-                        </div>
-
-                        {activeCmsPage.slug === 'contact-us' && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs">
-                            <div>
-                              <p className="font-bold text-stone-900">Merchant / Legal Name</p>
-                              <p className="text-stone-700 mt-0.5">Gayatri Stationers</p>
-                            </div>
-                            <div>
-                              <p className="font-bold text-stone-900">Telephone / WhatsApp</p>
-                              <p className="text-stone-700 font-mono-tabular mt-0.5">+91 98765 43210</p>
-                            </div>
-                            <div>
-                              <p className="font-bold text-stone-900">Support & Grievance Email</p>
-                              <p className="text-stone-700 mt-0.5">
-                                support@gayatristationers.co.in · vainhavgupta20052014@gmail.com
-                              </p>
-                            </div>
-                            <div>
-                              <p className="font-bold text-stone-900">Visit Us · Registered Store Address</p>
-                              <p className="text-stone-700 mt-0.5">
-                                Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="text-sm text-stone-800 leading-relaxed whitespace-pre-line space-y-3">
-                          {activeCmsPage.contentMarkdown}
-                        </div>
-                      </>
-                    ) : (
-                      <p className="text-sm text-stone-600">Page not found.</p>
-                    )}
-                  </div>
-
-                  <aside className="lg:col-span-4 bg-white border border-stone-200/80 rounded-[32px] shadow-xs p-6 space-y-3">
-                    <h2 className="text-xs font-mono uppercase tracking-wider text-stone-500 font-bold">
-                      Mandatory Policies &amp; Compliance
-                    </h2>
-                    <div className="flex flex-col gap-1.5">
-                      {cmsPages
-                        .filter((p) => p.isActive !== false)
-                        .map((p) => (
-                          <a
-                            key={p.id}
-                            href={`/${p.slug}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              window.history.pushState({}, '', `/${p.slug}`);
-                              setActivePageSlug(p.slug);
-                              setActiveView('page');
-                            }}
-                            className={`text-left px-4 py-2 rounded-full text-xs font-medium transition-colors cursor-pointer block ${
-                              activeCmsPage?.slug === p.slug
-                                ? 'bg-stone-900 text-white'
-                                : 'text-stone-700 hover:bg-stone-100'
-                            }`}
-                          >
-                            {p.title}
-                          </a>
-                        ))}
-                    </div>
-                  </aside>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 8.8: DEDICATED CUSTOMER & ADMIN SIGN-IN PAGE (Full Page, No Modal Popup) */}
-            {activeView === 'signin' && (
-              <div className="max-w-xl mx-auto px-4 sm:px-6 py-10 sm:py-12">
-                <button
-                  type="button"
-                  onClick={() => setActiveView('storefront')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 mb-6 shadow-2xs cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Storefront</span>
-                </button>
-
-                <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-sm">
-                  <div className="border-b border-stone-200 pb-4 space-y-1">
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                      GAYATRI STATIONERS · CUSTOMER & STORE ACCOUNT
-                    </span>
-                    <h1 className="font-serif-display text-2xl font-bold text-stone-900">
-                      Sign In or Create Your Account
-                    </h1>
-                    <p className="text-xs text-stone-600">
-                      Sign in with Google or your email address to view your orders, save your wishlist, and track Store Pickup or Home Delivery.
-                    </p>
-                  </div>
-
-                  {authError && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 rounded-3xl text-xs text-red-900">
-                      {authError}
-                    </div>
-                  )}
-
-                  {/* Customer Google Sign-In Button */}
-                  <button
-                    type="button"
-                    disabled={customerAuthSubmitting}
-                    onClick={handleCustomerGoogleSignIn}
-                    className="w-full py-3.5 px-4 bg-white border-2 border-slate-900 text-slate-900 text-xs sm:text-sm font-bold rounded-full hover:bg-slate-50 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2.5 shadow-2xs transition-all"
-                  >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 24c3.3 0 6.08-1.09 8.1-2.96l-3.88-3.05c-1.09.73-2.5 1.16-4.22 1.16-3.24 0-6-2.19-6.98-5.14H1.01v3.14C3.03 21.2 7.21 24 12 24z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.02 14.01c-.25-.73-.39-1.52-.39-2.34s.14-1.61.39-2.34V6.19H1.01C.37 7.47 0 8.91 0 10.67s.37 3.2 1.01 4.48l4.01-1.14z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 4.75c1.8 0 3.41.62 4.68 1.84l3.51-3.51C18.07 1.19 15.3 0 12 0 7.21 0 3.03 2.8 1.01 6.85l4.01 3.14c.98-2.95 3.74-5.24 6.98-5.24z"
-                      />
-                    </svg>
-                    <span>
-                      {customerAuthSubmitting
-                        ? 'Signing in with Google...'
-                        : 'Continue with Google (Customer Sign-In)'}
-                    </span>
-                  </button>
-
-                  <div className="relative flex py-1 items-center">
-                    <div className="flex-grow border-t border-slate-200" />
-                    <span className="flex-shrink mx-3 text-[11px] text-slate-400 uppercase font-mono-tabular">
-                      OR CONTINUE WITH EMAIL
-                    </span>
-                    <div className="flex-grow border-t border-slate-200" />
-                  </div>
-
-                  <form onSubmit={handleCustomerAccountSubmit} className="space-y-4 text-xs">
-                    <div>
-                      <label className="block font-medium text-stone-700 mb-1">Full Name</label>
-                      <input
-                        type="text"
-                        value={customerAuthName}
-                        onChange={(e) => setCustomerAuthName(e.target.value)}
-                        placeholder="e.g. Aarav Sharma"
-                        className="w-full px-4 py-2.5 border border-stone-300 rounded-full text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-stone-700 mb-1">Email Address *</label>
-                      <input
-                        type="email"
-                        required
-                        value={customerAuthEmail}
-                        onChange={(e) => setCustomerAuthEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        className="w-full px-4 py-2.5 border border-stone-300 rounded-full text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-stone-700 mb-1">
-                        Password (Optional)
-                      </label>
-                      <input
-                        type="password"
-                        value={customerAuthPassword}
-                        onChange={(e) => setCustomerAuthPassword(e.target.value)}
-                        placeholder="Enter password or leave blank for instant sign-in"
-                        className="w-full px-4 py-2.5 border border-stone-300 rounded-full text-sm"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={customerAuthSubmitting}
-                      className="w-full py-3.5 bg-[#B42318] text-white text-xs sm:text-sm font-semibold rounded-full shadow-xs hover:bg-[#991B1B] disabled:opacity-50 cursor-pointer"
-                    >
-                      {customerAuthSubmitting ? 'Signing In...' : 'Sign In to My Account →'}
-                    </button>
-                  </form>
-
-                  <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
-                    <span className="text-xs text-slate-500">Are you the Store Owner?</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/admin');
-                        setActiveView('admin');
-                      }}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-full cursor-pointer flex items-center gap-1.5"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5 text-[#B42318]" />
-                      <span>Store Owner Login →</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW 8.9: DEDICATED CUSTOMER & STORE PROFILE PAGE (/profile) */}
-            {activeView === 'profile' && (
-              <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.history.pushState({}, '', '/');
-                      setActiveView('storefront');
-                    }}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-stone-300/90 rounded-full text-xs font-medium text-stone-700 hover:text-stone-950 shadow-2xs cursor-pointer"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Back to Storefront</span>
-                  </button>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('track');
-                      }}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Package className="w-3.5 h-3.5" />
-                      <span>My Orders ({myOrdersList.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('wishlist');
-                      }}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Heart className="w-3.5 h-3.5" />
-                      <span>Wishlist ({wishlistProductIds.length})</span>
-                    </button>
-                    {Boolean(
-                      (dbUser || supabaseUser) &&
-                        dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com'
-                    ) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.history.pushState({}, '', '/admin');
-                          setActiveView('admin');
-                        }}
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                      >
-                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                        <span>Admin Console</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Top Identity Banner */}
-                <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-full bg-slate-900 text-white flex items-center justify-center font-serif-display text-2xl font-bold shrink-0">
-                      {dbUser || supabaseUser
-                        ? (customerName || dbUser?.fullName || dbUser?.email || 'G')
-                            .trim()
-                            .slice(0, 1)
-                            .toUpperCase()
-                        : 'G'}
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-slate-900">
-                          {dbUser || supabaseUser
-                            ? customerName || dbUser?.fullName || 'Gayatri Stationers Member'
-                            : 'Guest Visitor (Signed Out)'}
-                        </h1>
-                        {(dbUser || supabaseUser) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const el = document.getElementById(
-                                'profile-full-name-input'
-                              ) as HTMLInputElement | null;
-                              if (el) {
-                                el.focus();
-                                el.select();
-                              }
-                            }}
-                            className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 cursor-pointer"
-                          >
-                            ✎ Edit Full Name
-                          </button>
-                        )}
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold ${
-                            dbUser || supabaseUser
-                              ? 'bg-emerald-100 text-emerald-900'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {dbUser || supabaseUser
-                            ? dbUser?.role === 'owner'
-                              ? 'Store Owner / Admin'
-                              : 'Verified Customer'
-                            : 'Signed Out'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 font-mono-tabular">
-                        {dbUser || supabaseUser
-                          ? `${customerEmail || dbUser?.email || supabaseUser?.email || ''}${
-                              customerPhone ? ` · +91 ${customerPhone}` : ''
-                            }`
-                          : 'You are signed out. Sign in with Google or email to view your saved profile & orders.'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!(dbUser || supabaseUser) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.history.pushState({}, '', '/signin');
-                          setActiveView('signin');
-                        }}
-                        className="px-5 py-2.5 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-semibold rounded-full cursor-pointer"
-                      >
-                        Sign In / Connect Google
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSignOut}
-                        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-semibold rounded-full cursor-pointer flex items-center gap-1.5"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>Sign Out</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {profileSuccessMsg && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-semibold text-emerald-900 flex items-center justify-between">
-                    <span>✓ {profileSuccessMsg}</span>
-                    <button
-                      type="button"
-                      onClick={() => setProfileSuccessMsg(null)}
-                      className="text-emerald-700 underline cursor-pointer"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  {/* Left Column: Personal Details & Default Delivery Address Form */}
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      setProfileSaving(true);
-                      setProfileSuccessMsg(null);
-                      const cleanEmail = (
-                        customerEmail ||
-                        dbUser?.email ||
-                        supabaseUser?.email ||
-                        'customer@gayatristationers.com'
-                      )
-                        .trim()
-                        .toLowerCase();
-                      const cleanName = (customerName.trim() || 'Valued Customer').trim();
-                      const cleanPhone = customerPhone.trim();
-
-                      const saveLocalProfileAndSession = (userObj: any) => {
-                        setCustomerName(cleanName);
-                        setCustomerEmail(cleanEmail);
-                        setDbUser(userObj);
-                        try {
-                          localStorage.setItem(
-                            'gs_user_profile_v1',
-                            JSON.stringify({
-                              ...userObj,
-                              fullName: cleanName,
-                              email: cleanEmail,
-                              phone: cleanPhone,
-                              shippingAddress,
-                            })
-                          );
-                          const rawSess = localStorage.getItem('gs_admin_session_v1');
-                          if (rawSess) {
-                            const parsedSess = JSON.parse(rawSess);
-                            if (parsedSess && parsedSess.user) {
-                              parsedSess.user.fullName = cleanName;
-                              parsedSess.user.email = cleanEmail;
-                              parsedSess.user.phone = cleanPhone;
-                              localStorage.setItem('gs_admin_session_v1', JSON.stringify(parsedSess));
+                            disabled={stock <= 0}
+                            onClick={() =>
+                              addItemToCart(prod.id, selectedVariantId, 1, selectedColor, true)
                             }
-                          }
-                        } catch {
-                          // Ignore
-                        }
-                      };
+                            className="w-full liquid-btn-primary py-2 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50"
+                          >
+                            {stock > 0 ? '+ Add to Bag' : 'Out of Stock'}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
 
-                      try {
-                        const res = await fetch('/api/auth/profile', {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-                          },
-                          body: JSON.stringify({
-                            fullName: cleanName,
-                            email: cleanEmail,
-                            phone: cleanPhone,
-                            addressLine1: shippingAddress.addressLine1,
-                            addressLine2: shippingAddress.addressLine2,
-                            landmark: shippingAddress.landmark,
-                            city: shippingAddress.city,
-                            state: shippingAddress.state,
-                            pincode: shippingAddress.pincode,
-                          }),
-                        });
-                        const data = await res.json();
-                        const updatedUser = data?.user
-                          ? { ...data.user, fullName: cleanName, email: cleanEmail, phone: cleanPhone }
-                          : {
-                              id: dbUser?.id || 2,
-                              uid: dbUser?.uid || `cust-${cleanEmail}`,
-                              email: cleanEmail,
-                              fullName: cleanName,
-                              phone: cleanPhone,
-                              role: dbUser?.role || 'customer',
-                            };
-                        saveLocalProfileAndSession(updatedUser);
-                        setProfileSuccessMsg(
-                          `Profile updated! Full Name saved as "${cleanName}".`
-                        );
-                      } catch {
-                        const fallbackUser = {
-                          id: dbUser?.id || 2,
-                          uid: dbUser?.uid || `cust-${cleanEmail}`,
-                          email: cleanEmail,
-                          fullName: cleanName,
-                          phone: cleanPhone,
-                          role: dbUser?.role || 'customer',
-                        };
-                        saveLocalProfileAndSession(fallbackUser);
-                        setProfileSuccessMsg(
-                          `Profile updated! Full Name saved as "${cleanName}".`
-                        );
-                      } finally {
-                        setProfileSaving(false);
-                      }
-                    }}
-                    className="lg:col-span-7 bg-white border border-stone-200/90 rounded-[32px] p-6 sm:p-7 space-y-5 shadow-2xs"
-                  >
-                    <div className="border-b border-stone-200 pb-3">
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-[#B42318] font-bold">
-                        PERSONAL DETAILS & SAVED ADDRESS
-                      </span>
-                      <h2 className="font-serif-display text-lg font-bold text-slate-900">
-                        Edit Profile &amp; Delivery Preferences
-                      </h2>
+            {/* 5. BULK / INSTITUTIONAL SUPPLY BANNER ON HOMEPAGE */}
+            <section className="liquid-glass-accent text-white rounded-[32px] p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-5">
+              <div className="space-y-2 max-w-2xl">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 text-[11px] font-bold uppercase tracking-wider">
+                  <Building2 className="w-3.5 h-3.5" /> Buy in Bulk · School, Coaching & Office
+                </span>
+                <h2 className="text-xl sm:text-2xl font-bold font-serif-display">
+                  Ordering Notebooks, Pens or JK Copier Reams for a School or Office?
+                </h2>
+                <p className="text-xs sm:text-sm text-[#FFF5F0]/85">
+                  Request institutional carton pricing with GST tax invoice billing and scheduled
+                  delivery across Kanpur Nagar.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                className="px-6 py-3 rounded-full bg-white text-[#1F1C18] hover:bg-[#FDF2ED] text-xs sm:text-sm font-bold shrink-0 cursor-pointer"
+              >
+                Request Wholesale Quote →
+              </button>
+            </section>
+          </div>
+        )}
+
+        {/* ================================================================
+            VIEW: PRODUCT DETAIL PAGE (/product/:slug) WITH BULK INQUIRY CTA
+           ================================================================ */}
+        {activeView === 'pdp' && (
+          <div className="max-w-5xl mx-auto px-4 py-6 sm:py-10 space-y-6">
+            <button
+              type="button"
+              onClick={() => navigateTo('storefront', '/')}
+              className="liquid-btn-glass inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Catalogue
+            </button>
+
+            {!activePdpProduct ? (
+              <div className="liquid-glass rounded-3xl p-8 text-center">
+                <p className="text-sm font-bold text-[#1F1C18]">Product not found</p>
+              </div>
+            ) : (
+              (() => {
+                const prod = activePdpProduct;
+                const colorOpts = getProductColorOptions(prod);
+                const selectedColor =
+                  selectedColorByProduct[prod.id] ||
+                  (colorOpts.length > 0 ? colorOpts[0].label : undefined);
+                const selectedVarId =
+                  selectedVariantByProduct[prod.id] || prod.variants?.[0]?.id || prod.id;
+                const activeVar =
+                  prod.variants?.find((v: any) => Number(v.id) === Number(selectedVarId)) ||
+                  prod.variants?.[0];
+                const sellPaise = Number(
+                  activeVar?.sellingPricePaise ?? prod.sellingPricePaise ?? 0
+                );
+                const mrpPaise = Number(activeVar?.mrpPaise ?? prod.mrpPaise ?? sellPaise);
+
+                return (
+                  <div className="liquid-glass rounded-[36px] p-5 sm:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8">
+                    <div className="md:col-span-5 aspect-square rounded-3xl bg-[#FFFDF9] overflow-hidden">
+                      <ProductIllustration
+                        type={prod.illustrationType}
+                        imageUrl={prod.imageUrl}
+                        alt={prod.name}
+                        colorTint={selectedColor}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label
-                            htmlFor="profile-full-name-input"
-                            className="block font-semibold text-slate-700"
-                          >
-                            Full Name *
-                          </label>
-                          {customerName && (
+                    <div className="md:col-span-7 flex flex-col justify-between space-y-5">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#B44C2E]">
+                          <span>{prod.brandName}</span>
+                          <span>·</span>
+                          <span>{prod.categoryName}</span>
+                          <span>·</span>
+                          <span className="font-mono-tabular">{prod.sku}</span>
+                        </div>
+
+                        <h1 className="text-2xl sm:text-3xl font-bold text-[#1F1C18] font-serif-display">
+                          {prod.name}
+                        </h1>
+
+                        <p className="text-xs sm:text-sm text-[#4A423B] leading-relaxed">
+                          {prod.description || prod.shortDescription}
+                        </p>
+
+                        <div className="flex flex-wrap items-baseline gap-3 pt-1">
+                          <span className="text-2xl sm:text-3xl font-bold text-[#1F1C18] tabular-nums">
+                            {formatPaiseToINR(sellPaise, false)}
+                          </span>
+                          {mrpPaise > sellPaise && (
+                            <span className="text-sm line-through text-[#8B8075] tabular-nums">
+                              MRP {formatPaiseToINR(mrpPaise, false)}
+                            </span>
+                          )}
+                          <span className="px-2.5 py-0.5 rounded-full bg-[#FDF2ED] text-[#8C341B] text-[11px] font-bold">
+                            Incl. {prod.taxRatePercent ?? 12}% GST
+                          </span>
+                        </div>
+
+                        {Array.isArray(prod.variants) && prod.variants.length > 0 && (
+                          <div className="space-y-1.5 pt-2">
+                            <p className="text-xs font-bold text-[#1F1C18]">Pack / Option</p>
+                            <div className="flex flex-wrap gap-2">
+                              {prod.variants.map((v: any) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedVariantByProduct((prev) => ({
+                                      ...prev,
+                                      [prod.id]: v.id,
+                                    }))
+                                  }
+                                  className={`px-3.5 py-2 rounded-full text-xs font-semibold cursor-pointer ${
+                                    Number(selectedVarId) === Number(v.id)
+                                      ? 'liquid-btn-primary text-white'
+                                      : 'liquid-btn-glass text-[#1F1C18]'
+                                  }`}
+                                >
+                                  {v.variantName} · {formatPaiseToINR(v.sellingPricePaise, false)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {colorOpts.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            <p className="text-xs font-bold text-[#1F1C18]">
+                              Ink / Finish: <span className="text-[#B44C2E]">{selectedColor}</span>
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {colorOpts.map((opt) => (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedColorByProduct((prev) => ({
+                                      ...prev,
+                                      [prod.id]: opt.label,
+                                    }))
+                                  }
+                                  className={`px-3 py-1.5 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${
+                                    selectedColor === opt.label
+                                      ? 'liquid-btn-primary text-white'
+                                      : 'liquid-btn-glass text-[#1F1C18]'
+                                  }`}
+                                >
+                                  <span
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ background: opt.swatch }}
+                                  />
+                                  {opt.shortLabel}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3 pt-2">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+                          <div className="inline-flex items-center liquid-btn-glass rounded-full px-2 py-1">
                             <button
                               type="button"
-                              onClick={() => setCustomerName('')}
-                              className="text-[11px] text-[#B42318] hover:underline font-medium cursor-pointer"
+                              onClick={() => setPdpQuantity((q) => Math.max(1, q - 1))}
+                              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer"
                             >
-                              Clear
+                              <Minus className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                        </div>
-                        <input
-                          id="profile-full-name-input"
-                          type="text"
-                          required
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder="Enter your full name (e.g. Vaibhav Gupta)"
-                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm bg-white text-slate-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block font-semibold text-slate-700 mb-1">
-                          10-Digit Mobile / WhatsApp *
-                        </label>
-                        <input
-                          type="tel"
-                          value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value)}
-                          placeholder="e.g. 9876543210"
-                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm font-mono-tabular bg-white text-slate-900"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block font-semibold text-slate-700 mb-1">
-                          Email Address *
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          value={customerEmail}
-                          onChange={(e) => setCustomerEmail(e.target.value)}
-                          placeholder="you@example.com"
-                          className="w-full px-4 py-2.5 border border-stone-300 focus:border-slate-900 focus:outline-none rounded-full text-sm bg-white text-slate-900"
-                        />
-                      </div>
-                    </div>
+                            <span className="px-4 text-sm font-bold tabular-nums">{pdpQuantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => setPdpQuantity((q) => q + 1)}
+                              className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
 
-                    <div className="pt-2 border-t border-stone-200 space-y-3 text-xs">
-                      <div className="font-bold text-slate-900">
-                        Default Home Delivery Address (Kanpur &amp; UP)
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="sm:col-span-2">
-                          <label className="block text-slate-600 mb-1">
-                            House / Flat / Shop No. &amp; Street
-                          </label>
-                          <input
-                            type="text"
-                            value={shippingAddress.addressLine1}
-                            onChange={(e) =>
-                              setShippingAddress({
-                                ...shippingAddress,
-                                addressLine1: e.target.value,
-                              })
+                          <button
+                            type="button"
+                            onClick={() =>
+                              addItemToCart(
+                                prod.id,
+                                selectedVarId,
+                                pdpQuantity,
+                                selectedColor,
+                                true
+                              )
                             }
-                            placeholder="e.g. House 42, Awas Vikas Market, Naubasta"
-                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-slate-600 mb-1">Landmark / Area</label>
-                          <input
-                            type="text"
-                            value={shippingAddress.landmark}
-                            onChange={(e) =>
-                              setShippingAddress({
-                                ...shippingAddress,
-                                landmark: e.target.value,
-                              })
-                            }
-                            placeholder="Near Galla Mandi, Naubasta"
-                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-slate-600 mb-1">PIN Code</label>
-                          <input
-                            type="text"
-                            maxLength={6}
-                            value={shippingAddress.pincode}
-                            onChange={(e) =>
-                              setShippingAddress({
-                                ...shippingAddress,
-                                pincode: e.target.value.replace(/\D/g, '').slice(0, 6),
-                              })
-                            }
-                            placeholder="208001"
-                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm font-mono-tabular"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-slate-600 mb-1">City</label>
-                          <input
-                            type="text"
-                            value={shippingAddress.city}
-                            onChange={(e) =>
-                              setShippingAddress({
-                                ...shippingAddress,
-                                city: e.target.value,
-                              })
-                            }
-                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-slate-600 mb-1">State</label>
-                          <input
-                            type="text"
-                            value={shippingAddress.state}
-                            onChange={(e) =>
-                              setShippingAddress({
-                                ...shippingAddress,
-                                state: e.target.value,
-                              })
-                            }
-                            className="w-full px-4 py-2.5 border border-stone-300 rounded-2xl text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                            className="flex-1 liquid-btn-primary py-3 rounded-full text-xs sm:text-sm font-bold cursor-pointer"
+                          >
+                            Add to Bag
+                          </button>
 
-                    <button
-                      type="submit"
-                      disabled={profileSaving}
-                      className="w-full py-3.5 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs sm:text-sm font-semibold rounded-full shadow-xs cursor-pointer transition-colors"
-                    >
-                      {profileSaving
-                        ? 'Saving Profile...'
-                        : 'Save Profile & Delivery Preferences'}
-                    </button>
-                  </form>
-
-                  {/* Right Column: Recent Orders & Saved Wishlist Summary */}
-                  <div className="lg:col-span-5 space-y-5">
-                    <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 space-y-4 shadow-2xs">
-                      <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-                        <div>
-                          <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500">
-                            ORDER HISTORY
-                          </span>
-                          <h3 className="font-serif-display text-base font-bold text-slate-900">
-                            Recent Orders ({myOrdersList.length})
-                          </h3>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            window.history.pushState({}, '', '/');
-                            setActiveView('track');
-                          }}
-                          className="text-xs font-semibold text-[#B42318] hover:underline cursor-pointer"
-                        >
-                          View All →
-                        </button>
-                      </div>
-
-                      {myOrdersList.length === 0 ? (
-                        <div className="py-6 text-center space-y-2 text-xs text-stone-500">
-                          <p>No orders placed yet on this account.</p>
                           <button
                             type="button"
                             onClick={() => {
-                              window.history.pushState({}, '', '/');
-                              setActiveView('storefront');
+                              addItemToCart(
+                                prod.id,
+                                selectedVarId,
+                                pdpQuantity,
+                                selectedColor,
+                                false
+                              );
+                              navigateTo('checkout', '/checkout');
                             }}
-                            className="px-4 py-2 bg-slate-900 text-white rounded-full text-xs font-semibold cursor-pointer"
+                            className="liquid-btn-glass px-5 py-3 rounded-full text-xs sm:text-sm font-bold cursor-pointer"
                           >
-                            Browse Stationery Catalogue
+                            Buy Now →
                           </button>
                         </div>
-                      ) : (
-                        <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                          {myOrdersList.slice(0, 5).map((o: any, idx: number) => {
-                            const isStoreOrder = o?.order?.fulfilmentMethod === 'STORE_PICKUP';
+
+                        {/* Institutional / School Bulk Order Inquiry Box directly on PDP */}
+                        <div className="liquid-glass-subtle rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-[#1F1C18] inline-flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-[#B44C2E]" />
+                              Buy in Bulk / School & Office Orders
+                            </p>
+                            <p className="text-[11px] text-[#5C5349]">
+                              Need 25+ cartons or GST invoice quote for this item?
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigateTo('bulk', '/bulk', {
+                                bulkNote: `Wholesale / Bulk Quote Request for: ${prod.name} (SKU: ${prod.sku}, Pack: ${
+                                  activeVar?.variantName || 'Standard'
+                                }) — Quantity needed: 50+ units.`,
+                              })
+                            }
+                            className="liquid-btn-glass px-4 py-2 rounded-full text-xs font-bold shrink-0 cursor-pointer"
+                          >
+                            Get Bulk Quote →
+                          </button>
+                        </div>
+
+                        {/* Trust Row */}
+                        <div className="flex flex-wrap gap-3 text-[11px] font-semibold text-[#5C5349] pt-1">
+                          <span className="inline-flex items-center gap-1">
+                            <Store className="w-3.5 h-3.5 text-[#B44C2E]" /> 2-Hr Kanpur Counter
+                            Pickup
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Wallet className="w-3.5 h-3.5 text-[#B44C2E]" /> UPI & COD Available
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Receipt className="w-3.5 h-3.5 text-[#B44C2E]" /> GST Invoice Included
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        )}
+
+        {/* ================================================================
+            VIEW: CURATED STUDY & ART COMBOS (/combos)
+           ================================================================ */}
+        {activeView === 'combos' && (
+          <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+            <div className="liquid-glass-accent text-white rounded-[32px] p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold font-serif-display">
+                  Curated School, Exam & Art Combo Kits
+                </h1>
+                <p className="text-xs sm:text-sm text-[#FFF5F0]/85 mt-1">
+                  Hand-packed by Gayatri Stationers with extra bundle savings — add an entire kit
+                  in 1 tap.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigateTo('storefront', '/')}
+                className="px-5 py-2.5 rounded-full bg-white text-[#1F1C18] text-xs font-bold shrink-0 cursor-pointer"
+              >
+                Browse Individual Items
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {bundles.map((bundle) => {
+                const components = Array.isArray(bundle.items)
+                  ? bundle.items
+                  : Array.isArray(bundle.itemsJson)
+                  ? bundle.itemsJson
+                  : [];
+                const mrpPaise = Number(
+                  bundle.mrpPaise || bundle.originalTotalPaise || bundle.bundlePricePaise
+                );
+                const discountPct =
+                  bundle.discountPercent ||
+                  (mrpPaise > bundle.bundlePricePaise
+                    ? Math.round(((mrpPaise - bundle.bundlePricePaise) / mrpPaise) * 100)
+                    : 0);
+
+                return (
+                  <div
+                    key={bundle.id || bundle.slug}
+                    className="liquid-glass rounded-[28px] p-5 flex flex-col justify-between gap-4"
+                  >
+                    <div className="space-y-3">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FDF2ED] text-[#8C341B] text-[11px] font-bold">
+                        <Sparkles className="w-3 h-3" />{' '}
+                        {discountPct > 0 ? `Save ${discountPct}%` : bundle.targetGroup}
+                      </span>
+                      <h2 className="text-lg font-bold text-[#1F1C18] font-serif-display">
+                        {bundle.name}
+                      </h2>
+                      <p className="text-xs text-[#4A423B] leading-relaxed">
+                        {bundle.description}
+                      </p>
+
+                      {components.length > 0 && (
+                        <ul className="space-y-1 text-xs text-[#2E2924] pt-1">
+                          {components.map((comp: any, idx: number) => {
+                            const matchedProd = products.find(
+                              (p) => Number(p.id) === Number(comp.productId)
+                            );
                             return (
-                              <div
-                                key={o?.order?.orderNumber || idx}
-                                className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 flex items-center justify-between gap-3 text-xs"
-                              >
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-mono font-bold text-slate-900">
-                                      {o?.order?.orderNumber}
-                                    </span>
-                                    <span
-                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                        isStoreOrder
-                                          ? 'bg-amber-100 text-amber-900'
-                                          : 'bg-emerald-100 text-emerald-900'
-                                      }`}
-                                    >
-                                      {isStoreOrder ? 'Get at Store' : 'Home Delivery'}
-                                    </span>
-                                  </div>
-                                  <div className="text-[11px] text-stone-500 mt-0.5">
-                                    {formatPaiseToINR(o?.order?.totalPaise || 0)} ·{' '}
-                                    {o?.order?.paymentMethod === 'CASHFREE_ONLINE'
-                                      ? 'Online Payment'
-                                      : o?.order?.paymentMethod || 'COD'}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setTrackedOrderResult(o);
-                                    setActiveView('track');
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                  }}
-                                  className="px-3 py-1.5 bg-white border border-stone-300 rounded-full text-[11px] font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer shrink-0"
-                                >
-                                  {isStoreOrder ? 'Store Pass' : 'Track Order'}
-                                </button>
-                              </div>
+                              <li key={idx} className="flex items-center gap-1.5">
+                                <Check className="w-3.5 h-3.5 text-[#B44C2E] shrink-0" />
+                                <span>
+                                  {matchedProd?.name || comp.productName || comp.title} ×{' '}
+                                  {comp.quantity || 1}
+                                </span>
+                              </li>
                             );
                           })}
-                        </div>
+                        </ul>
                       )}
                     </div>
 
-                    <div className="bg-white border border-stone-200/90 rounded-[32px] p-6 space-y-3 shadow-2xs text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">
-                          Saved Wishlist ({wishlistProductIds.length})
+                    <div className="pt-3 border-t border-[#E8DFD5] flex items-center justify-between gap-3">
+                      <div>
+                        <span className="text-lg font-bold text-[#1F1C18] tabular-nums">
+                          {formatPaiseToINR(bundle.bundlePricePaise, false)}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setActiveView('wishlist')}
-                          className="text-[#B42318] font-semibold hover:underline cursor-pointer"
-                        >
-                          Open Wishlist →
-                        </button>
+                        {mrpPaise > bundle.bundlePricePaise && (
+                          <span className="ml-2 text-xs line-through text-[#8B8075] tabular-nums">
+                            {formatPaiseToINR(mrpPaise, false)}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-stone-600">
-                        Quickly access your bookmarked notebooks, pens, art supplies, and exam kits.
-                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAddBundleToCart(bundle)}
+                        className="liquid-btn-primary px-4 py-2.5 rounded-full text-xs font-bold cursor-pointer"
+                      >
+                        Add Combo Kit
+                      </button>
                     </div>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================
+            VIEW: WISHLIST (/wishlist)
+           ================================================================ */}
+        {activeView === 'wishlist' && (
+          <div className="max-w-5xl mx-auto px-4 py-8 space-y-5">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-[#1F1C18] font-serif-display">
+                Saved Stationery Wishlist ({wishlistProducts.length})
+              </h1>
+              <button
+                type="button"
+                onClick={() => navigateTo('storefront', '/')}
+                className="liquid-btn-glass px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
+              >
+                Continue Shopping
+              </button>
+            </div>
+
+            {wishlistProducts.length === 0 ? (
+              <div className="liquid-glass rounded-3xl p-10 text-center space-y-3">
+                <Heart className="w-10 h-10 text-[#B44C2E]/40 mx-auto" />
+                <p className="text-sm font-bold text-[#1F1C18]">Your wishlist is empty</p>
+                <p className="text-xs text-[#5C5349]">
+                  Tap the heart icon on any notebook or pen set to save it for later.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {wishlistProducts.map((prod) => (
+                  <div key={prod.id} className="liquid-glass rounded-3xl p-4 space-y-3">
+                    <div className="flex gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-[#FFFDF9] overflow-hidden shrink-0">
+                        <ProductIllustration
+                          type={prod.illustrationType}
+                          imageUrl={prod.imageUrl}
+                          alt={prod.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-[#1F1C18] line-clamp-2">{prod.name}</p>
+                        <p className="text-sm font-bold text-[#B44C2E] mt-1">
+                          {formatPaiseToINR(prod.sellingPricePaise, false)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          addItemToCart(prod.id, prod.variants?.[0]?.id, 1, undefined, true)
+                        }
+                        className="flex-1 liquid-btn-primary py-2 rounded-full text-xs font-semibold cursor-pointer"
+                      >
+                        Move to Bag
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleWishlist(Number(prod.id))}
+                        className="liquid-btn-glass p-2 rounded-full cursor-pointer"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-          </>
+          </div>
+        )}
+
+        {/* ================================================================
+            VIEW: POLICY / ABOUT / CONTACT / FAQ (/contact-us etc.)
+           ================================================================ */}
+        {activeView === 'page' && (
+          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+            <button
+              type="button"
+              onClick={() => navigateTo('storefront', '/')}
+              className="liquid-btn-glass inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Storefront
+            </button>
+
+            <div className="liquid-glass rounded-[32px] p-6 sm:p-9 space-y-5">
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#1F1C18] font-serif-display">
+                {activePolicyPage.title}
+              </h1>
+              <div className="space-y-3 text-xs sm:text-sm text-[#2E2924] leading-relaxed whitespace-pre-line">
+                {activePolicyPage.contentMarkdown || activePolicyPage.summary}
+              </div>
+
+              <div className="liquid-glass-subtle rounded-2xl p-4 space-y-2 text-xs">
+                <p className="font-bold text-[#1F1C18]">Gayatri Stationers · Kanpur Counter</p>
+                <p className="text-[#4A423B]">{STORE_ADDRESS}</p>
+                <div className="flex flex-wrap gap-4 pt-1">
+                  <a
+                    href={`tel:${STORE_PHONE.replace(/\s+/g, '')}`}
+                    className="inline-flex items-center gap-1.5 font-semibold text-[#8C341B] underline"
+                  >
+                    <Phone className="w-3.5 h-3.5" /> {STORE_PHONE}
+                  </a>
+                  <a
+                    href={`mailto:${STORE_EMAIL}`}
+                    className="inline-flex items-center gap-1.5 font-semibold text-[#8C341B] underline"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> {STORE_EMAIL}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================
+            ACCOUNT, AUTH, TRACK, BULK, CHECKOUT, CONFIRMATION
+           ================================================================ */}
+        {activeView === 'signin' && (
+          <SignInView
+            authMode={authMode}
+            onChangeAuthMode={setAuthMode}
+            email={authEmailInput}
+            onChangeEmail={setAuthEmailInput}
+            fullName={authNameInput}
+            onChangeFullName={setAuthNameInput}
+            phone={authPhoneInput}
+            onChangePhone={setAuthPhoneInput}
+            password={authPasswordInput}
+            onChangePassword={setAuthPasswordInput}
+            submitting={authSubmitting}
+            error={authError}
+            onGoogleSignIn={handleCustomerGoogleSignIn}
+            onEmailAuthSubmit={handleEmailAuthSubmit}
+            onOpenAdminLogin={() => navigateTo('admin-login', '/admin/login')}
+            onBackHome={() => navigateTo('storefront', '/')}
+          />
+        )}
+
+        {activeView === 'admin-login' && (
+          <AdminLoginView
+            email={adminEmailInput}
+            onChangeEmail={setAdminEmailInput}
+            password={adminPasswordInput}
+            onChangePassword={setAdminPasswordInput}
+            submitting={adminAuthSubmitting}
+            error={adminAuthError}
+            onSubmit={handleAdminPasswordLogin}
+            onGoogleAdminSignIn={handleAdminGoogleSignIn}
+            onBackHome={() => navigateTo('storefront', '/')}
+          />
+        )}
+
+        {activeView === 'profile' && (
+          <ProfileView
+            currentUser={dbUser}
+            fullName={customerName}
+            onChangeFullName={setCustomerName}
+            phone={customerPhone}
+            onChangePhone={setCustomerPhone}
+            email={customerEmail}
+            shippingAddress={shippingAddress}
+            onChangeShippingAddress={setShippingAddress}
+            shippingCity={shippingCity}
+            onChangeShippingCity={setShippingCity}
+            shippingPincode={shippingPincode}
+            onChangeShippingPincode={setShippingPincode}
+            onSaveProfile={handleSaveProfile}
+            savingProfile={savingProfile}
+            orders={myOrders}
+            wishlistProducts={wishlistProducts}
+            onRefreshOrders={loadMyOrders}
+            onReorderItems={handleReorderPastOrder}
+            onOpenProduct={(slug) => navigateTo('pdp', `/product/${slug}`, { productSlug: slug })}
+            onAddProductToBag={(prod) =>
+              addItemToCart(prod.id, prod.variants?.[0]?.id, 1, undefined, true)
+            }
+            onSignOut={handleSignOut}
+            onOpenAdminDashboard={
+              dbUser?.role === 'owner' || dbUser?.role === 'staff'
+                ? () => navigateTo('admin', '/admin')
+                : undefined
+            }
+            onOpenSignIn={() => navigateTo('signin', '/signin')}
+          />
+        )}
+
+        {activeView === 'track' && (
+          <TrackOrdersView
+            query={trackQuery}
+            onChangeQuery={setTrackQuery}
+            searching={trackSearching}
+            results={trackResults}
+            recentOrders={myOrders}
+            onSearchSubmit={(e) => {
+              e.preventDefault();
+              performTrackSearch(trackQuery);
+            }}
+            onSelectOrderNumber={(ordNum) => {
+              setTrackQuery(ordNum);
+              performTrackSearch(ordNum);
+            }}
+            onBackHome={() => navigateTo('storefront', '/')}
+          />
+        )}
+
+        {activeView === 'bulk' && (
+          <BulkEnquiryView
+            key={bulkPreFillNote}
+            initialEnquiryText={bulkPreFillNote}
+            onBackHome={() => navigateTo('storefront', '/')}
+          />
+        )}
+
+        {activeView === 'checkout' && (
+          <CheckoutView
+            cartItems={cartItems}
+            products={products}
+            calculation={cartCalculation}
+            fulfilmentMethod={fulfilmentMethod}
+            onSelectFulfilment={handleSelectFulfilment}
+            paymentMethod={paymentMethod}
+            onSelectPaymentMethod={setPaymentMethod}
+            customerName={customerName}
+            onChangeCustomerName={setCustomerName}
+            customerPhone={customerPhone}
+            onChangeCustomerPhone={setCustomerPhone}
+            customerEmail={customerEmail}
+            onChangeCustomerEmail={setCustomerEmail}
+            shippingAddress={shippingAddress}
+            onChangeShippingAddress={setShippingAddress}
+            shippingCity={shippingCity}
+            onChangeShippingCity={setShippingCity}
+            shippingPincode={shippingPincode}
+            onChangeShippingPincode={setShippingPincode}
+            pickupWindow={pickupWindow}
+            onChangePickupWindow={setPickupWindow}
+            orderNote={orderNote}
+            onChangeOrderNote={setOrderNote}
+            gstin={gstin}
+            onChangeGstin={setGstin}
+            availableCoupons={coupons}
+            appliedCouponCode={appliedCouponCode}
+            onApplyCoupon={setAppliedCouponCode}
+            onRemoveCoupon={() => setAppliedCouponCode('')}
+            submitting={checkoutSubmitting}
+            error={checkoutError}
+            pendingOnlineOrder={pendingOnlineOrder}
+            onRetryOnlinePayment={() =>
+              pendingOnlineOrder && triggerCashfreePayment(pendingOnlineOrder)
+            }
+            onSwitchPendingToOffline={handleSwitchPendingOrderToOffline}
+            onPlaceOrder={handlePlaceOrder}
+            onBackToShop={() => navigateTo('storefront', '/')}
+          />
+        )}
+
+        {activeView === 'confirmation' && confirmedOrderData && (
+          <ConfirmationView
+            orderData={confirmedOrderData}
+            completingPayment={checkoutSubmitting}
+            onCompleteOnlinePayment={() => triggerCashfreePayment(confirmedOrderData)}
+            onTrackOrder={() => {
+              const ordNum = confirmedOrderData.order?.orderNumber || '';
+              setTrackQuery(ordNum);
+              performTrackSearch(ordNum);
+              navigateTo('track', '/track');
+            }}
+            onContinueShopping={() => navigateTo('storefront', '/')}
+          />
         )}
       </main>
 
-      {/* Fixed Mobile Bottom Navigation Bar — Floating Oval Capsule Dock that stays still when scrolling */}
-      <nav
-        aria-label="Mobile Bottom Navigation"
-        className="md:hidden fixed bottom-3 left-3 right-3 z-40 bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-full px-2 py-1.5 shadow-xl"
-      >
-        <div className="grid grid-cols-5 gap-1 text-[11px] font-medium">
+      {/* UNIFIED WARM PAPER LIQUID GLASS FOOTER */}
+      <footer className="mt-14 px-3 sm:px-6 pb-8">
+        <div className="max-w-7xl mx-auto liquid-glass rounded-[32px] p-6 sm:p-9 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-xs">
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl liquid-btn-primary flex items-center justify-center">
+                <Store className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-base font-bold text-[#1F1C18] font-serif-display">
+                Gayatri Stationers
+              </span>
+            </div>
+            <p className="text-[#5C5349] leading-relaxed">{STORE_ADDRESS}</p>
+            <div className="flex flex-col gap-1 pt-1">
+              <a
+                href={`tel:${STORE_PHONE.replace(/\s+/g, '')}`}
+                className="font-semibold text-[#8C341B] hover:underline inline-flex items-center gap-1.5"
+              >
+                <Phone className="w-3.5 h-3.5" /> {STORE_PHONE}
+              </a>
+              <a
+                href={`mailto:${STORE_EMAIL}`}
+                className="font-semibold text-[#8C341B] hover:underline inline-flex items-center gap-1.5"
+              >
+                <Mail className="w-3.5 h-3.5" /> {STORE_EMAIL}
+              </a>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-bold text-[#1F1C18] uppercase tracking-wider text-[11px]">
+              Shop Departments
+            </p>
+            <ul className="space-y-1.5 text-[#4A423B]">
+              {categories.slice(0, 5).map((c) => (
+                <li key={c.slug}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategorySlug(c.slug);
+                      navigateTo('storefront', '/');
+                    }}
+                    className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                  >
+                    {c.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-bold text-[#1F1C18] uppercase tracking-wider text-[11px]">
+              Shop Services
+            </p>
+            <ul className="space-y-1.5 text-[#4A423B]">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('track', '/track')}
+                  className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                >
+                  Track Pickup & Delivery
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('combos', '/combos')}
+                  className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                >
+                  Exam & Art Combos
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('bulk', '/bulk', { bulkNote: '' })}
+                  className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                >
+                  School & Office Bulk Quotes
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('profile', '/profile')}
+                  className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                >
+                  My Profile & Saved Address
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('admin-login', '/admin/login')}
+                  className="hover:text-[#B44C2E] hover:underline cursor-pointer inline-flex items-center gap-1"
+                >
+                  <FileSpreadsheet className="w-3 h-3" /> Shop Owner Portal
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-bold text-[#1F1C18] uppercase tracking-wider text-[11px]">
+              Policies & Support
+            </p>
+            <ul className="space-y-1.5 text-[#4A423B]">
+              {[
+                { label: 'About Gayatri Stationers', slug: 'about-us', path: '/about-us' },
+                {
+                  label: 'Shipping & 2-Hr Store Pickup',
+                  slug: 'shipping-and-pickup-policy',
+                  path: '/shipping-and-pickup-policy',
+                },
+                {
+                  label: 'Refunds & Cancellations',
+                  slug: 'refunds-and-cancellations',
+                  path: '/refunds-and-cancellations',
+                },
+                { label: 'Privacy Policy', slug: 'privacy-policy', path: '/privacy-policy' },
+                {
+                  label: 'Terms & Conditions',
+                  slug: 'terms-and-conditions',
+                  path: '/terms-and-conditions',
+                },
+                { label: 'FAQs & Contact', slug: 'faq', path: '/faq' },
+              ].map((link) => (
+                <li key={link.slug}>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('page', link.path, { pageSlug: link.slug })}
+                    className="hover:text-[#B44C2E] hover:underline cursor-pointer"
+                  >
+                    {link.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </footer>
+
+      {/* Mobile Bottom Capsule Dock */}
+      <div className="lg:hidden fixed bottom-3 inset-x-3 z-40">
+        <div className="mobile-bottom-dock px-2 py-2 flex items-center justify-around text-[11px] font-semibold text-[#1F1C18]">
           <button
             type="button"
             onClick={() => {
-              window.history.pushState({}, '', '/');
-              setSelectedCategorySlug('ALL');
-              setSelectedBrandSlug('ALL');
-              setActiveView('storefront');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              resetAllFilters();
+              navigateTo('storefront', '/');
             }}
-            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-              activeView === 'storefront'
-                ? 'bg-slate-100 text-[#B42318] font-bold'
-                : 'text-slate-600 hover:bg-slate-50'
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full cursor-pointer ${
+              activeView === 'storefront' ? 'bg-[#B44C2E] text-white' : ''
             }`}
           >
             <Store className="w-4 h-4" />
             <span>Shop</span>
           </button>
+
           <button
             type="button"
-            onClick={() => {
-              window.history.pushState({}, '', '/');
-              setActiveView('combos');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-              activeView === 'combos'
-                ? 'bg-slate-100 text-[#B42318] font-bold'
-                : 'text-slate-600 hover:bg-slate-50'
+            onClick={() => navigateTo('combos', '/combos')}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full cursor-pointer ${
+              activeView === 'combos' ? 'bg-[#B44C2E] text-white' : ''
             }`}
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <Sparkles className="w-4 h-4" />
             <span>Combos</span>
           </button>
+
           <button
             type="button"
-            onClick={navigateToCheckout}
-            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer shadow-xs transition-all ${
-              activeView === 'checkout'
-                ? 'bg-[#B42318] text-white font-bold'
-                : 'bg-slate-900 text-white font-semibold'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Cart ({totalCartItemsCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              window.history.pushState({}, '', '/');
-              setActiveView('track');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-              activeView === 'track'
-                ? 'bg-slate-100 text-[#B42318] font-bold'
-                : 'text-slate-600 hover:bg-slate-50'
+            onClick={() => navigateTo('track', '/track')}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full cursor-pointer ${
+              activeView === 'track' ? 'bg-[#B44C2E] text-white' : ''
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Orders</span>
+            <span>Track</span>
           </button>
+
           <button
             type="button"
-            onClick={() => {
-              window.history.pushState({}, '', '/profile');
-              setActiveView('profile');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className={`py-1.5 px-2 rounded-full flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-              activeView === 'profile' || activeView === 'signin'
-                ? 'bg-slate-100 text-[#B42318] font-bold'
-                : 'text-slate-600 hover:bg-slate-50'
+            onClick={() => setCartDrawerOpen(true)}
+            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-full cursor-pointer"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Bag ({totalCartItemsCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              navigateTo(dbUser ? 'profile' : 'signin', dbUser ? '/profile' : '/signin')
+            }
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full cursor-pointer ${
+              activeView === 'profile' || activeView === 'signin' ? 'bg-[#B44C2E] text-white' : ''
             }`}
           >
             <User className="w-4 h-4" />
-            <span>Profile</span>
+            <span>{dbUser ? 'Account' : 'Sign In'}</span>
           </button>
         </div>
-      </nav>
+      </div>
 
-      {/* Quiet, Authentic Retail Footer (Dynamically powered by Store CMS) */}
-      <footer className="bg-white border-t border-stone-200 px-6 py-10 mt-16 text-xs text-stone-600">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="space-y-2">
-            <p className="font-serif-display text-base font-bold text-stone-900">
-              {themeConfig.storeName || 'Gayatri Stationers'}
-            </p>
-            <p className="leading-relaxed">
-              {footerConfig.brandSummary ||
-                'Retail and institutional stationery supplier for school notebooks, writing instruments, DIY & craft supplies, fine art materials, geometry sets, and office files.'}
-            </p>
-            <p className="text-[11px] text-stone-500">
-              {footerConfig.copyrightText || 'Reference: https://gayatristationers.co.in/'}
-            </p>
-          </div>
+      {/* Floating Vidya AI Assistant Trigger */}
+      <button
+        type="button"
+        onClick={() => setIsRufusOpen(true)}
+        className="fixed bottom-20 right-3.5 lg:bottom-6 lg:right-6 z-30 liquid-btn-primary px-4 py-2.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-xl cursor-pointer"
+      >
+        <Sparkles className="w-4 h-4" />
+        <span>Vidya AI</span>
+      </button>
 
-          <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Categories</p>
-            <ul className="space-y-1">
-              {categories
-                .filter((c) => c.isActive !== false && c.showInFooter !== false)
-                .slice(0, 7)
-                .map((c) => (
-                  <li key={c.id}>
-                    <button
-                      onClick={() => {
-                        setSelectedCategorySlug(c.slug);
-                        setSelectedBrandSlug('ALL');
-                        setActiveView('storefront');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="hover:underline cursor-pointer"
-                    >
-                      {c.name}
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </div>
-
-          <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Policy Pages &amp; Legal Compliance</p>
-            <ul className="space-y-1.5">
-              <li>
-                <a
-                  href="/contact-us"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/contact-us');
-                    setActivePageSlug('contact-us');
-                    setActiveView('page');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:underline font-medium text-stone-800 cursor-pointer"
-                >
-                  Contact Us
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/terms-and-conditions"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/terms-and-conditions');
-                    setActivePageSlug('terms-and-conditions');
-                    setActiveView('page');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:underline font-medium text-stone-800 cursor-pointer"
-                >
-                  Terms &amp; Conditions
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/refunds-and-cancellations"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    window.history.pushState({}, '', '/refunds-and-cancellations');
-                    setActivePageSlug('refunds-and-cancellations');
-                    setActiveView('page');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="hover:underline font-medium text-stone-800 cursor-pointer"
-                >
-                  Refunds &amp; Cancellations
-                </a>
-              </li>
-              {cmsPages
-                .filter(
-                  (p) =>
-                    p.isActive !== false &&
-                    p.showInFooter !== false &&
-                    !['contact-us', 'terms-and-conditions', 'refunds-and-cancellations'].includes(
-                      p.slug
-                    )
-                )
-                .map((p) => (
-                  <li key={p.id}>
-                    <a
-                      href={`/${p.slug}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.history.pushState({}, '', `/${p.slug}`);
-                        setActivePageSlug(p.slug);
-                        setActiveView('page');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="hover:underline cursor-pointer text-left"
-                    >
-                      {p.title}
-                    </a>
-                  </li>
-                ))}
-              <li>
-                <button onClick={() => setActiveView('bulk')} className="hover:underline cursor-pointer">
-                  School &amp; Corporate Bulk Enquiries
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setActiveView('track')} className="hover:underline cursor-pointer">
-                  Order Lookup &amp; Pickup Code Tracker
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          <div className="space-y-2">
-            <p className="font-semibold text-stone-900">Visit Us &amp; Contact Details</p>
-            <p className="leading-relaxed font-medium text-stone-800">
-              Gayatri Stationers — Retail &amp; Institutional Counter
-            </p>
-            <p className="leading-relaxed text-stone-700 font-medium">
-              Awas Vikas Market, Galla Mandi, Naubasta, Kanpur, Uttar Pradesh – 208021, India
-            </p>
-            <p className="font-mono-tabular">
-              Phone: +91 98765 43210 · Email: support@gayatristationers.co.in
-            </p>
-            <p>
-              {(
-                storeSettings?.store_profile?.businessHoursNote ||
-                'Mon–Sat: 10:00 AM – 8:00 PM IST'
-              ).replace(/\s*\([^)]*Admin[^)]*\)/gi, '')}
-            </p>
-            <p className="text-[11px] text-emerald-800 font-semibold">
-              All product &amp; service prices are listed in Indian Rupees (INR / ₹) inclusive of GST.
-            </p>
-          </div>
-        </div>
-      </footer>
-
-      {/* Responsive Hamburger Mobile Navigation Drawer */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 md:hidden flex" role="dialog" aria-modal="true" aria-label="Mobile Navigation Menu">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setMobileMenuOpen(false)}
-              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
-            />
-
-            {/* Slide-out Panel */}
-            <motion.div
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10"
-            >
-              <div className="p-4 sm:p-5 space-y-4">
-                {/* Drawer Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="min-w-0">
-                    <p className="font-serif-display font-bold text-base text-slate-900 truncate">
-                      {themeConfig.storeName || 'Gayatri Stationers'}
-                    </p>
-                    <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-medium text-amber-900">
-                      Naubasta, Kanpur
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMobileMenuOpen(false)}
-                    aria-label="Close navigation menu"
-                    className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full cursor-pointer transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Primary Navigation Links */}
-                <nav className="space-y-1">
-                  {[
-                    {
-                      label: 'Shop All Catalogue',
-                      icon: Store,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/');
-                        setSelectedCategorySlug('ALL');
-                        setSelectedBrandSlug('ALL');
-                        setActiveView('storefront');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    {
-                      label: 'School Kits & Combos',
-                      icon: SlidersHorizontal,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('combos');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    {
-                      label: 'Bulk Institutional Orders',
-                      icon: FileSpreadsheet,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('bulk');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    {
-                      label: 'Track Order & Pickup Code',
-                      icon: Package,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('track');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    {
-                      label: `Saved Wishlist (${wishlistProductIds.length})`,
-                      icon: Heart,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/');
-                        setActiveView('wishlist');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    {
-                      label: 'My Profile & Addresses',
-                      icon: User,
-                      onClick: () => {
-                        window.history.pushState({}, '', '/profile');
-                        setActiveView('profile');
-                        setMobileMenuOpen(false);
-                      },
-                    },
-                    ...(dbUser?.email?.toLowerCase() === 'vainhavgupta20052014@gmail.com'
-                      ? [
-                          {
-                            label: 'Admin Console (Owner)',
-                            icon: ShieldCheck,
-                            onClick: () => {
-                              window.history.pushState({}, '', '/admin');
-                              setActiveView('admin');
-                              setMobileMenuOpen(false);
-                            },
-                          },
-                        ]
-                      : []),
-                  ].map((item, idx) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={item.onClick}
-                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-800 hover:bg-slate-100/80 transition-colors text-left cursor-pointer"
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Icon className="w-4 h-4 text-slate-500" />
-                          <span>{item.label}</span>
-                        </span>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                      </button>
-                    );
-                  })}
-                </nav>
-
-                {/* Popular Categories Shortcut */}
-                <div className="pt-3 border-t border-slate-100 space-y-2">
-                  <p className="text-[11px] font-mono uppercase tracking-wider text-slate-400 font-bold px-1">
-                    BROWSE CATEGORIES
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {categories.filter((c) => c.isActive !== false).slice(0, 6).map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCategorySlug(c.slug);
-                          setSelectedBrandSlug('ALL');
-                          setActiveView('storefront');
-                          setMobileMenuOpen(false);
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs transition-colors cursor-pointer ${
-                          selectedCategorySlug === c.slug
-                            ? 'bg-slate-900 text-white font-semibold'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        }`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Kanpur Physical Store Badge */}
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1.5 text-xs text-slate-700">
-                  <p className="font-bold text-slate-900 flex items-center gap-1.5">
-                    <Store className="w-3.5 h-3.5 text-[#B42318]" />
-                    <span>Store Pickup Counter</span>
-                  </p>
-                  <p className="text-[11px] text-slate-600 leading-snug">
-                    Awas Vikas Market, Galla Mandi, Naubasta, Kanpur – 208021
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Counter Hours: 9:00 AM – 9:30 PM (Pickup ready in 2 hours)
-                  </p>
-                </div>
-              </div>
-
-              {/* Drawer Footer / Account Action */}
-              <div className="p-4 bg-slate-50 border-t border-slate-100">
-                {supabaseUser || dbUser ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 truncate">
-                        {customerName || dbUser?.fullName || 'Logged In'}
-                      </p>
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {customerEmail || dbUser?.email || supabaseUser?.email}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleSignOut();
-                        setMobileMenuOpen(false);
-                      }}
-                      className="px-3 py-1.5 rounded-full text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 cursor-pointer"
-                    >
-                      Sign Out
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.history.pushState({}, '', '/signin');
-                      setActiveView('signin');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-semibold text-center cursor-pointer shadow-xs"
-                  >
-                    Customer Sign In / Register
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <ProductComparisonModal
-        isOpen={compareModalOpen}
-        onClose={() => setCompareModalOpen(false)}
-        onOpenModal={() => setCompareModalOpen(true)}
-        compareProductIds={compareProductIds}
+      {/* Slide-Over Cart Drawer */}
+      <CartDrawer
+        isOpen={cartDrawerOpen}
+        onClose={() => setCartDrawerOpen(false)}
+        cartItems={cartItems}
         products={products}
-        selectedVariantByProduct={selectedVariantByProduct}
-        selectedColorByProduct={selectedColorByProduct}
-        onSelectVariant={(prodId, varId) =>
-          setSelectedVariantByProduct((prev) => ({ ...prev, [prodId]: varId }))
+        calculation={cartCalculation}
+        fulfilmentMethod={fulfilmentMethod}
+        onChangeFulfilmentMethod={handleSelectFulfilment}
+        availableCoupons={coupons}
+        appliedCouponCode={appliedCouponCode}
+        onApplyCoupon={setAppliedCouponCode}
+        onRemoveCoupon={() => setAppliedCouponCode('')}
+        couponMessage={couponMessage}
+        orderNote={orderNote}
+        onChangeOrderNote={setOrderNote}
+        onUpdateQuantity={handleUpdateCartQuantity}
+        onRemoveItem={handleRemoveCartItem}
+        onSaveToWishlist={handleSaveCartItemToWishlist}
+        onClearBag={() => setCartItems([])}
+        onQuickAddProduct={(prod) =>
+          addItemToCart(prod.id, prod.variants?.[0]?.id, 1, undefined, false)
         }
-        onSelectColor={(prodId, colLabel, varId) => {
-          setSelectedColorByProduct((prev) => ({ ...prev, [prodId]: colLabel }));
-          if (varId) {
-            setSelectedVariantByProduct((prev) => ({ ...prev, [prodId]: varId }));
-          }
+        onProceedToCheckout={() => {
+          setCartDrawerOpen(false);
+          navigateTo('checkout', '/checkout');
         }}
-        onToggleCompare={handleToggleCompare}
-        onClearCompare={handleClearCompare}
-        onAddToCart={(prod, varId, colLabel) =>
-          handleAddToCart(prod, varId, 1, undefined, false, colLabel)
-        }
-        onOpenProduct={(prod) => openProductDetail(prod)}
-        getProductColorOptions={getProductColorOptions}
-        compareToastMessage={compareToastMessage}
-        onDismissToast={() => setCompareToastMessage(null)}
+        onOpenProduct={(slug) => navigateTo('pdp', `/product/${slug}`, { productSlug: slug })}
       />
 
+      {/* Vidya AI Modal */}
       <RufusAssistant
-        isOpen={rufusOpen}
-        onClose={() => setRufusOpen(false)}
+        isOpen={isRufusOpen}
+        onClose={() => setIsRufusOpen(false)}
         products={products}
-        activeProduct={activeView === 'pdp' ? activePdpProduct : null}
-        onAddToCart={(prod) => handleAddToCart(prod, prod?.variants?.[0]?.id, 1)}
-        onOpenProduct={(prod) => openProductDetail(prod)}
-        onFilterCategory={(catSlug) => {
-          setSelectedCategorySlug(catSlug);
-          setSelectedBrandSlug('ALL');
-          setActiveView('storefront');
+        activeProduct={activePdpProduct}
+        onAddToCart={(prod) =>
+          prod && addItemToCart(Number(prod.id), prod.variants?.[0]?.id, 1, undefined, true)
+        }
+        onOpenProduct={(prodOrSlug) => {
+          const slug = typeof prodOrSlug === 'string' ? prodOrSlug : prodOrSlug?.slug;
+          if (slug) navigateTo('pdp', `/product/${slug}`, { productSlug: slug });
         }}
-        onToggleCompare={handleToggleCompare}
+        onFilterCategory={(slug) => {
+          setSelectedCategorySlug(slug);
+          navigateTo('storefront', '/');
+        }}
+        onToggleCompare={toggleCompareProduct}
         compareProductIds={compareProductIds}
-        onOpenComparison={() => setCompareModalOpen(true)}
+        onOpenComparison={() => setIsCompareOpen(true)}
         initialQuestion={rufusInitialQuestion}
         onClearInitialQuestion={() => setRufusInitialQuestion(null)}
       />
 
-      {/* Flying-to-Cart Explicit Parabolic Arc Animation Particles */}
-      <AnimatePresence>
-        {flyingCartItems.map((fly) => (
-          <motion.div
-            key={fly.id}
-            initial={{
-              x: fly.startX,
-              y: fly.startY,
-              scale: 0.92,
-              rotate: 0,
-              opacity: 1,
-            }}
-            animate={{
-              x: fly.xKeyframes,
-              y: fly.yKeyframes,
-              scale: fly.scaleKeyframes,
-              rotate: fly.rotateKeyframes,
-              opacity: fly.opacityKeyframes,
-            }}
-            exit={{ opacity: 0, scale: 0.2 }}
-            transition={{
-              duration: 0.72,
-              times: fly.times,
-              ease: 'linear',
-            }}
-            className="fixed top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-[90] pointer-events-none flex items-center gap-2 bg-stone-900 text-white px-3 py-1.5 rounded-full shadow-2xl border border-amber-300/40 ring-2 ring-amber-400/20"
-          >
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-white shrink-0 shadow-xs">
-              <ProductIllustration
-                type={fly.illustrationType}
-                imageUrl={fly.imageUrl}
-                alt={fly.name}
-                className="w-full h-full"
-              />
-            </div>
-            <span className="text-[11px] font-semibold max-w-[120px] sm:max-w-[150px] truncate">
-              {fly.name}
-            </span>
-            <span className="text-[10px] font-mono text-amber-300 font-bold">
-              {fly.priceFormatted}
-            </span>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-
-      {/* Floating Cart Feedback Toast Banner */}
-      <AnimatePresence>
-        {cartFeedbackToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.25 }}
-            className="fixed bottom-20 md:bottom-6 right-4 z-50 max-w-sm bg-stone-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center justify-between gap-3 text-xs"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                <Check className="w-3.5 h-3.5" />
-              </span>
-              <span className="font-medium truncate">{cartFeedbackToast}</span>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setCartFeedbackToast(null);
-                  setCartDrawerOpen(true);
-                }}
-                className="px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-white font-semibold rounded-full cursor-pointer transition-colors"
-              >
-                View Bag ({totalCartItemsCount})
-              </button>
-              <button
-                type="button"
-                onClick={navigateToCheckout}
-                className="px-3 py-1 bg-[#B42318] hover:bg-[#991B1B] text-white font-bold rounded-full cursor-pointer transition-colors"
-              >
-                Checkout →
-              </button>
-              <button
-                type="button"
-                onClick={() => setCartFeedbackToast(null)}
-                className="p-1 text-stone-400 hover:text-white cursor-pointer"
-                aria-label="Dismiss notification"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Slide-Over Shopping Bag / Cart Drawer */}
-      <AnimatePresence>
-        {cartDrawerOpen && (
-          <div
-            className="fixed inset-0 z-50 flex justify-end"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Shopping Bag Drawer"
-          >
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => setCartDrawerOpen(false)}
-              className="fixed inset-0 bg-slate-950/55 backdrop-blur-xs"
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col justify-between z-10"
-            >
-              {/* Drawer Header */}
-              <div className="p-5 border-b border-stone-200 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-full bg-red-50 text-[#B42318] flex items-center justify-center">
-                    <ShoppingBag className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h2 className="font-serif-display text-base font-bold text-stone-900">
-                      Your Stationery Bag ({totalCartItemsCount})
-                    </h2>
-                    <p className="text-[11px] text-stone-500">
-                      Free Store Pickup in Kanpur · Express Home Delivery
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCartDrawerOpen(false)}
-                  className="p-2 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-full cursor-pointer"
-                  aria-label="Close Cart Drawer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Drawer Items List */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                {calculation.items.length === 0 ? (
-                  <div className="py-16 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-stone-100 text-stone-400 flex items-center justify-center mx-auto">
-                      <ShoppingBag className="w-6 h-6" />
-                    </div>
-                    <p className="text-sm font-semibold text-stone-800">Your shopping bag is empty</p>
-                    <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                      Add notebooks, pens, geometry sets, or art supplies from the catalogue to start your order.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setCartDrawerOpen(false)}
-                      className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full cursor-pointer"
-                    >
-                      Continue Shopping
-                    </button>
-                  </div>
-                ) : (
-                  calculation.items.map((item: any) => {
-                    const prod = products.find((p) => Number(p.id) === Number(item.productId));
-                    return (
-                      <div
-                        key={`${item.productId}-${item.variantId}`}
-                        className="p-3.5 rounded-2xl border border-stone-200/90 bg-slate-50/60 flex gap-3 items-start"
-                      >
-                        <div className="w-14 h-14 rounded-xl border border-stone-200 bg-white overflow-hidden shrink-0">
-                          <ProductIllustration
-                            type={prod?.illustrationType || 'spiral_notebook'}
-                            imageUrl={prod?.imageUrl}
-                            alt={item.productName}
-                            className="w-full h-full"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-xs font-bold text-stone-900 line-clamp-2">
-                              {item.productName}
-                            </p>
-                            <span className="font-mono-tabular text-xs font-bold text-stone-900 shrink-0">
-                              {formatPaiseToINR(item.lineSubtotalPaise)}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-stone-500 mt-0.5">
-                            {item.variantName} · {formatPaiseToINR(item.unitPricePaise)} each
-                          </p>
-                          <div className="flex items-center justify-between mt-2.5">
-                            <div className="inline-flex items-center border border-stone-300 rounded-full bg-white p-0.5">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateCartQuantity(
-                                    item.productId,
-                                    item.variantId,
-                                    item.quantity - 1
-                                  )
-                                }
-                                className="px-2.5 py-0.5 text-xs font-bold hover:bg-stone-100 rounded-full cursor-pointer"
-                              >
-                                -
-                              </button>
-                              <span className="px-2.5 py-0.5 text-xs font-mono-tabular font-semibold">
-                                {item.quantity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateCartQuantity(
-                                    item.productId,
-                                    item.variantId,
-                                    item.quantity + 1
-                                  )
-                                }
-                                className="px-2.5 py-0.5 text-xs font-bold hover:bg-stone-100 rounded-full cursor-pointer"
-                              >
-                                +
-                              </button>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpdateCartQuantity(item.productId, item.variantId, 0)
-                              }
-                              className="text-[11px] text-stone-500 hover:text-red-700 font-medium cursor-pointer flex items-center gap-1"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Remove</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Drawer Footer */}
-              {calculation.items.length > 0 && (
-                <div className="p-5 border-t border-stone-200 bg-slate-50 space-y-3">
-                  <div className="space-y-1.5 text-xs font-mono-tabular">
-                    <div className="flex justify-between text-stone-600">
-                      <span>Subtotal ({totalCartItemsCount} items)</span>
-                      <span>{formatPaiseToINR(calculation.subtotalPaise)}</span>
-                    </div>
-                    {calculation.catalogSavingsPaise > 0 && (
-                      <div className="flex justify-between text-emerald-700 font-semibold">
-                        <span>Total MRP Savings</span>
-                        <span>-{formatPaiseToINR(calculation.catalogSavingsPaise)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm font-bold text-stone-900 pt-1.5 border-t border-stone-200">
-                      <span>Estimated Total</span>
-                      <span>{formatPaiseToINR(calculation.totalPaise)}</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setCartDrawerOpen(false)}
-                      className="py-3 px-4 bg-white border border-stone-300 hover:bg-stone-100 text-stone-800 text-xs font-semibold rounded-full cursor-pointer transition-colors"
-                    >
-                      Keep Shopping
-                    </button>
-                    <button
-                      type="button"
-                      onClick={navigateToCheckout}
-                      className="py-3 px-4 bg-[#B42318] hover:bg-[#991B1B] text-white text-xs font-bold rounded-full shadow-sm cursor-pointer transition-colors"
-                    >
-                      Proceed to Checkout →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Product Comparison Modal */}
+      <ProductComparisonModal
+        isOpen={isCompareOpen}
+        onClose={() => setIsCompareOpen(false)}
+        onOpenModal={() => setIsCompareOpen(true)}
+        compareProductIds={compareProductIds}
+        products={products}
+        selectedVariantByProduct={selectedVariantByProduct}
+        selectedColorByProduct={selectedColorByProduct}
+        onSelectVariant={(pid, vid) =>
+          setSelectedVariantByProduct((prev) => ({ ...prev, [pid]: vid }))
+        }
+        onSelectColor={(pid, color) =>
+          setSelectedColorByProduct((prev) => ({ ...prev, [pid]: color }))
+        }
+        onToggleCompare={toggleCompareProduct}
+        onClearCompare={() => setCompareProductIds([])}
+        onAddToCart={(prod, vid, color) =>
+          prod && addItemToCart(Number(prod.id), vid, 1, color, true)
+        }
+        onOpenProduct={(prodOrSlug) => {
+          const slug = typeof prodOrSlug === 'string' ? prodOrSlug : prodOrSlug?.slug;
+          if (slug) navigateTo('pdp', `/product/${slug}`, { productSlug: slug });
+        }}
+        getProductColorOptions={getProductColorOptions}
+        compareToastMessage={compareToast}
+        onDismissToast={() => setCompareToast(null)}
+      />
     </div>
   );
 }
+
+export default App;
